@@ -38,12 +38,17 @@ public sealed class WindowsAudioTests
         var voice = SpeechAudio.GetVoices().First();
         var speech = new SpeechAudio();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        using var slow = await speech.SynthesizeAsync("这是用于比较语速的固定测试句子。", new(voice.Id, 0.5), timeout.Token);
-        using var fast = await speech.SynthesizeAsync("这是用于比较语速的固定测试句子。", new(voice.Id, 2), timeout.Token);
+        // An English voice can return an empty WAVE for Chinese text. Use a fixture it can speak.
+        var text = voice.Label.Contains("(en-", StringComparison.OrdinalIgnoreCase)
+            ? "This is a fixed test sentence for comparing the speaking rate."
+            : "这是用于比较语速的固定测试句子。";
+        using var slow = await speech.SynthesizeAsync(text, new(voice.Id, 0.5), timeout.Token);
+        using var fast = await speech.SynthesizeAsync(text, new(voice.Id, 2), timeout.Token);
         using var slowReader = new WaveFileReader(slow);
         using var fastReader = new WaveFileReader(fast);
         Assert.Equal(WaveFormatEncoding.Pcm, slowReader.WaveFormat.Encoding);
-        Assert.True(slowReader.TotalTime > fastReader.TotalTime);
+        Assert.True(slowReader.TotalTime > fastReader.TotalTime,
+            $"Voice: {voice.Label}; slow: {slowReader.TotalTime}; fast: {fastReader.TotalTime}");
     }
 }
 

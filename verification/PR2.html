@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>SeleVox PR2 本地选区测试</title>
+<style>
+body { max-width: 760px; margin: 40px auto; font: 18px/1.8 sans-serif; padding: 0 24px; }
+p, textarea { border: 1px solid #bccbd6; padding: 16px; }
+textarea { width: 90%; height: 160px; font: inherit; }
+button, input { font: inherit; padding: 8px; }
+</style>
+<h1>SeleVox PR2 本地选区测试</h1>
+<div>此页面不访问网络。将 Edge 加入白名单后测试拖选、双击、重复选区和快速连续选区；再禁用或删除规则复测。也可在白名单外的浏览器打开本页。</div>
+<p>选区 A：这是一段较长的朗读测试文字。播放时点击空白、按钮或拖动标题栏，应继续当前朗读。关闭自动模式后已经开始的朗读也应继续。停止后不能再出现迟到的音频。</p>
+<p>选区 B：这是第二段测试内容。选择新的有效文字，应中断旧朗读。</p>
+<p>选区 C：这是第三段测试内容。快速连续选择时，旧的捕获结果不能覆盖更新的选择。</p>
+<label>可编辑文本控件：<br><textarea>这是可编辑文本控件的固定测试内容。可分别用鼠标拖选、双击和键盘选择，再测试手动朗读快捷键。</textarea></label>
+<div><button type="button">普通按钮（不改变页面）</button></div>
+<label>密码控件（仅输入固定测试值，勿输入真实密码）：<input type="password" autocomplete="off" aria-label="测试密码控件"></label>
+</html>
