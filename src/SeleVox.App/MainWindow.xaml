@@ -10,12 +10,37 @@
             <TextBlock Text="选择文字，按 Ctrl+Alt+R 朗读。" Margin="0,8,0,22" FontSize="15"/>
         </StackPanel>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"><StackPanel>
-            <TextBlock Text="Windows 本地语音" Margin="0,0,0,6"/>
+            <TextBlock Text="TTS Provider" Margin="0,0,0,6"/>
+            <ComboBox x:Name="Provider" Height="32" SelectionChanged="Provider_Changed">
+                <ComboBoxItem Content="Windows 本地 TTS（离线）"/><ComboBoxItem Content="Azure Speech TTS（发送选区到云端）"/>
+            </ComboBox>
+            <StackPanel x:Name="LocalPanel">
+            <TextBlock Text="Windows 本地语音" Margin="0,12,0,6"/>
             <ComboBox x:Name="Voice" DisplayMemberPath="Label" SelectedValuePath="Id" Height="32"/>
+            </StackPanel>
+            <StackPanel x:Name="AzurePanel" Visibility="Collapsed">
+                <TextBlock Text="Azure Region（例如 eastasia）" Margin="0,12,0,4"/>
+                <TextBox x:Name="Region" Height="28" TextChanged="AzureRegion_Changed"/>
+                <TextBlock Text="Azure Speech Key（存入 Windows 凭据管理器）" Margin="0,10,0,4"/>
+                <PasswordBox x:Name="AzureKey" Height="28"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button Content="保存 / 更新 Key" Click="SaveKey_Click" Padding="8,4" Margin="0,0,8,0"/>
+                    <Button Content="清除 Key" Click="ClearKey_Click" Padding="8,4"/>
+                </StackPanel>
+                <TextBlock x:Name="CredentialStatus" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                <Button x:Name="QueryVoices" Content="查询此 Region 可用语音" Click="QueryVoices_Click" HorizontalAlignment="Left" Padding="8,4" Margin="0,10,0,4"/>
+                <ComboBox x:Name="CloudVoice" DisplayMemberPath="Label" SelectedValuePath="Id" Height="32"/>
+                <CheckBox x:Name="AutomaticCloud" Content="允许 Auto Speak 将白名单应用的选区发送到 Azure" Margin="0,10,0,0"/>
+                <TextBlock Text="选择 Azure 后，手动朗读会发送选区到 Azure；自动发送需要单独开启上方开关。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
+            </StackPanel>
             <TextBlock Text="语速（0.5–2 倍）" Margin="0,18,0,4"/>
             <DockPanel><TextBlock DockPanel.Dock="Right" Width="46" Text="{Binding ElementName=Rate, Path=Value, StringFormat=F2}"/><Slider x:Name="Rate" Minimum="0.5" Maximum="2" TickFrequency="0.05" IsSnapToTickEnabled="True"/></DockPanel>
             <TextBlock Text="音量（0–1）" Margin="0,18,0,4"/>
             <DockPanel><TextBlock DockPanel.Dock="Right" Width="46" Text="{Binding ElementName=Volume, Path=Value, StringFormat=F2}"/><Slider x:Name="Volume" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"/></DockPanel>
+            <TextBlock Text="音频输出 · 点击多选（无需按 Ctrl）" Margin="0,18,0,4"/>
+            <ListBox x:Name="Outputs" SelectionMode="Multiple" Height="110" DisplayMemberPath="Label"/>
+            <Button Content="刷新播放设备" Click="RefreshOutputs_Click" HorizontalAlignment="Left" Padding="8,4" Margin="0,6,0,0"/>
+            <TextBlock Text="未选择时使用系统默认输出。部分设备不可用时跳过；全部不可用时回退默认输出并提示。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
             <CheckBox x:Name="AutoStart" Content="登录 Windows 时启动（驻留托盘）" Margin="0,20,0,16"/>
             <CheckBox x:Name="AutoSpeak" Content="Auto Speak · 鼠标选中即朗读（立即保存）" Click="AutoSpeak_Click" Margin="0,0,0,10"/>
             <TextBlock Text="自动朗读应用白名单 · 仅使用 UIA 选区" FontWeight="SemiBold"/>

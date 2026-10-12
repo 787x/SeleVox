@@ -6,6 +6,7 @@ public sealed class UserFeedbackException(string message) : Exception(message);
 
 public interface IAudioPlayback : IDisposable
 {
+    string? Warning => null;
     event Action<Exception?>? Finished;
     void Play();
     void Pause();
@@ -13,13 +14,16 @@ public interface IAudioPlayback : IDisposable
 }
 
 // A synthesized stream belongs to the caller; a playback owns it after creation.
-public interface ISpeechAudio
+public interface ISpeechSynthesis
 {
     Task<Stream> SynthesizeAsync(string text, Settings settings, CancellationToken cancellation);
-    IAudioPlayback CreatePlayback(Stream audio, float volume);
+}
+public interface IAudioPlaybackFactory
+{
+    IAudioPlayback CreatePlayback(Stream audio, Settings settings);
 }
 
-public sealed class ReadingSession(ISpeechAudio speech) : IDisposable
+public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactory outputs) : IDisposable
 {
     private readonly object sync = new();
     private readonly SemaphoreSlim synthesisGate = new(1, 1);
@@ -64,6 +68,8 @@ public sealed class ReadingSession(ISpeechAudio speech) : IDisposable
             var text = await capture(request.Token).ConfigureAwait(false);
             request.Token.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(text)) throw new UserFeedbackException("没有选中文字。");
+            if (isAutomatic && settings.Provider == TtsProvider.Azure && !settings.AllowAutomaticCloud)
+                throw new UserFeedbackException("自动向 Azure 发送选区未授权，请在设置中单独开启；手动朗读仍可使用。");
             await synthesisGate.WaitAsync(request.Token).ConfigureAwait(false);
             try
             {
@@ -71,7 +77,7 @@ public sealed class ReadingSession(ISpeechAudio speech) : IDisposable
             }
             finally { synthesisGate.Release(); }
             request.Token.ThrowIfCancellationRequested();
-            candidate = speech.CreatePlayback(audio, settings.Volume);
+            candidate = await Task.Run(() => outputs.CreatePlayback(audio, settings)).ConfigureAwait(false);
             audio = null;
             lock (sync)
             {
@@ -80,8 +86,10 @@ public sealed class ReadingSession(ISpeechAudio speech) : IDisposable
                 candidate = null;
                 var owned = playback;
                 owned.Finished += error => _ = Task.Run(() => Complete(id, owned, error));
+                if (owned is MultiOutputPlayback group)
+                    group.WarningChanged += () => _ = Task.Run(() => UpdateWarning(id, owned));
                 owned.Play();
-                SetStatus(ReadingState.Playing, "正在朗读");
+                SetStatus(ReadingState.Playing, WithWarning("正在朗读", owned));
             }
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested) { }
@@ -92,14 +100,20 @@ public sealed class ReadingSession(ISpeechAudio speech) : IDisposable
                 if (!disposed && id == generation)
                 {
                     ReleasePlayback();
-                    SetStatus(ReadingState.Error, ex is UserFeedbackException ? ex.Message : $"朗读失败（{ex.GetType().Name}）。请检查本地语音及默认音频设备。");
+                    SetStatus(ReadingState.Error, ex is UserFeedbackException ? ex.Message : $"朗读失败（{ex.GetType().Name}）。请检查语音服务及输出设备。");
                 }
             }
         }
         finally
         {
-            candidate?.Dispose();
-            audio?.Dispose();
+            Exception? cleanupError = null;
+            try { candidate?.Dispose(); } catch (Exception ex) { cleanupError = ex; }
+            try { audio?.Dispose(); } catch (Exception ex) { cleanupError ??= ex; }
+            lock (sync)
+            {
+                if (cleanupError is not null && !disposed && id == generation)
+                    SetStatus(ReadingState.Error, "音频资源释放失败，请重启应用后重试。");
+            }
             lock (sync) { if (ReferenceEquals(current, request)) current = null; }
             request.Dispose();
         }
@@ -112,8 +126,8 @@ public sealed class ReadingSession(ISpeechAudio speech) : IDisposable
             if (disposed || playback is null) return;
             try
             {
-                if (Status.State == ReadingState.Playing) { playback.Pause(); SetStatus(ReadingState.Paused, "已暂停"); }
-                else if (Status.State == ReadingState.Paused) { playback.Play(); SetStatus(ReadingState.Playing, "正在朗读"); }
+                if (Status.State == ReadingState.Playing) { playback.Pause(); SetStatus(ReadingState.Paused, WithWarning("已暂停", playback)); }
+                else if (Status.State == ReadingState.Paused) { playback.Play(); SetStatus(ReadingState.Playing, WithWarning("正在朗读", playback)); }
             }
             catch (Exception ex) { ReleasePlayback(); SetStatus(ReadingState.Error, $"音频操作失败（{ex.GetType().Name}）。"); }
         }
@@ -138,7 +152,16 @@ public sealed class ReadingSession(ISpeechAudio speech) : IDisposable
             if (disposed || id != generation || !ReferenceEquals(source, playback)) return;
             ReleasePlayback();
             SetStatus(error is null ? ReadingState.Idle : ReadingState.Error,
-                error is null ? "朗读完成" : $"音频设备错误（{error.GetType().Name}）。");
+                error is null ? WithWarning("朗读完成", source) : "所有音频输出均失败，请检查设备连接后重试。");
+        }
+    }
+    private static string WithWarning(string message, IAudioPlayback source) => source.Warning is { } warning ? $"{message} · {warning}" : message;
+    private void UpdateWarning(long id, IAudioPlayback source)
+    {
+        lock (sync)
+        {
+            if (disposed || id != generation || !ReferenceEquals(playback, source)) return;
+            SetStatus(Status.State, WithWarning(Status.State == ReadingState.Paused ? "已暂停" : "正在朗读", source));
         }
     }
     private Exception? CancelAndRelease() { current?.Cancel(); current = null; return ReleasePlayback(); }

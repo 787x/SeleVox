@@ -1,13 +1,59 @@
 using NAudio.Wave;
 using SeleVox.App;
 using SeleVox.Core;
+using NAudio.CoreAudioApi;
+using Xunit.Abstractions;
 
 namespace SeleVox.Tests;
 
 // Opt-in hardware tests: run with --filter Category=WindowsAudio on a desktop with
 // an installed WinRT voice and a default render device. They emit fixture speech.
-public sealed class WindowsAudioTests
+public sealed class WindowsAudioTests(ITestOutputHelper log)
 {
+    [WindowsAudioFact, Trait("Category", "WindowsAudio")]
+    public async Task ConfiguredFactoryCompletesAllEndpointsAndReportsRealDefaultFallback()
+    {
+        var ids = AudioOutputs.GetDevices().Where(d => d.Id != Settings.DefaultOutput).Take(2).Select(d => d.Id).ToArray();
+        Assert.Equal(2, ids.Length);
+        var voice = SpeechAudio.GetVoices().First(); var settings = new Settings(VoiceId: voice.Id, OutputDeviceIds: ids, Volume: 0.1f);
+        var speech = new SpeechAudio(); using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var fixture = voice.Label.Contains("(en-") ? "All outputs finish this short test." : "所有输出完成这次测试。";
+        var audio = await speech.SynthesizeAsync(fixture, settings, timeout.Token);
+        using var group = speech.CreatePlayback(audio, settings);
+        var completion = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        group.Finished += error => completion.TrySetResult(error); group.Play();
+        Assert.Null(await completion.Task.WaitAsync(timeout.Token)); Assert.False(audio.CanRead); Assert.Null(group.Warning);
+        audio = await speech.SynthesizeAsync(fixture, settings, timeout.Token);
+        using var fallback = speech.CreatePlayback(audio, settings with { OutputDeviceIds = ["SeleVox-nonexistent-fixture-endpoint"] });
+        Assert.Contains("回退", fallback.Warning); fallback.Play(); await Task.Delay(250, timeout.Token); fallback.Stop();
+    }
+    [WindowsAudioFact, Trait("Category", "WindowsAudio")]
+    public async Task ExplicitEndpointAndMultiEndpointPlaybackUseIndependentReaders()
+    {
+        var devices = AudioOutputs.GetDevices().Where(d => d.Id != Settings.DefaultOutput).OrderBy(d => d.Label.Contains("Realtek") ? 0 : 1).ToArray();
+        Assert.NotEmpty(devices); log.WriteLine("Active render devices: " + string.Join("; ", devices.Select(d => d.Label)));
+        using var enumerator = new MMDeviceEnumerator();
+        var voice = SpeechAudio.GetVoices().First();
+        var text = string.Concat(Enumerable.Repeat(voice.Label.Contains("(en-") ? "This is a multiple output audio test. " : "这是多设备播放测试。", 20));
+        var speech = new SpeechAudio(); using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var source = await speech.SynthesizeAsync(text, new(VoiceId: voice.Id), timeout.Token);
+        using var copy = new MemoryStream(); await source.CopyToAsync(copy, timeout.Token); source.Dispose(); var bytes = copy.ToArray();
+        using (var single = new WasapiPlayback(new MemoryStream(bytes, false), 0.1f, enumerator.GetDevice(devices[0].Id)))
+        {
+            Assert.Equal(devices[0].Id, single.DeviceId); single.Play(); await Task.Delay(350, timeout.Token); Assert.True(single.SourcePosition > 0); single.Stop();
+        }
+        Assert.True(devices.Length >= 2, "At least two active render endpoints are required for this real multiple output test.");
+        var first = new WasapiPlayback(new MemoryStream(bytes, false), 0.1f, enumerator.GetDevice(devices[0].Id));
+        var second = new WasapiPlayback(new MemoryStream(bytes, false), 0.1f, enumerator.GetDevice(devices[1].Id));
+        using var group = new MultiOutputPlayback([first, second]); group.Play(); await Task.Delay(450, timeout.Token);
+        group.Pause(); await Task.Delay(150, timeout.Token); var positions = (first.SourcePosition, second.SourcePosition);
+        Assert.True(positions.Item1 > 0); Assert.True(positions.Item2 > 0); await Task.Delay(250, timeout.Token);
+        Assert.Equal(positions, (first.SourcePosition, second.SourcePosition)); group.Play(); await Task.Delay(350, timeout.Token);
+        Assert.True(first.SourcePosition > positions.Item1); Assert.True(second.SourcePosition > positions.Item2); group.Stop();
+        log.WriteLine($"Real endpoints tested: {devices[0].Label}; {devices[1].Label}. Source cursor pause/resume passed; not an acoustic or virtual microphone reception assertion.");
+        using var captures = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+        foreach (var device in captures) { using (device) log.WriteLine("Active capture: " + device.FriendlyName); }
+    }
     [WindowsAudioFact, Trait("Category", "WindowsAudio")]
     public async Task LocalVoiceProducesDecodableWaveAndWasapiPauseKeepsPosition()
     {
@@ -16,7 +62,7 @@ public sealed class WindowsAudioTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var text = string.Concat(Enumerable.Repeat("这是本地音频测试，检查暂停继续和停止。", 15));
         var audio = await speech.SynthesizeAsync(text, new(), timeout.Token);
-        using var playback = (WasapiPlayback)speech.CreatePlayback(audio, 0.15f);
+        using var playback = new WasapiPlayback(audio, 0.15f);
         playback.Play();
         await Task.Delay(450, timeout.Token);
         playback.Pause();

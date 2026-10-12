@@ -24,7 +24,8 @@ public partial class App : System.Windows.Application
         instance = new SingleInstance();
         if (!instance.IsFirst) { Shutdown(); return; }
         var loaded = store.Load(); settings = loaded.Settings;
-        reading = new ReadingSession(new SpeechAudio());
+        var speech = new SpeechAudio();
+        reading = new ReadingSession(speech, speech);
         settingsWindow = new MainWindow(settings, SaveSettings, () => reading.TogglePause(), StopReading, ExitApplication, AddForegroundApplicationAsync);
         MainWindow = settingsWindow;
         var menu = new Forms.ContextMenuStrip();

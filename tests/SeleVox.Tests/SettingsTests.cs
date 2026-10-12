@@ -15,6 +15,9 @@ public sealed class SettingsTests : IDisposable
     [InlineData("null")]
     [InlineData("{\"Rate\":10}")]
     [InlineData("{\"Volume\":-1}")]
+    [InlineData("{\"Provider\":9}")]
+    [InlineData("{\"AzureRegion\":\"region.example\"}")]
+    [InlineData("{\"OutputDeviceIds\":[null]}")]
     [InlineData("{\"AutoSpeak\":true,\"Applications\":[null]}")]
     [InlineData("{\"AutoSpeak\":true,\"Applications\":[{\"ExecutablePath\":\"editor.exe\"}]}")]
     public void InvalidFileUsesDefaults(string json)
@@ -43,6 +46,20 @@ public sealed class SettingsTests : IDisposable
         var loaded = new SettingsStore(PathName).Load();
         Assert.Null(loaded.Warning); Assert.False(loaded.Settings.AutoSpeak);
         Assert.Null(loaded.Settings.Applications); Assert.Equal(1.5, loaded.Settings.Rate);
+        Assert.Equal(TtsProvider.Windows, loaded.Settings.Provider); Assert.Null(loaded.Settings.OutputDeviceIds);
+        Assert.False(loaded.Settings.AllowAutomaticCloud);
+    }
+    [Fact] public void Pr2ConfigurationMigratesAndCloudDeviceSettingsRoundTripWithoutKey()
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(PathName, "{\"AutoSpeak\":true,\"Applications\":[{\"ExecutablePath\":\"C:\\\\Apps\\\\fixture.exe\"}]}");
+        var store = new SettingsStore(PathName); var old = store.Load(); Assert.Null(old.Warning);
+        Assert.True(old.Settings.AutoSpeak); Assert.Equal(TtsProvider.Windows, old.Settings.Provider); Assert.Null(old.Settings.OutputDeviceIds);
+        var updated = old.Settings with { Provider = TtsProvider.Azure, AzureRegion = "eastasia", AzureVoice = "fixture", OutputDeviceIds = ["endpoint-a", "endpoint-b"] };
+        store.Save(updated); var loaded = store.Load(); Assert.Null(loaded.Warning);
+        Assert.Equal(updated.OutputDeviceIds, loaded.Settings.OutputDeviceIds); Assert.Equal(updated.AzureVoice, loaded.Settings.AzureVoice);
+        Assert.Equal(TtsProvider.Azure, loaded.Settings.Provider); Assert.Equal("eastasia", loaded.Settings.AzureRegion);
+        Assert.DoesNotContain("Key", File.ReadAllText(PathName), StringComparison.OrdinalIgnoreCase);
     }
     [Fact] public void AutomaticRulesRoundTripAndRejectRelativePaths()
     {
