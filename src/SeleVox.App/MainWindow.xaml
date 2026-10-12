@@ -13,6 +13,7 @@
             <TextBlock Text="TTS Provider" Margin="0,0,0,6"/>
             <ComboBox x:Name="Provider" Height="32" SelectionChanged="Provider_Changed">
                 <ComboBoxItem Content="Windows 本地 TTS（离线）"/><ComboBoxItem Content="Azure Speech TTS（发送选区到云端）"/>
+                <ComboBoxItem Content="Edge 在线自然语音（实验性，需要联网）"/>
             </ComboBox>
             <StackPanel x:Name="LocalPanel">
             <TextBlock Text="Windows 本地语音" Margin="0,12,0,6"/>
@@ -32,6 +33,16 @@
                 <ComboBox x:Name="CloudVoice" DisplayMemberPath="Label" SelectedValuePath="Id" Height="32"/>
                 <CheckBox x:Name="AutomaticCloud" Content="允许 Auto Speak 将白名单应用的选区发送到 Azure" Margin="0,10,0,0"/>
                 <TextBlock Text="选择 Azure 后，手动朗读会发送选区到 Azure；自动发送需要单独开启上方开关。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="EdgePanel" Visibility="Collapsed">
+                <Button x:Name="QueryEdgeVoices" Content="查询 / 刷新 Edge 在线语音" Click="QueryEdgeVoices_Click" HorizontalAlignment="Left" Padding="8,4" Margin="0,12,0,4"/>
+                <TextBlock Text="语言 / 地区筛选（例如 zh-CN、en-US；留空显示全部）" Margin="0,8,0,4"/>
+                <TextBox x:Name="EdgeLocale" Height="28" TextChanged="EdgeLocale_Changed"/>
+                <ComboBox x:Name="EdgeVoice" DisplayMemberPath="Label" SelectedValuePath="Id" Height="32" Margin="0,8,0,0" SelectionChanged="EdgeVoice_Changed"/>
+                <TextBlock Text="Edge 音调（Hz；默认 0，仅影响 Edge）" Margin="0,12,0,4"/>
+                <DockPanel><TextBlock DockPanel.Dock="Right" Width="56" Text="{Binding ElementName=EdgePitch, Path=Value, StringFormat=F0}"/><Slider x:Name="EdgePitch" Minimum="-100" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True"/></DockPanel>
+                <CheckBox x:Name="AutomaticEdge" Content="允许 Auto Speak 将白名单选区发送到 Edge（立即保存）" Click="AutomaticEdge_Click" Margin="0,10,0,0"/>
+                <TextBlock Text="非官方在线接入，无需 Azure Key。手动朗读会将选中文字发送到微软在线服务；自动发送需要独立授权。接口可能变化而失效。这不是 Windows 已安装的离线 Natural Voices。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
             </StackPanel>
             <TextBlock Text="语速（0.5–2 倍）" Margin="0,18,0,4"/>
             <DockPanel><TextBlock DockPanel.Dock="Right" Width="46" Text="{Binding ElementName=Rate, Path=Value, StringFormat=F2}"/><Slider x:Name="Rate" Minimum="0.5" Maximum="2" TickFrequency="0.05" IsSnapToTickEnabled="True"/></DockPanel>

@@ -26,7 +26,7 @@ public partial class App : System.Windows.Application
         var loaded = store.Load(); settings = loaded.Settings;
         var speech = new SpeechAudio();
         reading = new ReadingSession(speech, speech);
-        settingsWindow = new MainWindow(settings, SaveSettings, () => reading.TogglePause(), StopReading, ExitApplication, AddForegroundApplicationAsync);
+        settingsWindow = new MainWindow(settings, SaveSettings, () => reading.TogglePause(), StopReading, ExitApplication, AddForegroundApplicationAsync, CancelAutomaticReading);
         MainWindow = settingsWindow;
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("设置", null, (_, _) => ShowSettings());
@@ -90,9 +90,7 @@ public partial class App : System.Windows.Application
         try
         {
             StartupRegistration.Apply(updated.StartWithWindows); store.Save(updated); settings = updated;
-            mouse?.CancelGesture();
-            ++mouseEpoch; automaticSelection.Invalidate(true);
-            reading?.CancelPendingAutomatic();
+            CancelAutomaticReading();
             settingsWindow?.SetAutomaticSettings(settings);
             if (autoMenu is not null) autoMenu.Checked = settings.AutoSpeak;
             var warning = ApplyAutomatic();
@@ -147,6 +145,11 @@ public partial class App : System.Windows.Application
             message => settingsWindow?.SetAutomaticStatus(message));
     }
     private void StopReading() { mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); reading?.Stop(); }
+    private void CancelAutomaticReading()
+    {
+        mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(true);
+        reading?.CancelPendingAutomatic();
+    }
     private async Task<string?> AddForegroundApplicationAsync()
     {
         // Wait for the user to bring their target to the foreground; never activate it ourselves.

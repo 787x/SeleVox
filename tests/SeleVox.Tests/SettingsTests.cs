@@ -16,6 +16,8 @@ public sealed class SettingsTests : IDisposable
     [InlineData("{\"Rate\":10}")]
     [InlineData("{\"Volume\":-1}")]
     [InlineData("{\"Provider\":9}")]
+    [InlineData("{\"EdgePitchHz\":101}")]
+    [InlineData("{\"EdgeLocaleFilter\":null}")]
     [InlineData("{\"AzureRegion\":\"region.example\"}")]
     [InlineData("{\"OutputDeviceIds\":[null]}")]
     [InlineData("{\"AutoSpeak\":true,\"Applications\":[null]}")]
@@ -70,4 +72,17 @@ public sealed class SettingsTests : IDisposable
         Assert.Throws<ArgumentOutOfRangeException>(() => store.Save(settings with { Applications = [new("fixture.exe")] }));
     }
     public void Dispose() { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    [Fact] public void Pr3AzureConsentNeverBecomesEdgeConsentAndNewSettingsPersist()
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(PathName, "{\"Provider\":1,\"AllowAutomaticCloud\":true,\"AzureRegion\":\"eastasia\"}");
+        var store = new SettingsStore(PathName); var old = store.Load();
+        Assert.Null(old.Warning); Assert.Equal(TtsProvider.Azure, old.Settings.Provider);
+        Assert.False(old.Settings.AllowAutomaticEdge); Assert.Equal(0, old.Settings.EdgePitchHz);
+        Assert.False((old.Settings with { Provider = TtsProvider.Edge }).AllowsAutomaticProvider);
+        Assert.True((old.Settings with { Provider = TtsProvider.Windows }).AllowsAutomaticProvider);
+        var updated = old.Settings with { Provider = TtsProvider.Edge, EdgeVoice = "zh-CN-XiaoxiaoNeural", EdgePitchHz = 20, EdgeLocaleFilter = "en", AllowAutomaticEdge = true };
+        store.Save(updated); Assert.Equal(updated, store.Load().Settings);
+        Assert.Equal(0, (int)TtsProvider.Windows); Assert.Equal(1, (int)TtsProvider.Azure);
+    }
 }

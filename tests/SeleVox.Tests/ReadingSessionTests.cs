@@ -14,7 +14,8 @@ public sealed class ReadingSessionTests
         read = session.ReadTextAsync("fixture", settings with { AllowAutomaticCloud = true }); backend.Pending[1].SetResult(new TrackedStream()); await read;
         Assert.Equal(ReadingState.Playing, session.Status.State);
     }
-    [Fact] public async Task UnauthorizedAutomaticAzureRequestLeavesPlayingSessionUntouched()
+    [Theory] [InlineData(TtsProvider.Azure)] [InlineData(TtsProvider.Edge)]
+    public async Task UnauthorizedAutomaticOnlineRequestLeavesPlayingSessionUntouched(TtsProvider provider)
     {
         var backend = new Audio(); using var session = new ReadingSession(backend, backend);
         var read = session.ReadAsync(Capture, new());
@@ -23,7 +24,7 @@ public sealed class ReadingSessionTests
         var playingStatus = session.Status; Assert.Equal(ReadingState.Playing, playingStatus.State);
         var changes = 0; session.Changed += _ => ++changes;
 
-        await session.ReadTextAsync("new fixture", new(Provider: TtsProvider.Azure, AllowAutomaticCloud: false));
+        await session.ReadTextAsync("new fixture", new(Provider: provider, AllowAutomaticCloud: provider == TtsProvider.Edge));
 
         Assert.Equal(0, player.Stops); Assert.False(player.Disposed); Assert.False(audio.Disposed);
         Assert.Same(playingStatus, session.Status); Assert.Equal(ReadingState.Playing, session.Status.State);
@@ -82,10 +83,11 @@ public sealed class ReadingSessionTests
         Assert.False(session.Status.Notify);
         await session.ReadAsync(_ => throw new IOException(), new()); Assert.True(session.Status.Notify);
     }
-    [Fact] public async Task StopRejectsLateNonCooperativeSynthesisAndDisposesAudio()
+    [Theory] [InlineData(TtsProvider.Windows)] [InlineData(TtsProvider.Edge)]
+    public async Task StopRejectsLateNonCooperativeSynthesisAndDisposesAudio(TtsProvider provider)
     {
         var backend = new Audio(); using var session = new ReadingSession(backend, backend);
-        var read = session.ReadAsync(Capture, new());
+        var read = session.ReadAsync(Capture, new(Provider: provider, EdgeVoice: "zh-CN-XiaoxiaoNeural"));
         session.Stop(); var stream = new TrackedStream(); backend.Pending[0].SetResult(stream);
         await read;
         Assert.True(stream.Disposed); Assert.Empty(backend.Players); Assert.Equal(ReadingState.Idle, session.Status.State);

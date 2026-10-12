@@ -10,13 +10,20 @@ public partial class MainWindow : Window
     private Settings savedSettings;
     private readonly AzureCredentials credentials = new();
     private CancellationTokenSource? voiceQuery;
+    private readonly Action cancelAutomatic;
+    private readonly Func<CancellationToken, Task<IReadOnlyList<EdgeVoiceChoice>>> queryEdge;
+    private IReadOnlyList<EdgeVoiceChoice> edgeVoices = [];
+    private string? edgeSelection;
+    private bool filteringEdge;
     private bool refreshingOutputs;
     public string? VoiceWarning { get; }
     internal MainWindow(Settings settings, Func<Settings, string?> save, Action pause, Action stop, Action exit,
-        Func<Task<string?>> addForeground)
+        Func<Task<string?>> addForeground, Action cancelAutomatic,
+        Func<CancellationToken, Task<IReadOnlyList<EdgeVoiceChoice>>>? queryEdge = null)
     {
         InitializeComponent(); this.save = save; this.pause = pause; this.stop = stop; this.exit = exit;
-        this.addForeground = addForeground; savedSettings = settings; SetAutomaticSettings(settings);
+        this.addForeground = addForeground; this.cancelAutomatic = cancelAutomatic; savedSettings = settings; SetAutomaticSettings(settings);
+        this.queryEdge = queryEdge ?? new EdgeSpeech().GetVoicesAsync;
         try
         {
             var voices = SpeechAudio.GetVoices(); Voice.ItemsSource = voices; Voice.SelectedValue = settings.VoiceId;
@@ -33,6 +40,11 @@ public partial class MainWindow : Window
             CloudVoice.SelectedValue = cloudVoice;
         }
         AutomaticCloud.IsChecked = settings.AllowAutomaticCloud;
+        AutomaticEdge.IsChecked = settings.AllowAutomaticEdge;
+        edgeSelection = settings.EdgeVoice;
+        EdgePitch.Value = settings.EdgePitchHz;
+        EdgeLocale.Text = settings.EdgeLocaleFilter;
+        FilterEdgeVoices();
         Provider.SelectedIndex = (int)settings.Provider;
         UpdateCredentialStatus();
         _ = RefreshOutputsAsync(settings.OutputDeviceIds ?? [Settings.DefaultOutput]);
@@ -48,20 +60,24 @@ public partial class MainWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         voiceQuery?.Cancel();
-        if (((App)System.Windows.Application.Current).IsExiting is false) { e.Cancel = true; Hide(); }
+        if (System.Windows.Application.Current is App { IsExiting: false }) { e.Cancel = true; Hide(); }
         base.OnClosing(e);
     }
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        var provider = Provider.SelectedIndex == 1 ? TtsProvider.Azure : TtsProvider.Windows;
+        var provider = (TtsProvider)Provider.SelectedIndex;
         if (provider == TtsProvider.Windows && Voice.SelectedValue is not string) { SetNotice("请先选择可用的本地语音。"); return; }
         if (provider == TtsProvider.Azure && (!Settings.IsRegionValid(Region.Text.Trim()) || CloudVoice.SelectedValue is not string))
         { SetNotice("请填写 Region 并查询选择可用的 Azure 语音。"); return; }
+        if (provider == TtsProvider.Edge && string.IsNullOrWhiteSpace(edgeSelection))
+        { SetNotice("请查询并选择 Edge 在线语音。"); return; }
         if (refreshingOutputs) { SetNotice("正在刷新设备，请稍后保存。"); return; }
         var error = save(savedSettings with { VoiceId = Voice.SelectedValue as string, Rate = Rate.Value, Volume = (float)Volume.Value,
             Provider = provider, AzureRegion = provider == TtsProvider.Azure ? Region.Text.Trim() : savedSettings.AzureRegion,
             AzureVoice = provider == TtsProvider.Azure ? CloudVoice.SelectedValue as string : savedSettings.AzureVoice,
             AllowAutomaticCloud = AutomaticCloud.IsChecked == true,
+            EdgeVoice = edgeSelection, EdgePitchHz = (int)EdgePitch.Value, EdgeLocaleFilter = EdgeLocale.Text.Trim(),
+            AllowAutomaticEdge = AutomaticEdge.IsChecked == true,
             OutputDeviceIds = Outputs.SelectedItems.Cast<OutputChoice>().Select(d => d.Id).ToArray(),
             StartWithWindows = AutoStart.IsChecked == true });
         SetNotice(error ?? "设置已保存，下次朗读生效。");
@@ -78,9 +94,11 @@ public partial class MainWindow : Window
     }
     private void Provider_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        if (LocalPanel is null || AzurePanel is null) return;
-        LocalPanel.Visibility = Provider.SelectedIndex == 1 ? Visibility.Collapsed : Visibility.Visible;
+        if (LocalPanel is null || AzurePanel is null || EdgePanel is null) return;
+        voiceQuery?.Cancel(); cancelAutomatic?.Invoke();
+        LocalPanel.Visibility = Provider.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
         AzurePanel.Visibility = Provider.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+        EdgePanel.Visibility = Provider.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
     }
     private void AzureRegion_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
@@ -115,9 +133,53 @@ public partial class MainWindow : Window
             CloudVoice.ItemsSource = voices; CloudVoice.SelectedValue = previous;
             SetNotice(voices.Count == 0 ? "此区域没有可用语音。" : "查询完成，请选择语音并保存设置。");
         }
-        catch (OperationCanceledException) { SetNotice("Azure 语音查询已取消。"); }
-        catch (Exception ex) { SetNotice(ex is UserFeedbackException ? ex.Message : $"语音查询失败（{ex.GetType().Name}）。"); }
-        finally { if (ReferenceEquals(voiceQuery, query)) voiceQuery = null; QueryVoices.IsEnabled = true; }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { if (!query.IsCancellationRequested && ReferenceEquals(voiceQuery, query)) SetNotice(ex is UserFeedbackException ? ex.Message : "Azure 语音查询失败。"); }
+        finally { if (ReferenceEquals(voiceQuery, query)) { voiceQuery = null; QueryVoices.IsEnabled = true; } }
+    }
+    private async void QueryEdgeVoices_Click(object sender, RoutedEventArgs e)
+    {
+        voiceQuery?.Cancel();
+        using var query = new CancellationTokenSource(); voiceQuery = query;
+        SetNotice("正在查询 Edge 在线语音…");
+        try
+        {
+            var voices = await queryEdge(query.Token);
+            if (query.IsCancellationRequested || !ReferenceEquals(voiceQuery, query) || Provider.SelectedIndex != 2) return;
+            edgeVoices = voices; FilterEdgeVoices();
+            SetNotice(voices.Count == 0 ? "Edge 没有返回可用语音，已保留原选择。" : "查询完成，请选择语音并保存；已保存但不在列表的语音会保留并标注。");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (!query.IsCancellationRequested && ReferenceEquals(voiceQuery, query))
+                SetNotice((ex is UserFeedbackException ? ex.Message : "Edge 语音查询失败。") + " 已保留原语音选择。");
+        }
+        finally { if (ReferenceEquals(voiceQuery, query)) { voiceQuery = null; QueryVoices.IsEnabled = true; } }
+    }
+    private void EdgeLocale_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e) => FilterEdgeVoices();
+    private void FilterEdgeVoices()
+    {
+        if (EdgeVoice is null || EdgeLocale is null) return;
+        filteringEdge = true;
+        try
+        {
+            var filter = EdgeLocale.Text.Trim();
+            var voices = edgeVoices.Where(v => v.Locale.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (edgeSelection is { } id && voices.All(v => v.Id != id))
+                voices.Insert(0, edgeVoices.FirstOrDefault(v => v.Id == id) ?? new(id, id + "（保留选择；尚未确认在线可用）", ""));
+            EdgeVoice.ItemsSource = voices; EdgeVoice.SelectedValue = edgeSelection;
+        }
+        finally { filteringEdge = false; }
+    }
+    private void EdgeVoice_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!filteringEdge && EdgeVoice.SelectedValue is string id) edgeSelection = id;
+    }
+    private void AutomaticEdge_Click(object sender, RoutedEventArgs e)
+    {
+        SaveAutomatic(savedSettings with { AllowAutomaticEdge = AutomaticEdge.IsChecked == true });
+        AutomaticEdge.IsChecked = savedSettings.AllowAutomaticEdge;
     }
     private async void RefreshOutputs_Click(object sender, RoutedEventArgs e) =>
         await RefreshOutputsAsync(Outputs.SelectedItems.Cast<OutputChoice>().Select(d => d.Id).ToArray());

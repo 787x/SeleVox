@@ -13,6 +13,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="EdgeTTS.DotNet" Version="0.4.0" />
+    <PackageReference Include="NAudio.WinMM" Version="3.1.0" />
+    <None Update="EdgeTransport/LICENSE" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../SeleVox.Core/SeleVox.Core.csproj" />
     <PackageReference Include="NAudio.Wasapi" Version="3.1.0" />
   </ItemGroup>
