@@ -54,6 +54,8 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
         lock (sync)
         {
             if (disposed) return;
+            // Reject before changing ownership, generation, status or cancellation of the existing session.
+            if (isAutomatic && settings.Provider == TtsProvider.Azure && !settings.AllowAutomaticCloud) return;
             automatic = isAutomatic;
             var cleanupError = CancelAndRelease();
             if (cleanupError is not null) { SetStatus(ReadingState.Error, $"停止旧音频失败（{cleanupError.GetType().Name}），请重试。"); return; }
@@ -68,8 +70,6 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
             var text = await capture(request.Token).ConfigureAwait(false);
             request.Token.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(text)) throw new UserFeedbackException("没有选中文字。");
-            if (isAutomatic && settings.Provider == TtsProvider.Azure && !settings.AllowAutomaticCloud)
-                throw new UserFeedbackException("自动向 Azure 发送选区未授权，请在设置中单独开启；手动朗读仍可使用。");
             await synthesisGate.WaitAsync(request.Token).ConfigureAwait(false);
             try
             {

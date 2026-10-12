@@ -7,11 +7,30 @@ public sealed class ReadingSessionTests
     {
         var backend = new Audio(); using var session = new ReadingSession(backend, backend);
         var settings = new Settings(Provider: TtsProvider.Azure);
-        await session.ReadTextAsync("fixture", settings); Assert.Empty(backend.Pending); Assert.Equal(ReadingState.Error, session.Status.State);
+        var initialStatus = session.Status;
+        await session.ReadTextAsync("fixture", settings); Assert.Empty(backend.Pending); Assert.Same(initialStatus, session.Status);
         var read = session.ReadAsync(Capture, settings); backend.Pending[0].SetResult(new TrackedStream()); await read;
         Assert.Equal(ReadingState.Playing, session.Status.State);
         read = session.ReadTextAsync("fixture", settings with { AllowAutomaticCloud = true }); backend.Pending[1].SetResult(new TrackedStream()); await read;
         Assert.Equal(ReadingState.Playing, session.Status.State);
+    }
+    [Fact] public async Task UnauthorizedAutomaticAzureRequestLeavesPlayingSessionUntouched()
+    {
+        var backend = new Audio(); using var session = new ReadingSession(backend, backend);
+        var read = session.ReadAsync(Capture, new());
+        var audio = new TrackedStream(); backend.Pending[0].SetResult(audio); await read;
+        var player = Assert.Single(backend.Players);
+        var playingStatus = session.Status; Assert.Equal(ReadingState.Playing, playingStatus.State);
+        var changes = 0; session.Changed += _ => ++changes;
+
+        await session.ReadTextAsync("new fixture", new(Provider: TtsProvider.Azure, AllowAutomaticCloud: false));
+
+        Assert.Equal(0, player.Stops); Assert.False(player.Disposed); Assert.False(audio.Disposed);
+        Assert.Same(playingStatus, session.Status); Assert.Equal(ReadingState.Playing, session.Status.State);
+        Assert.Equal(0, changes); Assert.Single(backend.Pending); Assert.Same(player, Assert.Single(backend.Players));
+        // A denied request must not advance the generation or invalidate the old completion callback.
+        player.Finish(null); await WaitUntil(() => session.Status.State == ReadingState.Idle);
+        Assert.True(player.Disposed);
     }
     [Fact] public async Task AutomaticRetryPreservesOldPlaybackThenReplacesItWithStableNewText()
     {
@@ -176,10 +195,10 @@ public sealed class ReadingSessionTests
     private sealed class Player(Stream audio) : IAudioPlayback
     {
         public event Action<Exception?>? Finished;
-        public int Plays, Pauses; public bool Disposed, FailStop;
+        public int Plays, Pauses, Stops; public bool Disposed, FailStop;
         public void Play() => Plays++;
         public void Pause() => Pauses++;
-        public void Stop() { if (FailStop) throw new IOException("device failure"); }
+        public void Stop() { ++Stops; if (FailStop) throw new IOException("device failure"); }
         public void Dispose() { Disposed = true; audio.Dispose(); }
         public void Finish(Exception? error) => Finished?.Invoke(error);
     }
