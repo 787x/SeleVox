@@ -169,8 +169,7 @@ internal sealed class Communicate
         // URI, connection ID and headers stay identical; refusal never retries.
         for (var attempt = 0; ; ++attempt)
         {
-            var socket = new ClientWebSocket(); socket.Options.CollectHttpResponseDetails = true;
-            foreach (var header in Constants.WssHeaders) socket.Options.SetRequestHeader(header.Key, header.Value);
+            var socket = new ClientWebSocket(); ConfigureSocket(socket);
             try { await socket.ConnectAsync(uri, cancellation); return socket; }
             catch (System.Net.WebSockets.WebSocketException) when ((int)socket.HttpStatusCode >= 400)
             {
@@ -181,6 +180,16 @@ internal sealed class Communicate
             { socket.Dispose(); await Task.Delay(500, cancellation); }
             catch { socket.Dispose(); throw; }
         }
+    }
+    internal static void ConfigureSocket(ClientWebSocket socket)
+    {
+        socket.Options.CollectHttpResponseDetails = true;
+        // Preserve v0.4.0's initial permessage-deflate negotiation.
+        socket.Options.DangerousDeflateOptions = new WebSocketDeflateOptions
+        {
+            ClientMaxWindowBits = 15, ServerMaxWindowBits = 15
+        };
+        foreach (var header in Constants.WssHeaders) socket.Options.SetRequestHeader(header.Key, header.Value);
     }
 
     private static string GetDateString()

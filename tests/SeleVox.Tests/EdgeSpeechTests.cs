@@ -140,4 +140,29 @@ public sealed class EdgeSpeechTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         { cancellationToken.ThrowIfCancellationRequested(); return Task.FromResult(send(request)); }
     }
+    [Fact] public void InitialHandshakeKeepsUpstreamOptionsAndOneSharedSessionIdentity()
+    {
+        using var socket = new System.Net.WebSockets.ClientWebSocket();
+        SeleVox.App.EdgeTransport.Communicate.ConfigureSocket(socket);
+        Assert.True(socket.Options.CollectHttpResponseDetails);
+        Assert.Equal(15, socket.Options.DangerousDeflateOptions!.ClientMaxWindowBits);
+        Assert.Equal(15, socket.Options.DangerousDeflateOptions.ServerMaxWindowBits);
+        var cookie = SeleVox.App.EdgeTransport.Constants.SessionCookie;
+        Assert.Matches("^muid=[0-9A-F]{32};$", cookie);
+        Assert.Equal(cookie, SeleVox.App.EdgeTransport.Constants.WssHeaders["Cookie"]);
+        Assert.Equal(cookie, SeleVox.App.EdgeTransport.Constants.VoiceHeaders["Cookie"]);
+        using var another = new System.Net.WebSockets.ClientWebSocket();
+        SeleVox.App.EdgeTransport.Communicate.ConfigureSocket(another);
+        Assert.Equal(cookie, SeleVox.App.EdgeTransport.Constants.SessionCookie);
+    }
+    [Theory] [InlineData(0L)] [InlineData(1700000000L)] [InlineData(1800000000L)]
+    public void AuthenticationTimestampFormattingMatchesPinnedUpstreamWithoutLoggingTokens(long unixSeconds)
+    {
+        // Compare the original double arithmetic with our integer/invariant
+        // formatting at the same fixed timestamp; print neither token on failure.
+        double ticks = unixSeconds; ticks += 11644473600; ticks -= ticks % 300; ticks *= 10000000;
+        var originalInput = ticks.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + SeleVox.App.EdgeTransport.Constants.TrustedClientToken;
+        var original = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(originalInput)));
+        Assert.True(original == SeleVox.App.EdgeTransport.Drm.GenerateSecMsGec(unixSeconds), "Timestamp hash differs from pinned upstream.");
+    }
 }

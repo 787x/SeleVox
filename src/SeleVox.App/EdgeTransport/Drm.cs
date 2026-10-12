@@ -14,9 +14,11 @@ internal static class Drm
     /// <summary>
     /// Generates the Sec-MS-GEC token value.
     /// </summary>
-    public static string GenerateSecMsGec()
+    public static string GenerateSecMsGec() => GenerateSecMsGec(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+    internal static string GenerateSecMsGec(long unixSeconds)
     {
-        var ticks = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var ticks = unixSeconds;
 
         // Switch to Windows file time epoch (1601-01-01 00:00:00 UTC)
         ticks += WinEpoch;

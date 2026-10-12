@@ -17,6 +17,9 @@ internal static class Constants
     private const string ChromiumFullVersion = "143.0.3650.75";
     private static readonly string ChromiumMajorVersion = ChromiumFullVersion.Split('.')[0];
     public static readonly string SecMsGecVersion = $"1-{ChromiumFullVersion}";
+    // Normal upstream anonymous-session cookie. One identity per process, shared
+    // by query/synthesis and retained across initial transport retries.
+    internal static readonly string SessionCookie = $"muid={Guid.NewGuid().ToString("N").ToUpperInvariant()};";
 
     public static readonly Dictionary<string, string> BaseHeaders = new()
     {
@@ -27,6 +30,7 @@ internal static class Constants
 
     public static readonly Dictionary<string, string> WssHeaders = new()
     {
+        { "Cookie", SessionCookie },
         { "Pragma", "no-cache" },
         { "Cache-Control", "no-cache" },
         { "Origin", "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold" },
@@ -36,6 +40,7 @@ internal static class Constants
 
     public static readonly Dictionary<string, string> VoiceHeaders = new()
     {
+        { "Cookie", SessionCookie },
         { "Authority", "speech.platform.bing.com" },
         { "Sec-CH-UA", $"\" Not;A Brand\";v=\"99\", \"Microsoft Edge\";v=\"{ChromiumMajorVersion}\", \"Chromium\";v=\"{ChromiumMajorVersion}\"" },
         { "Sec-CH-UA-Mobile", "?0" },

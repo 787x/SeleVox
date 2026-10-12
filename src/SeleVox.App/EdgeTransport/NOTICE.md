@@ -10,3 +10,9 @@ text part per request; use invariant token formatting. No subtitle/export API.
 Only initial transport failures retry once, with the same URI/identity, before any text is sent; no retry after audio or refusal. HTTP and WebSocket response/message sizes are bounded.
 Voice query uses the same constants and releases HTTP response/client on all paths.
 The library license does not grant Microsoft service access or availability guarantees.
+
+Initial Cookie and permessage-deflate options match the upstream normal handshake.
+MUID is created once per process and shared by HTTP/WS requests; it never rotates
+after refusal or during retry. These options were accidentally removed in the first
+adaptation and restored following a handshake-level 403 investigation. This is not
+evidence that Microsoft refusal is resolved; no retry on 401/403 was added.
