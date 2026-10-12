@@ -1,0 +1,33 @@
+<Window x:Class="SeleVox.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SeleVox · 选区朗读" Width="520" Height="620" MinWidth="460" MinHeight="600"
+        WindowStartupLocation="CenterScreen" Background="#F5F7FA">
+    <Grid Margin="28">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock Text="SeleVox" FontSize="28" FontWeight="SemiBold" Foreground="#193B56"/>
+            <TextBlock Text="选择文字，按 Ctrl+Alt+R 朗读。" Margin="0,8,0,22" FontSize="15"/>
+        </StackPanel>
+        <StackPanel Grid.Row="1">
+            <TextBlock Text="Windows 本地语音" Margin="0,0,0,6"/>
+            <ComboBox x:Name="Voice" DisplayMemberPath="Label" SelectedValuePath="Id" Height="32"/>
+            <TextBlock Text="语速（0.5–2 倍）" Margin="0,18,0,4"/>
+            <DockPanel><TextBlock DockPanel.Dock="Right" Width="46" Text="{Binding ElementName=Rate, Path=Value, StringFormat=F2}"/><Slider x:Name="Rate" Minimum="0.5" Maximum="2" TickFrequency="0.05" IsSnapToTickEnabled="True"/></DockPanel>
+            <TextBlock Text="音量（0–1）" Margin="0,18,0,4"/>
+            <DockPanel><TextBlock DockPanel.Dock="Right" Width="46" Text="{Binding ElementName=Volume, Path=Value, StringFormat=F2}"/><Slider x:Name="Volume" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"/></DockPanel>
+            <CheckBox x:Name="AutoStart" Content="登录 Windows 时启动（驻留托盘）" Margin="0,20,0,16"/>
+            <Button Content="保存设置" Click="Save_Click" HorizontalAlignment="Left" Padding="18,7"/>
+            <TextBlock x:Name="Notice" TextWrapping="Wrap" Foreground="#8A4D00" Margin="0,12,0,0"/>
+        </StackPanel>
+        <StackPanel Grid.Row="2">
+            <TextBlock x:Name="StatusText" Text="空闲 · 就绪" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,16,0,10"/>
+            <StackPanel Orientation="Horizontal">
+                <Button Content="暂停 / 继续" Click="Pause_Click" Padding="12,7" Margin="0,0,8,0"/>
+                <Button Content="停止" Click="Stop_Click" Padding="12,7" Margin="0,0,8,0"/>
+                <Button Content="退出" Click="Exit_Click" Padding="12,7"/>
+            </StackPanel>
+            <TextBlock Text="Ctrl+Alt+P 暂停/继续 · Ctrl+Alt+X 停止&#10;关闭此窗口后继续在托盘运行。" Foreground="#546575" Margin="0,12,0,0"/>
+        </StackPanel>
+    </Grid>
+</Window>
