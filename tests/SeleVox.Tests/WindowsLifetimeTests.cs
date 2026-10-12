@@ -1,4 +1,5 @@
 using SeleVox.App;
+using ApplicationIdentity = SeleVox.App.ApplicationIdentity;
 namespace SeleVox.Tests;
 public sealed class WindowsLifetimeTests
 {
@@ -28,6 +29,20 @@ public sealed class WindowsLifetimeTests
             }
             using var restarted = new Hotkeys(); Assert.Empty(restarted.Conflicts);
         });
+    }
+    [Fact] public void MouseAndFocusHooksCanBeInstalledReleasedAndInstalledAgain()
+    {
+        RunSta(() =>
+        {
+            using (var monitor = new AutomaticMouseMonitor()) { monitor.Dispose(); }
+            using var restarted = new AutomaticMouseMonitor();
+        });
+    }
+    [Fact] public void ProcessIdentityUsesFullExecutablePathAndFailsClosed()
+    {
+        var expected = System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName;
+        Assert.Equal(expected, ApplicationIdentity.FromProcess((uint)Environment.ProcessId), StringComparer.OrdinalIgnoreCase);
+        Assert.Null(ApplicationIdentity.FromProcess(0)); Assert.Null(ApplicationIdentity.FromWindow(0));
     }
     private static void RunSta(Action action)
     {

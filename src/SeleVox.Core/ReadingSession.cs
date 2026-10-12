@@ -1,7 +1,7 @@
 namespace SeleVox.Core;
 
 public enum ReadingState { Idle, Synthesizing, Playing, Paused, Error }
-public sealed record Status(ReadingState State, string Message);
+public sealed record Status(ReadingState State, string Message, bool Notify = true);
 public sealed class UserFeedbackException(string message) : Exception(message);
 
 public interface IAudioPlayback : IDisposable
@@ -27,16 +27,30 @@ public sealed class ReadingSession(ISpeechAudio speech) : IDisposable
     private IAudioPlayback? playback;
     private long generation;
     private bool disposed;
+    private bool automatic;
     public Status Status { get; private set; } = new(ReadingState.Idle, "就绪");
     public event Action<Status>? Changed;
 
-    public async Task ReadAsync(Func<CancellationToken, Task<string>> capture, Settings settings)
+    public Task ReadTextAsync(string text, Settings settings) => ReadAsync(_ => Task.FromResult(text), settings, true);
+
+    public void CancelPendingAutomatic()
+    {
+        lock (sync)
+        {
+            if (disposed || !automatic || current is null || playback is not null) return;
+            ++generation; current.Cancel(); current = null;
+            SetStatus(ReadingState.Idle, "自动朗读已取消");
+        }
+    }
+
+    public async Task ReadAsync(Func<CancellationToken, Task<string>> capture, Settings settings, bool isAutomatic = false)
     {
         CancellationTokenSource request;
         long id;
         lock (sync)
         {
             if (disposed) return;
+            automatic = isAutomatic;
             var cleanupError = CancelAndRelease();
             if (cleanupError is not null) { SetStatus(ReadingState.Error, $"停止旧音频失败（{cleanupError.GetType().Name}），请重试。"); return; }
             request = current = new();
@@ -138,7 +152,7 @@ public sealed class ReadingSession(ISpeechAudio speech) : IDisposable
         try { old.Dispose(); } catch (Exception ex) { failure ??= ex; }
         return failure;
     }
-    private void SetStatus(ReadingState state, string message) { Status = new(state, message); Changed?.Invoke(Status); }
+    private void SetStatus(ReadingState state, string message) { Status = new(state, message, !automatic); Changed?.Invoke(Status); }
     public void Dispose()
     {
         lock (sync) { if (disposed) return; disposed = true; ++generation; CancelAndRelease(); }
