@@ -3,6 +3,29 @@ namespace SeleVox.Tests;
 public sealed class ReadingSessionTests
 {
     private static Task<string> Capture(CancellationToken _) => Task.FromResult("non-sensitive fixture");
+    [Fact] public async Task AutomaticRetryPreservesOldPlaybackThenReplacesItWithStableNewText()
+    {
+        var backend = new Audio(); using var session = new ReadingSession(backend); using var automatic = new AutomaticSelection();
+        var read = session.ReadAsync(Capture, new()); backend.Pending[0].SetResult(new TrackedStream()); await read;
+        var old = backend.Players[0];
+        var pending = new TaskCompletionSource<SelectionSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var request = automatic.RequestAsync("app", async token => (await StableSelection.CaptureAsync((_, _) =>
+        {
+            return ++calls switch
+            {
+                1 => Task.FromResult(new SelectionSnapshot("", "focus")),
+                2 => pending.Task,
+                _ => Task.FromResult(new SelectionSnapshot("new fixture", "focus"))
+            };
+        }, token, 0, 0)).Text, () => true, text => _ = session.ReadTextAsync(text, new()));
+        Assert.False(old.Disposed); Assert.Equal(ReadingState.Playing, session.Status.State); Assert.Single(backend.Pending);
+        pending.SetResult(new("new fixture", "focus")); await request;
+        Assert.True(old.Disposed); Assert.Equal(2, backend.Pending.Count);
+        backend.Pending[1].SetResult(new TrackedStream());
+        await WaitUntil(() => session.Status.State == ReadingState.Playing && backend.Players.Count == 2);
+        Assert.False(backend.Players[1].Disposed);
+    }
     [Fact] public async Task InvalidAutomaticCaptureLeavesExistingPlaybackUntouched()
     {
         var backend = new Audio(); using var session = new ReadingSession(backend); using var automatic = new AutomaticSelection();

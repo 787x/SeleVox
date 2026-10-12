@@ -14,7 +14,7 @@ internal sealed class AutomaticMouseMonitor : IDisposable
         Math.Max(4, GetSystemMetrics(68)), Math.Max(4, GetSystemMetrics(69)));
     private nint mouseHook, foregroundHook, focusHook;
     internal event Action? Invalidated;
-    internal event Action<nint, System.Windows.Point>? Selected;
+    internal event Action<nint, System.Windows.Point, System.Windows.Point>? Selected;
     internal AutomaticMouseMonitor()
     {
         mouseCallback = Mouse;
@@ -48,8 +48,8 @@ internal sealed class AutomaticMouseMonitor : IDisposable
                 }
                 else if (message == 0x0202)
                 {
-                    if (gesture.Up(foreground, input.Point.X, input.Point.Y, input.Time))
-                        Selected?.Invoke(foreground, new(input.Point.X, input.Point.Y));
+                    if (gesture.Up(foreground, input.Point.X, input.Point.Y, input.Time) && gesture.SelectionStart is { } start)
+                        Selected?.Invoke(foreground, new(start.X, start.Y), new(input.Point.X, input.Point.Y));
                 }
                 else { gesture.Reset(); Invalidated?.Invoke(); }
             }
@@ -57,6 +57,7 @@ internal sealed class AutomaticMouseMonitor : IDisposable
         catch { gesture.Reset(); /* Never let a managed callback failure swallow application input. */ }
         return CallNextHookEx(mouseHook, code, message, data);
     }
+    internal void CancelGesture() => gesture.Reset();
     public void Dispose()
     {
         if (mouseHook != 0) UnhookWindowsHookEx(mouseHook);

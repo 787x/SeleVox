@@ -53,7 +53,7 @@ public partial class App : System.Windows.Application
         {
             switch (id)
             {
-                case 1: automaticSelection.Invalidate(); ++mouseEpoch; _ = reading.ReadAsync(token => capture.CaptureAsync(foreground, token), settings); break;
+                case 1: mouse?.CancelGesture(); automaticSelection.Invalidate(); ++mouseEpoch; _ = reading.ReadAsync(token => capture.CaptureAsync(foreground, token), settings); break;
                 case 2: reading.TogglePause(); break;
                 case 3: StopReading(); break;
             }
@@ -89,6 +89,7 @@ public partial class App : System.Windows.Application
         try
         {
             StartupRegistration.Apply(updated.StartWithWindows); store.Save(updated); settings = updated;
+            mouse?.CancelGesture();
             ++mouseEpoch; automaticSelection.Invalidate(true);
             reading?.CancelPendingAutomatic();
             settingsWindow?.SetAutomaticSettings(settings);
@@ -116,12 +117,12 @@ public partial class App : System.Windows.Application
         {
             mouse = new AutomaticMouseMonitor();
             mouse.Invalidated += () => { ++mouseEpoch; automaticSelection.Invalidate(); };
-            mouse.Selected += (window, point) =>
+            mouse.Selected += (window, start, end) =>
             {
                 var epoch = mouseEpoch;
                 Dispatcher.BeginInvoke(() =>
                 {
-                    if (epoch == mouseEpoch && !exiting && settings.AutoSpeak) _ = AutoReadAsync(window, point, epoch);
+                    if (epoch == mouseEpoch && !exiting && settings.AutoSpeak) _ = AutoReadAsync(window, start, end, epoch);
                 });
             };
             settingsWindow?.SetAutomaticStatus("仅在启用的应用规则中自动朗读（UIA）");
@@ -129,7 +130,7 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex) { return $"自动鼠标监听不可用（{ex.GetType().Name}），可继续使用手动热键。"; }
     }
-    private async Task AutoReadAsync(nint window, System.Windows.Point point, long epoch)
+    private async Task AutoReadAsync(nint window, System.Windows.Point start, System.Windows.Point end, long epoch)
     {
         // Process identity lookup runs outside the low-level hook and UI thread.
         var path = await Task.Run(() => ApplicationIdentity.FromWindow(window));
@@ -137,17 +138,14 @@ public partial class App : System.Windows.Application
         var identity = path! + "|" + window;
         await automaticSelection.RequestAsync(identity, async token =>
         {
-            await Task.Delay(180, token);
-            var first = await capture.CaptureSnapshotAsync(window, token, point);
-            await Task.Delay(80, token);
-            var stable = await capture.CaptureSnapshotAsync(window, token, point, first.Focus);
-            if (first.Text != stable.Text) throw new UserFeedbackException("选区仍在变化，已忽略此次自动朗读。");
+            var stable = await StableSelection.CaptureAsync((focus, sampleToken) =>
+                capture.CaptureSnapshotAsync(window, sampleToken, start, end, focus), token);
             return stable.Text;
         }, () => epoch == mouseEpoch && !exiting && settings.AllowsAutomatic(path) && Native.GetForegroundWindow() == window,
             text => { settingsWindow?.SetAutomaticStatus("已获取有效选区"); _ = reading!.ReadTextAsync(text, settings); },
             message => settingsWindow?.SetAutomaticStatus(message));
     }
-    private void StopReading() { ++mouseEpoch; automaticSelection.Invalidate(); reading?.Stop(); }
+    private void StopReading() { mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); reading?.Stop(); }
     private async Task<string?> AddForegroundApplicationAsync()
     {
         // Wait for the user to bring their target to the foreground; never activate it ourselves.

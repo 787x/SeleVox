@@ -7,13 +7,12 @@ namespace SeleVox.App;
 
 internal sealed class SelectionCapture
 {
-    internal sealed record Snapshot(string Text, string Focus);
     private readonly SemaphoreSlim gate = new(1, 1);
     public async Task<string> CaptureAsync(nint foreground, CancellationToken cancellation)
         => (await CaptureSnapshotAsync(foreground, cancellation).ConfigureAwait(false)).Text;
 
-    internal async Task<Snapshot> CaptureSnapshotAsync(nint foreground, CancellationToken cancellation,
-        System.Windows.Point? selectionPoint = null, string? expectedFocus = null)
+    internal async Task<SelectionSnapshot> CaptureSnapshotAsync(nint foreground, CancellationToken cancellation,
+        System.Windows.Point? selectionStart = null, System.Windows.Point? selectionEnd = null, string? expectedFocus = null)
     {
         if (!await gate.WaitAsync(TimeSpan.FromSeconds(3), cancellation).ConfigureAwait(false))
             throw new UserFeedbackException("上次选区读取尚未返回，请稍后重试。");
@@ -21,7 +20,7 @@ internal sealed class SelectionCapture
         // even when the caller times out, so an unresponsive provider cannot accumulate workers.
         var worker = Task.Run(() =>
         {
-            try { return Capture(foreground, cancellation, selectionPoint, expectedFocus); }
+            try { return Capture(foreground, cancellation, selectionStart, selectionEnd, expectedFocus); }
             finally { gate.Release(); }
         });
         try { return await worker.WaitAsync(TimeSpan.FromSeconds(3), cancellation).ConfigureAwait(false); }
@@ -32,8 +31,8 @@ internal sealed class SelectionCapture
         }
     }
 
-    private static Snapshot Capture(nint foreground, CancellationToken cancellation,
-        System.Windows.Point? selectionPoint, string? expectedFocus)
+    private static SelectionSnapshot Capture(nint foreground, CancellationToken cancellation,
+        System.Windows.Point? selectionStart, System.Windows.Point? selectionEnd, string? expectedFocus)
     {
         try
         {
@@ -46,7 +45,7 @@ internal sealed class SelectionCapture
                 throw new UserFeedbackException("无法取得前台应用的焦点选区。");
             // PR1 manual capture does not depend on providers exposing a runtime ID.
             var focusId = "";
-            if (selectionPoint is not null || expectedFocus is not null)
+            if (selectionStart is not null || expectedFocus is not null)
             {
                 var runtimeId = focused.GetRuntimeId();
                 if (runtimeId is not { Length: > 0 })
@@ -62,7 +61,7 @@ internal sealed class SelectionCapture
                 element => (nint)element.Current.NativeWindowHandle == foreground || Automation.Compare(element, foregroundElement),
                 cancellation);
             IReadOnlyList<AutomationElement>? pointerAncestors = null;
-            if (selectionPoint is { } pointer)
+            if (selectionStart is { } pointer)
             {
                 var hit = AutomationElement.FromPoint(pointer);
                 pointerAncestors = SelectionScope.Resolve(hit, walker.GetParent,
@@ -82,25 +81,21 @@ internal sealed class SelectionCapture
                 var pattern = (TextPattern)value;
                 if (pattern.SupportedTextSelection == SupportedTextSelection.None) continue;
                 var ranges = pattern.GetSelection();
-                if (ranges.Length == 0) throw new UserFeedbackException("没有选中文字。");
                 if (ranges.Length > 128) throw new UserFeedbackException("选区分段过多，请缩小选区。");
                 var parts = new List<string>();
                 var length = 0;
-                var pointInSelection = selectionPoint is null;
+                var gestureInSelection = selectionStart is null;
                 foreach (var range in ranges)
                 {
                     cancellation.ThrowIfCancellationRequested();
                     if (range.GetEnclosingElement().Current.IsPassword) throw new UserFeedbackException("密码控件不会被读取。");
                     if (range.CompareEndpoints(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.End) == 0) continue;
-                    if (selectionPoint is { } point)
+                    if (selectionStart is { } start)
                     {
                         var rectangles = range.GetBoundingRectangles();
                         foreach (var rectangle in rectangles)
                         {
-                            if (rectangle.IsEmpty || rectangle.Width <= 0 || rectangle.Height <= 0) continue;
-                            var bounds = rectangle;
-                            bounds.Inflate(8, 4);
-                            if (bounds.Contains(point)) pointInSelection = true;
+                            if (SelectionGeometry.Intersects(rectangle, start, selectionEnd ?? start)) gestureInSelection = true;
                         }
                     }
                     var part = range.GetText(10001);
@@ -111,7 +106,12 @@ internal sealed class SelectionCapture
                 if (Native.GetForegroundWindow() != foreground || !Automation.Compare(focused, AutomationElement.FocusedElement))
                     throw new UserFeedbackException("前台应用或焦点已改变，请重试。");
                 cancellation.ThrowIfCancellationRequested();
-                if (parts.Count > 0 && pointInSelection) return new(string.Join(Environment.NewLine, parts), focusId);
+                if (parts.Count > 0)
+                {
+                    if (!gestureInSelection) return new("", focusId, "选区与鼠标拖选位置不匹配，已忽略自动朗读。");
+                    return new(string.Join(Environment.NewLine, parts), focusId);
+                }
+                if (selectionStart is not null) return new("", focusId);
                 // An actual caret-only selection must not fall back to another ancestor.
                 throw new UserFeedbackException("没有选中文字。");
             }

@@ -6,8 +6,10 @@ public sealed class MouseSelectionGesture(uint doubleClickMilliseconds, int doub
 {
     private (nint Window, int X, int Y, uint Time)? down, previousClick;
     private bool secondClick;
+    public (int X, int Y)? SelectionStart { get; private set; }
     public void Down(nint window, int x, int y, uint time)
     {
+        SelectionStart = null;
         secondClick = previousClick is { } previous && previous.Window == window &&
             unchecked(time - previous.Time) <= doubleClickMilliseconds &&
             Math.Abs((long)x - previous.X) <= doubleClickWidth / 2 && Math.Abs((long)y - previous.Y) <= doubleClickHeight / 2;
@@ -19,8 +21,9 @@ public sealed class MouseSelectionGesture(uint doubleClickMilliseconds, int doub
         if (start is not { } d || window == 0 || window != d.Window) { Reset(); return false; }
         var drag = Math.Abs((long)x - d.X) >= dragWidth || Math.Abs((long)y - d.Y) >= dragHeight;
         var result = drag || secondClick;
+        SelectionStart = result ? (d.X, d.Y) : null;
         previousClick = result ? null : d;
         return result;
     }
-    public void Reset() { down = previousClick = null; secondClick = false; }
+    public void Reset() { down = previousClick = null; secondClick = false; SelectionStart = null; }
 }
