@@ -15,6 +15,8 @@ internal sealed class SpeechAudio : ISpeechSynthesis, IAudioPlaybackFactory
 
     public async Task<Stream> SynthesizeAsync(string text, Settings settings, CancellationToken cancellation)
     {
+        if (settings.Provider == TtsProvider.Edge)
+            return await new EdgeSpeech().SynthesizeAsync(text, settings, cancellation).ConfigureAwait(false);
         if (settings.Provider == TtsProvider.Azure)
             return await new AzureSpeech().SynthesizeAsync(text, settings, cancellation).ConfigureAwait(false);
         using var synthesizer = new SpeechSynthesizer();

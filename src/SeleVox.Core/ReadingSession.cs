@@ -55,7 +55,7 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
         {
             if (disposed) return;
             // Reject before changing ownership, generation, status or cancellation of the existing session.
-            if (isAutomatic && settings.Provider == TtsProvider.Azure && !settings.AllowAutomaticCloud) return;
+            if (isAutomatic && !settings.AllowsAutomaticProvider) return;
             automatic = isAutomatic;
             var cleanupError = CancelAndRelease();
             if (cleanupError is not null) { SetStatus(ReadingState.Error, $"停止旧音频失败（{cleanupError.GetType().Name}），请重试。"); return; }
