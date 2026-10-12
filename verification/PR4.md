@@ -70,3 +70,9 @@ Edge 组使用自生成 440 Hz 固定 MP3，**真实调用 NAudio/Windows ACM �
 - Edge 非公开受支持 API；依赖固定上游协议版本，服务可随时拒绝或变化。库 MIT 许可证不等于微软服务使用授权或保证。失败可切回 Windows，本程序不做服务拒绝绕过或自动转发。
 
 来源核对：[EdgeTTS.DotNet 0.4.0 NuGet](https://www.nuget.org/packages/EdgeTTS.DotNet/0.4.0)、[0.4.0 源码](https://github.com/twn39/EdgeTTS.DotNet/tree/v0.4.0)、[NAudio 3.1 源码](https://github.com/naudio/NAudio/tree/v3.1.0)。
+
+## 人工反馈：选择 Edge 后仍听到本地语音
+
+读取正在运行实例的程序路径及配置中 Provider/Edge 设置字段，确认是 PR4 程序，但已保存 Provider 仍为 Windows（0），EdgeVoice 为空，仅 AllowAutomaticEdge 已开启。界面选择和独立授权不等于保存 Provider/音色；原保存按钮在长滚动区域底部，提示不足。
+
+修正：将“保存设置”移到固定底部，显示实际已保存的 Provider，未保存的 Provider 切换明确提示；授权单独保存仍保留独立语义，没有自动保存/启用在线 Provider，也没有修改用户配置。新增 WPF 回归模拟 Windows → 选择 Edge → 开启授权 → 查询选择晓晓 → 保存，检查保存前实际仍为 Windows、提示未保存，保存后 Provider=Edge/音色正确且提示更新。使用独立输出 `artifacts/pr4-savefix` 构建，避免覆盖用户正在运行的程序；相关 WPF 测试结果见本地 `PR4-provider-save.trx`。未将此次配置诊断描述为人工听音通过。

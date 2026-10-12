@@ -67,10 +67,11 @@
                 <Button Content="移除选中规则" Click="RemoveRule_Click" Padding="10,5"/>
             </StackPanel>
             <TextBlock x:Name="AutomaticStatus" TextWrapping="Wrap" Foreground="#546575" Margin="0,8,0,14"/>
-            <Button Content="保存设置" Click="Save_Click" HorizontalAlignment="Left" Padding="18,7"/>
             <TextBlock x:Name="Notice" TextWrapping="Wrap" Foreground="#8A4D00" Margin="0,12,0,0"/>
         </StackPanel></ScrollViewer>
         <StackPanel Grid.Row="2">
+            <TextBlock x:Name="ProviderSaveHint" TextWrapping="Wrap" Foreground="#8A4D00" Margin="0,12,0,6"/>
+            <Button Content="保存设置" Click="Save_Click" HorizontalAlignment="Left" Padding="18,7"/>
             <TextBlock x:Name="StatusText" Text="空闲 · 就绪" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,16,0,10"/>
             <StackPanel Orientation="Horizontal">
                 <Button Content="暂停 / 继续" Click="Pause_Click" Padding="12,7" Margin="0,0,8,0"/>

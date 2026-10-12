@@ -24,6 +24,8 @@ dotnet publish src/SeleVox.App/SeleVox.App.csproj -c Release -r win-x64 --self-c
 
 设置中的语音、语速（0.5–2 倍）、音量（0–1）保存后用于下一次朗读。配置位于 `%LOCALAPPDATA%\SeleVox\settings.json`，缺失、损坏或数值越界时提示并使用默认设置。第一次默认使用 Windows 默认 WinRT 语音；已保存语音被卸载时会提示重新选择。
 
+Provider 和音色选择也需要点击窗口底部固定显示的“保存设置”才会生效。底部“当前朗读使用”显示实际已保存的 Provider；尚未保存的切换会明确提示。Edge 自动授权开关仅立即保存授权，不会同时保存上方尚未保存的 Provider 或音色。
+
 ## TTS 与音频输出
 
 默认仍为 **Windows 本地 TTS + 系统默认输出**，无需 Azure 账号、网络或 Voicemeeter。PR1～PR3 的旧配置保持原语音、语速、音量和自动规则，新字段默认采用本地 TTS、默认输出和关闭自动云端发送。

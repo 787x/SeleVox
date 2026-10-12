@@ -58,6 +58,29 @@ public sealed class EdgeVoiceWindowTests
             foreach (var nested in FindButtons(child)) yield return nested;
         }
     }
+    [Fact] public Task ProviderSelectionAndImmediateConsentDoNotPretendProviderWasSaved() => RunSta(async () =>
+    {
+        var saved = new Settings(); MainWindow? window = null;
+        window = new MainWindow(saved, updated => { saved = updated; window!.SetAutomaticSettings(updated); return null; },
+            () => { }, () => { }, () => { }, () => Task.FromResult<string?>(null), () => { },
+            _ => Task.FromResult<IReadOnlyList<EdgeVoiceChoice>>([new("zh-CN-XiaoxiaoNeural", "晓晓 (zh-CN)", "zh-CN")]));
+        var hint = (TextBlock)window.FindName("ProviderSaveHint");
+        ((ComboBox)window.FindName("Provider")).SelectedIndex = 2;
+        Assert.Contains("Windows 本地", hint.Text); Assert.Contains("尚未保存", hint.Text);
+        var consent = (CheckBox)window.FindName("AutomaticEdge"); consent.IsChecked = true;
+        consent.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.True(saved.AllowAutomaticEdge); Assert.Equal(TtsProvider.Windows, saved.Provider);
+        Assert.Contains("尚未保存", hint.Text);
+        ((Button)window.FindName("QueryEdgeVoices")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        ((ComboBox)window.FindName("EdgeVoice")).SelectedValue = "zh-CN-XiaoxiaoNeural";
+        for (var i = 0; i < 100 && ((ListBox)window.FindName("Outputs")).Items.Count == 0; ++i) await Task.Delay(10);
+        var saveButton = FindButtons(window).Single(b => b.Content as string == "保存设置");
+        Assert.Equal(2, Grid.GetRow((UIElement)saveButton.Parent)); // fixed footer, outside ScrollViewer
+        saveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(TtsProvider.Edge, saved.Provider); Assert.Equal("zh-CN-XiaoxiaoNeural", saved.EdgeVoice);
+        Assert.Contains("当前朗读使用：Edge", hint.Text); Assert.DoesNotContain("尚未保存", hint.Text);
+        window.Close();
+    });
     private static Task RunSta(Func<Task> action)
     {
         var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

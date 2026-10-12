@@ -56,6 +56,7 @@ public partial class MainWindow : Window
     {
         savedSettings = settings; AutoSpeak.IsChecked = settings.AutoSpeak;
         Rules.ItemsSource = settings.Applications ?? [];
+        UpdateProviderSaveHint();
     }
     protected override void OnClosing(CancelEventArgs e)
     {
@@ -99,6 +100,21 @@ public partial class MainWindow : Window
         LocalPanel.Visibility = Provider.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
         AzurePanel.Visibility = Provider.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
         EdgePanel.Visibility = Provider.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateProviderSaveHint();
+    }
+    private void UpdateProviderSaveHint()
+    {
+        if (savedSettings is null || ProviderSaveHint is null) return;
+        var active = savedSettings.Provider switch
+        {
+            TtsProvider.Edge => "Edge 在线语音",
+            TtsProvider.Azure => "Azure Speech",
+            _ => "Windows 本地 TTS"
+        };
+        ProviderSaveHint.Text = $"当前朗读使用：{active}。" +
+            (Provider.SelectedIndex >= 0 && Provider.SelectedIndex != (int)savedSettings.Provider
+                ? " Provider 切换尚未保存；请选择语音，然后点击“保存设置”生效。"
+                : " 语音、语速、音调和设备修改后请保存，下次朗读生效。");
     }
     private void AzureRegion_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
