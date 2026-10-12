@@ -76,3 +76,11 @@ Edge 组使用自生成 440 Hz 固定 MP3，**真实调用 NAudio/Windows ACM �
 读取正在运行实例的程序路径及配置中 Provider/Edge 设置字段，确认是 PR4 程序，但已保存 Provider 仍为 Windows（0），EdgeVoice 为空，仅 AllowAutomaticEdge 已开启。界面选择和独立授权不等于保存 Provider/音色；原保存按钮在长滚动区域底部，提示不足。
 
 修正：将“保存设置”移到固定底部，显示实际已保存的 Provider，未保存的 Provider 切换明确提示；授权单独保存仍保留独立语义，没有自动保存/启用在线 Provider，也没有修改用户配置。新增 WPF 回归模拟 Windows → 选择 Edge → 开启授权 → 查询选择晓晓 → 保存，检查保存前实际仍为 Windows、提示未保存，保存后 Provider=Edge/音色正确且提示更新。使用独立输出 `artifacts/pr4-savefix` 构建，避免覆盖用户正在运行的程序；相关 WPF 测试结果见本地 `PR4-provider-save.trx`。未将此次配置诊断描述为人工听音通过。
+
+## 2026-10-13：用户报告在线访问拒绝
+
+用户人工测试报告“Edge 服务拒绝访问（401/403）”，并确认发生在按 Ctrl+Alt+R 朗读合成时。原提示合并两种状态，尚不能由该提示断定具体 HTTP 状态。此次真实用户观察证明当前合成路径发生访问拒绝；不把先前六项服务测试通过解释为当前服务稳定或可用，也不把此观察计为本轮工具实测。
+
+调整反馈为单独显示 HTTP 401 或 HTTP 403（仅输出状态码，不包含响应、URI、令牌或原文），说明当前在线接入不可用、拒绝未自动重试、未转发文本。新增嵌套异常的 401/403 脱敏与精确状态回归。保留现有拒绝不重试和 Windows/Azure 分发行为。本轮没有再次发出 Edge 在线请求，没有改变身份、时钟、协议版本或网络设置；没有声称解除该外部访问限制。
+
+独立目录 `artifacts/pr4-refusal` Release 构建及相关 23 项离线测试通过（EdgeSpeechTests/EdgeVoiceWindowTests，`PR4-refusal-feedback.trx`）。最初使用 savefix 目录的构建因用户运行实例锁定 DLL 失败，随后改用独立目录；未终止用户实例。此次反馈改进不代表 Edge 实际服务已恢复，当前人工合成验收仍失败。

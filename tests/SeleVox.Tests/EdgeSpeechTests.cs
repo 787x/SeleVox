@@ -109,6 +109,16 @@ public sealed class EdgeSpeechTests
         public event Action<Exception?>? Finished { add { } remove { } }
         public void Play() { } public void Pause() { } public void Stop() { } public void Dispose() { }
     }
+    [Theory] [InlineData(401)] [InlineData(403)]
+    public void ServiceRefusalReportsExactStatusWithoutExposingDetails(int status)
+    {
+        var error = new EdgeTTS.DotNet.WebSocketException("secret URI and text",
+            new HttpRequestException("secret token", null, (HttpStatusCode)status));
+        var message = EdgeSpeech.Feedback(error).Message;
+        Assert.Contains($"HTTP {status}", message); Assert.Contains("未自动重试", message);
+        Assert.DoesNotContain("secret", message);
+        Assert.DoesNotContain(status == 401 ? "403" : "401", message);
+    }
     [Fact] public async Task VoiceQueryRetriesTransportOnlyOnceWithoutChangingRequestIdentity()
     {
         var count = 0; var urls = new List<string>();

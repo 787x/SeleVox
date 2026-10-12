@@ -180,9 +180,13 @@ internal sealed class EdgeSpeech(
         if (error is UserFeedbackException feedback) return feedback;
         for (Exception? e = error; e is not null; e = e.InnerException)
         {
-            if (e is HttpRequestException { StatusCode: HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized } ||
-                e is System.Net.WebSockets.WebSocketException && (e.Message.Contains("403") || e.Message.Contains("401")))
-                return new("Edge 服务拒绝访问（403/401），此实验性接入可能已失效；可切回 Windows 本地 TTS。");
+            if (e is HttpRequestException { StatusCode: HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized } http)
+                return Refused((int)http.StatusCode.Value);
+            if (e is System.Net.WebSockets.WebSocketException)
+            {
+                if (e.Message.Contains("403")) return Refused(403);
+                if (e.Message.Contains("401")) return Refused(401);
+            }
         }
         return new(error switch
         {
@@ -193,4 +197,6 @@ internal sealed class EdgeSpeech(
             _ => "Edge 响应不完整或协议不兼容，请重试或切回 Windows 本地 TTS。"
         });
     }
+    private static UserFeedbackException Refused(int status) => new(
+        $"Edge 服务拒绝访问（HTTP {status}）。此实验性在线接入当前不可用，请切回 Windows 本地 TTS；未自动重试或转发文本。");
 }
