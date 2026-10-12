@@ -2,6 +2,10 @@
 
 日期：2026-10-12（客户端日期）。基线：`main` / `origin/main` 均为 `5ce3c3d`，PR3 已合并。Windows x64，.NET SDK 10.0.401 / Runtime 10.0.12，NAudio 3.1.0，EdgeTTS.DotNet 固定 0.4.0。此次没有 Azure Key，不调用真实 Azure。
 
+## 最新人工反馈（2026-10-13）
+
+用户确认“测试通过，没问题，之前是我的网络问题”。此前访问拒绝已由用户确认与其网络有关，当前不再标记为持续阻塞。用户未补充逐项测试范围、程序构建版本及设备名称，因此此确认记录为用户人工反馈，不扩大为本轮工具实测或所有未验证项全部通过。下文的 403 与失败诊断保留为当时的历史记录。
+
 ## 实现
 
 - 保留 `Windows=0`、`Azure=1`，追加 `Edge=2`，默认仍为本地。新增独立 Edge 语音、地区筛选、音调和 `AllowAutomaticEdge=false`；旧 Azure 许可不授予 Edge。语速映射为 `(倍速-1)*100%`，音调 -100～100 Hz，默认 0；Windows/Azure 不读取 Edge 音调。
@@ -83,7 +87,7 @@ Edge 组使用自生成 440 Hz 固定 MP3，**真实调用 NAudio/Windows ACM �
 
 调整反馈为单独显示 HTTP 401 或 HTTP 403（仅输出状态码，不包含响应、URI、令牌或原文），说明当前在线接入不可用、拒绝未自动重试、未转发文本。新增嵌套异常的 401/403 脱敏与精确状态回归。保留现有拒绝不重试和 Windows/Azure 分发行为。本轮没有再次发出 Edge 在线请求，没有改变身份、时钟、协议版本或网络设置；没有声称解除该外部访问限制。
 
-独立目录 `artifacts/pr4-refusal` Release 构建及相关 23 项离线测试通过（EdgeSpeechTests/EdgeVoiceWindowTests，`PR4-refusal-feedback.trx`）。最初使用 savefix 目录的构建因用户运行实例锁定 DLL 失败，随后改用独立目录；未终止用户实例。此次反馈改进不代表 Edge 实际服务已恢复，当前人工合成验收仍失败。
+独立目录 `artifacts/pr4-refusal` Release 构建及相关 23 项离线测试通过（EdgeSpeechTests/EdgeVoiceWindowTests，`PR4-refusal-feedback.trx`）。最初使用 savefix 目录的构建因用户运行实例锁定 DLL 失败，随后改用独立目录；未终止用户实例。此次反馈改进不代表 Edge 实际服务已恢复，当时人工合成验收仍失败。
 
 ## 2026-10-13：定位拒绝的具体环节
 
@@ -95,4 +99,14 @@ Edge 组使用自生成 440 Hz 固定 MP3，**真实调用 NAudio/Windows ACM �
 
 离线回归 27 项通过，包含原 MP3/取消/查询/WPF 测试、初始协商选项和进程内共享身份、固定时间戳的鉴权摘要与上游 double 算法一致性（不输出摘要内容）。修正输出在 `artifacts/pr4-handshakefix`；Release 构建 0 警告/错误。上游当前 main 的协议版本常量仍与 0.4.0 相同，未发现可据此确认的新版本修复。
 
-已确定故障层为在线 WebSocket 升级被拒绝，系统时钟偏差并不支持时钟问题解释；仍不能由这些观察区分微软服务策略、固定协议兼容性或代理路径影响。未改变用户代理/网络设置、未声称已修复外部拒绝，当前 Edge 人工合成验收仍失败。
+当时已确定故障层为在线 WebSocket 升级被拒绝，系统时钟偏差并不支持时钟问题解释；仍不能由这些观察区分微软服务策略、固定协议兼容性或代理路径影响。未改变用户代理/网络设置、未声称已修复外部拒绝，当时 Edge 人工合成验收仍失败；后续用户确认通过，见本文顶部最新反馈。
+
+## 2026-10-13：最终代码复查
+
+复查 Provider/语音保存、Azure 与 Edge 授权隔离、未授权请求对旧播放的保护、Stop/替换/关闭取消、握手资源、查询迟到结果、MP3 分段完整性与原多设备路由。未发现新的核心功能缺陷。
+
+修正一处错误分类缺陷：原回退逻辑从 WebSocket 异常消息文本搜索“401/403”，地址或令牌碰巧含这些数字可能被误报。现在只从嵌套 HttpRequestException 的结构化 StatusCode 分类；生产握手已收集 HTTP 状态并转换为此类型，真实拒绝仍准确反馈。新增数字出现在异常地址/令牌中的脱敏回归，不发网络请求。
+
+本轮使用独立 `artifacts/pr4-review` 输出，保留用户运行实例和配置；不重复向在线服务发送测试文本。
+
+依赖还原成功，Release 构建 0 警告/错误，完整相关离线组 **115 项通过**（`Category!=WindowsAudio&Category!=EdgeService&FullyQualifiedName!~GlobalHotkeyConflicts`，`PR4-final-review.trx`）；热键冲突测试因保留用户运行实例而排除。本轮没有重复硬件播放、真实 Azure 或服务压力测试。会话 Cookie 断言还改为只输出固定失败说明，避免测试失败时打印实际 Cookie；对应握手选项测试单独复核通过。

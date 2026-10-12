@@ -98,7 +98,7 @@ public sealed class EdgeSpeechTests
     }
     [Fact] public void RefusalProtocolAndNetworkErrorsDoNotExposeTokensOrText()
     {
-        foreach (var error in new Exception[] { new HttpRequestException("secret", null, HttpStatusCode.Forbidden), new System.Net.WebSockets.WebSocketException("403 secret"), new HttpRequestException("secret"), new UnexpectedResponseException("secret") })
+        foreach (var error in new Exception[] { new HttpRequestException("secret", null, HttpStatusCode.Forbidden), new System.Net.WebSockets.WebSocketException("secret", new HttpRequestException("secret", null, HttpStatusCode.Forbidden)), new HttpRequestException("secret"), new UnexpectedResponseException("secret") })
         {
             var message = EdgeSpeech.Feedback(error).Message; Assert.DoesNotContain("secret", message);
             if (error is HttpRequestException { StatusCode: HttpStatusCode.Forbidden } or System.Net.WebSockets.WebSocketException) Assert.Contains("拒绝访问", message);
@@ -118,6 +118,14 @@ public sealed class EdgeSpeechTests
         Assert.Contains($"HTTP {status}", message); Assert.Contains("未自动重试", message);
         Assert.DoesNotContain("secret", message);
         Assert.DoesNotContain(status == 401 ? "403" : "401", message);
+    }
+    [Fact] public void DigitsInNetworkExceptionTextCannotMasqueradeAsHttpStatus()
+    {
+        var error = new System.Net.WebSockets.WebSocketException("Cannot connect to https://example.invalid/secret-401-403-token");
+        var message = EdgeSpeech.Feedback(error).Message;
+        Assert.Contains("网络", message); Assert.DoesNotContain("拒绝访问", message);
+        Assert.DoesNotContain("HTTP 403", message); Assert.DoesNotContain("HTTP 401", message);
+        Assert.DoesNotContain("secret", message); Assert.DoesNotContain("example.invalid", message);
     }
     [Fact] public async Task VoiceQueryRetriesTransportOnlyOnceWithoutChangingRequestIdentity()
     {
@@ -148,12 +156,12 @@ public sealed class EdgeSpeechTests
         Assert.Equal(15, socket.Options.DangerousDeflateOptions!.ClientMaxWindowBits);
         Assert.Equal(15, socket.Options.DangerousDeflateOptions.ServerMaxWindowBits);
         var cookie = SeleVox.App.EdgeTransport.Constants.SessionCookie;
-        Assert.Matches("^muid=[0-9A-F]{32};$", cookie);
-        Assert.Equal(cookie, SeleVox.App.EdgeTransport.Constants.WssHeaders["Cookie"]);
-        Assert.Equal(cookie, SeleVox.App.EdgeTransport.Constants.VoiceHeaders["Cookie"]);
+        Assert.True(System.Text.RegularExpressions.Regex.IsMatch(cookie, "^muid=[0-9A-F]{32};$"), "Invalid session cookie format.");
+        Assert.True(cookie == SeleVox.App.EdgeTransport.Constants.WssHeaders["Cookie"], "WebSocket identity differs.");
+        Assert.True(cookie == SeleVox.App.EdgeTransport.Constants.VoiceHeaders["Cookie"], "Voice-query identity differs.");
         using var another = new System.Net.WebSockets.ClientWebSocket();
         SeleVox.App.EdgeTransport.Communicate.ConfigureSocket(another);
-        Assert.Equal(cookie, SeleVox.App.EdgeTransport.Constants.SessionCookie);
+        Assert.True(cookie == SeleVox.App.EdgeTransport.Constants.SessionCookie, "Session identity changed.");
     }
     [Theory] [InlineData(0L)] [InlineData(1700000000L)] [InlineData(1800000000L)]
     public void AuthenticationTimestampFormattingMatchesPinnedUpstreamWithoutLoggingTokens(long unixSeconds)

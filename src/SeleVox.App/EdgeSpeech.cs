@@ -182,11 +182,6 @@ internal sealed class EdgeSpeech(
         {
             if (e is HttpRequestException { StatusCode: HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized } http)
                 return Refused((int)http.StatusCode.Value);
-            if (e is System.Net.WebSockets.WebSocketException)
-            {
-                if (e.Message.Contains("403")) return Refused(403);
-                if (e.Message.Contains("401")) return Refused(401);
-            }
         }
         return new(error switch
         {
