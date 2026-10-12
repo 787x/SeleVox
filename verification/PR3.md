@@ -2,6 +2,23 @@
 
 日期：2026-10-12；Windows x64，.NET SDK / Runtime 10。基于 `origin/main` 的 PR2 合并提交 `9bdd032`（fetch 后本地与远端一致），分支 `codex/pr3-tts-multi-output`。
 
+## 设备选择未保存反馈与实际端点收音复核
+
+用户反馈选择 Voicemeeter Input 后没有声音进入 Voicemeeter，随后明确确认只选择了设备、尚未点击保存。检查当前 JSON 的 `OutputDeviceIds` 为 null，因此后续朗读仍使用系统默认输出；未发现设备路由实现故障。界面增加“选择后须保存”以及选择变化时的“尚未保存”提示，保存成功后显示已保存。未修改用户的设备配置、正在运行的实例或 Voicemeeter 路由。
+
+为补足此前只检查读取位置的验证，新增显式启用的真实端点回环测试。使用生产 `SpeechAudio.CreatePlayback` 单独向 **Voicemeeter Input (VB-Audio Voicemeeter VAIO)** 输出固定本地合成语音，同时对该播放端点进行 WASAPI loopback 捕获。实测播放前 peak 为 **0.000000**，播放期 peak 为 **0.275719**，无输出警告，测试通过。此结果证明指定 Windows 播放端点收到非静音音频，仍不代表 Voicemeeter B 总线、录音端或独立 VB-CABLE 已完成端到端验收。
+
+本轮输出为 `artifacts/pr3-routing-fix`，Release 构建零警告、零错误；新增回环测试 1 项通过。此前尝试使用旧式 DataAvailable 事件签名产生编译错误，按实际 NAudio 3.1 四参数 span 委托修正后通过；该失败构建没有作为验证通过结果。
+
+```powershell
+dotnet build SeleVox.slnx -c Release --artifacts-path artifacts/pr3-routing-fix
+$env:SELEVOX_VOICEMEETER_TESTS = '1'
+dotnet test tests/SeleVox.Tests/SeleVox.Tests.csproj -c Release --no-build --artifacts-path artifacts/pr3-routing-fix --filter FullyQualifiedName~VoicemeeterInputReceives --logger 'console;verbosity=detailed'
+Remove-Item Env:SELEVOX_VOICEMEETER_TESTS
+```
+
+新提示的真实桌面点击/视觉布局本轮未重测；用户测试实例继续运行，未强制关闭以替换文件。下文保留首次 PR3 验证时的历史状态，指定播放端点的非静音样本捕获现已补测。
+
 ## 实际修改
 
 - 将原 `ISpeechAudio` 拆为合成与播放工厂两个接口；沿用 ReadingSession 的取消、串行合成、代次和播放对象身份校验。设备创建移到后台；创建期间 Stop 的迟到播放器只释放、不启动。

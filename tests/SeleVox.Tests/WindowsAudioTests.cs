@@ -10,6 +10,34 @@ namespace SeleVox.Tests;
 // an installed WinRT voice and a default render device. They emit fixture speech.
 public sealed class WindowsAudioTests(ITestOutputHelper log)
 {
+    [VoicemeeterAudioFact, Trait("Category", "WindowsAudio")]
+    public async Task VoicemeeterInputReceivesNonSilentSpeechInEndpointLoopback()
+    {
+        var selected = AudioOutputs.GetDevices().Single(d => d.Label == "Voicemeeter Input (VB-Audio Voicemeeter VAIO)");
+        using var enumerator = new MMDeviceEnumerator();
+        using var endpoint = enumerator.GetDevice(selected.Id);
+        using var recorder = new WasapiRecorderBuilder().WithDevice(endpoint).WithLoopbackCapture()
+            .WithFormat(WaveFormat.CreateIeeeFloatWaveFormat(48000, 2)).Build();
+        double peak = 0;
+        var captureSync = new object();
+        recorder.DataAvailable += (buffer, _, _, _) =>
+        {
+            lock (captureSync)
+                for (var i = 0; i + 4 <= buffer.Length; i += 4)
+                    peak = Math.Max(peak, Math.Abs(BitConverter.ToSingle(buffer.Slice(i, 4))));
+        };
+        recorder.StartRecording(); await Task.Delay(400);
+        double baseline; lock (captureSync) { baseline = peak; peak = 0; }
+        var voice = SpeechAudio.GetVoices().First();
+        var fixture = voice.Label.Contains("(en-") ? "This speech must reach the selected virtual input. " : "这段测试语音必须进入指定的虚拟输入。";
+        var settings = new Settings(VoiceId: voice.Id, Volume: 0.3f, OutputDeviceIds: [selected.Id]);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var speech = new SpeechAudio(); var audio = await speech.SynthesizeAsync(string.Concat(Enumerable.Repeat(fixture, 3)), settings, timeout.Token);
+        using var group = speech.CreatePlayback(audio, settings); group.Play(); await Task.Delay(2500, timeout.Token); group.Stop(); recorder.StopRecording();
+        double received; lock (captureSync) received = peak;
+        log.WriteLine($"Endpoint: {selected.Label}; baseline peak: {baseline:F6}; speech peak: {received:F6}; warning: {group.Warning ?? "none"}");
+        Assert.True(received > 0.001, "The actual selected render endpoint's loopback received no non-silent samples.");
+    }
     [WindowsAudioFact, Trait("Category", "WindowsAudio")]
     public async Task ConfiguredFactoryCompletesAllEndpointsAndReportsRealDefaultFallback()
     {
@@ -95,6 +123,15 @@ public sealed class WindowsAudioTests(ITestOutputHelper log)
         Assert.Equal(WaveFormatEncoding.Pcm, slowReader.WaveFormat.Encoding);
         Assert.True(slowReader.TotalTime > fastReader.TotalTime,
             $"Voice: {voice.Label}; slow: {slowReader.TotalTime}; fast: {fastReader.TotalTime}");
+    }
+}
+
+public sealed class VoicemeeterAudioFactAttribute : FactAttribute
+{
+    public VoicemeeterAudioFactAttribute()
+    {
+        if (Environment.GetEnvironmentVariable("SELEVOX_VOICEMEETER_TESTS") != "1")
+            Skip = "Set SELEVOX_VOICEMEETER_TESTS=1 with Voicemeeter Input installed to test endpoint loopback.";
     }
 }
 

@@ -37,8 +37,9 @@
             <DockPanel><TextBlock DockPanel.Dock="Right" Width="46" Text="{Binding ElementName=Rate, Path=Value, StringFormat=F2}"/><Slider x:Name="Rate" Minimum="0.5" Maximum="2" TickFrequency="0.05" IsSnapToTickEnabled="True"/></DockPanel>
             <TextBlock Text="音量（0–1）" Margin="0,18,0,4"/>
             <DockPanel><TextBlock DockPanel.Dock="Right" Width="46" Text="{Binding ElementName=Volume, Path=Value, StringFormat=F2}"/><Slider x:Name="Volume" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"/></DockPanel>
-            <TextBlock Text="音频输出 · 点击多选（无需按 Ctrl）" Margin="0,18,0,4"/>
-            <ListBox x:Name="Outputs" SelectionMode="Multiple" Height="110" DisplayMemberPath="Label"/>
+            <TextBlock Text="音频输出 · 点击多选（无需按 Ctrl），选择后须保存" Margin="0,18,0,4"/>
+            <ListBox x:Name="Outputs" SelectionMode="Multiple" Height="110" DisplayMemberPath="Label" SelectionChanged="Outputs_Changed"/>
+            <TextBlock x:Name="OutputSaveHint" Text="设备选择保存后用于下一次朗读。" TextWrapping="Wrap" Foreground="#8A4D00" Margin="0,6,0,0"/>
             <Button Content="刷新播放设备" Click="RefreshOutputs_Click" HorizontalAlignment="Left" Padding="8,4" Margin="0,6,0,0"/>
             <TextBlock Text="未选择时使用系统默认输出。部分设备不可用时跳过；全部不可用时回退默认输出并提示。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
             <CheckBox x:Name="AutoStart" Content="登录 Windows 时启动（驻留托盘）" Margin="0,20,0,16"/>

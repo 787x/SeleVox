@@ -58,12 +58,23 @@ public partial class MainWindow : Window
         if (provider == TtsProvider.Azure && (!Settings.IsRegionValid(Region.Text.Trim()) || CloudVoice.SelectedValue is not string))
         { SetNotice("请填写 Region 并查询选择可用的 Azure 语音。"); return; }
         if (refreshingOutputs) { SetNotice("正在刷新设备，请稍后保存。"); return; }
-        SetNotice(save(savedSettings with { VoiceId = Voice.SelectedValue as string, Rate = Rate.Value, Volume = (float)Volume.Value,
+        var error = save(savedSettings with { VoiceId = Voice.SelectedValue as string, Rate = Rate.Value, Volume = (float)Volume.Value,
             Provider = provider, AzureRegion = provider == TtsProvider.Azure ? Region.Text.Trim() : savedSettings.AzureRegion,
             AzureVoice = provider == TtsProvider.Azure ? CloudVoice.SelectedValue as string : savedSettings.AzureVoice,
             AllowAutomaticCloud = AutomaticCloud.IsChecked == true,
             OutputDeviceIds = Outputs.SelectedItems.Cast<OutputChoice>().Select(d => d.Id).ToArray(),
-            StartWithWindows = AutoStart.IsChecked == true }) ?? "设置已保存，下次朗读生效。");
+            StartWithWindows = AutoStart.IsChecked == true });
+        SetNotice(error ?? "设置已保存，下次朗读生效。");
+        if (error is null) OutputSaveHint.Text = "设备选择已保存，用于下一次朗读。";
+    }
+    private void Outputs_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (refreshingOutputs || OutputSaveHint is null) return;
+        var selected = Outputs.SelectedItems.Cast<OutputChoice>().Select(d => d.Id).ToArray();
+        var saved = savedSettings.OutputDeviceIds ?? [];
+        var same = (selected.Length == 0 ? [Settings.DefaultOutput] : selected).ToHashSet()
+            .SetEquals(saved.Length == 0 ? [Settings.DefaultOutput] : saved);
+        OutputSaveHint.Text = same ? "设备选择与已保存设置一致。" : "设备选择尚未保存：请点击下方“保存设置”，下一次朗读才会使用新设备。";
     }
     private void Provider_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
