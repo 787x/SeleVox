@@ -75,7 +75,7 @@ public sealed class EdgeVoiceWindowTests
         ((ComboBox)window.FindName("EdgeVoice")).SelectedValue = "zh-CN-XiaoxiaoNeural";
         for (var i = 0; i < 100 && ((ListBox)window.FindName("Outputs")).Items.Count == 0; ++i) await Task.Delay(10);
         var saveButton = FindButtons(window).Single(b => b.Content as string == "保存设置");
-        Assert.Equal(2, Grid.GetRow((UIElement)saveButton.Parent)); // fixed footer, outside ScrollViewer
+        Assert.Equal(2, Grid.GetRow((UIElement)((Grid)saveButton.Parent).Parent)); // fixed footer, outside ScrollViewer
         saveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert.Equal(TtsProvider.Edge, saved.Provider); Assert.Equal("zh-CN-XiaoxiaoNeural", saved.EdgeVoice);
         Assert.Contains("当前朗读使用：Edge", hint.Text); Assert.DoesNotContain("尚未保存", hint.Text);

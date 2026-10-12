@@ -71,13 +71,16 @@
         </StackPanel></ScrollViewer>
         <StackPanel Grid.Row="2">
             <TextBlock x:Name="ProviderSaveHint" TextWrapping="Wrap" Foreground="#8A4D00" Margin="0,12,0,6"/>
-            <Button Content="保存设置" Click="Save_Click" HorizontalAlignment="Left" Padding="18,7"/>
-            <TextBlock x:Name="StatusText" Text="空闲 · 就绪" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,16,0,10"/>
-            <StackPanel Orientation="Horizontal">
+            <TextBlock x:Name="StatusText" Text="空闲 · 就绪" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,4,0,8"/>
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal">
                 <Button Content="暂停 / 继续" Click="Pause_Click" Padding="12,7" Margin="0,0,8,0"/>
                 <Button Content="停止" Click="Stop_Click" Padding="12,7" Margin="0,0,8,0"/>
                 <Button Content="退出" Click="Exit_Click" Padding="12,7"/>
-            </StackPanel>
+                </StackPanel>
+                <Button Grid.Column="1" Content="保存设置" Click="Save_Click" Padding="18,7" Margin="12,0,0,0"/>
+            </Grid>
             <TextBlock Text="Ctrl+Alt+P 暂停/继续 · Ctrl+Alt+X 停止&#10;关闭此窗口后继续在托盘运行。" Foreground="#546575" Margin="0,12,0,0"/>
         </StackPanel>
     </Grid>
