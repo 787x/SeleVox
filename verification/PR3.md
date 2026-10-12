@@ -8,7 +8,7 @@
 
 为补足此前只检查读取位置的验证，新增显式启用的真实端点回环测试。使用生产 `SpeechAudio.CreatePlayback` 单独向 **Voicemeeter Input (VB-Audio Voicemeeter VAIO)** 输出固定本地合成语音，同时对该播放端点进行 WASAPI loopback 捕获。实测播放前 peak 为 **0.000000**，播放期 peak 为 **0.275719**，无输出警告，测试通过。此结果证明指定 Windows 播放端点收到非静音音频，仍不代表 Voicemeeter B 总线、录音端或独立 VB-CABLE 已完成端到端验收。
 
-本轮输出为 `artifacts/pr3-routing-fix`，Release 构建零警告、零错误；新增回环测试 1 项通过。此前尝试使用旧式 DataAvailable 事件签名产生编译错误，按实际 NAudio 3.1 四参数 span 委托修正后通过；该失败构建没有作为验证通过结果。
+本轮输出为 `artifacts/pr3-routing-fix`，Release 构建零警告、零错误；新增回环测试 1 项通过，非音频回归 81 项通过（用户实例占用热键，排除全局热键注册/冲突测试）。此前尝试使用旧式 DataAvailable 事件签名产生编译错误，按实际 NAudio 3.1 四参数 span 委托修正后通过；该失败构建没有作为验证通过结果。
 
 ```powershell
 dotnet build SeleVox.slnx -c Release --artifacts-path artifacts/pr3-routing-fix
