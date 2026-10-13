@@ -25,7 +25,7 @@ public sealed class WindowsLifetimeTests
             using (var first = new Hotkeys())
             {
                 Assert.Empty(first.Conflicts);
-                using var second = new Hotkeys(); Assert.Equal(4, second.Conflicts.Count);
+                using var second = new Hotkeys(); Assert.Equal(5, second.Conflicts.Count);
             }
             using var restarted = new Hotkeys(); Assert.Empty(restarted.Conflicts);
         });

@@ -11,6 +11,7 @@ public partial class MainWindow : Window
     private readonly AzureCredentials credentials = new();
     private CancellationTokenSource? voiceQuery;
     private readonly Action cancelAutomatic;
+    internal Action? LlmCredentialsChanged { get; set; }
     private readonly Func<CancellationToken, Task<IReadOnlyList<EdgeVoiceChoice>>> queryEdge;
     private IReadOnlyList<EdgeVoiceChoice> edgeVoices = [];
     private string? edgeSelection;
@@ -49,6 +50,9 @@ public partial class MainWindow : Window
         miMoStyles = new(settings.MiMoOverallStyles); RefreshMiMoStyles();
         OpenAiBaseUrl.Text = settings.OpenAiBaseUrl; OpenAiModel.Text = settings.OpenAiModel;
         OpenAiVoice.Text = settings.OpenAiVoice; OpenAiInstructions.Text = settings.OpenAiInstructions;
+        LlmBaseUrl.Text = settings.LlmBaseUrl; LlmModel.Text = settings.LlmModel; LlmSystemPrompt.Text = settings.LlmSystemPrompt;
+        LlmStreaming.IsChecked = settings.LlmStreaming; LlmAutoRead.IsChecked = settings.LlmAutoRead;
+        UpdateLlmCredentialStatus();
         AutomaticOpenAi.IsChecked = settings.AllowAutomaticOpenAi && settings.OpenAiAuthorizedBaseUrl == Settings.NormalizeServiceUrl(settings.OpenAiBaseUrl);
         UpdateHttpCredentialStatus();
         edgeSelection = settings.EdgeVoice;
@@ -86,6 +90,8 @@ public partial class MainWindow : Window
         { SetNotice("请查询并选择 Edge 在线语音。"); return; }
         if (refreshingOutputs) { SetNotice("正在刷新设备，请稍后保存。"); return; }
         var address = Settings.NormalizeServiceUrl(OpenAiBaseUrl.Text);
+        var llmAddress = Settings.NormalizeServiceUrl(LlmBaseUrl.Text);
+        if (llmAddress is null) { SetNotice("AI 服务地址无效：远程服务须使用 HTTPS，本机回环可用 HTTP。"); return; }
         if (provider == TtsProvider.MiMo && string.IsNullOrWhiteSpace(MiMoModel.Text)) { SetNotice("请填写 MiMo 模型名称。"); return; }
         if (provider == TtsProvider.OpenAiCompatible && (address is null || string.IsNullOrWhiteSpace(OpenAiModel.Text) || string.IsNullOrWhiteSpace(OpenAiVoice.Text)))
         { SetNotice("请填写合法的服务 Base URL、Model 和 Voice。"); return; }
@@ -109,9 +115,36 @@ public partial class MainWindow : Window
             AllowAutomaticOpenAi = savedSettings.AllowAutomaticOpenAi && (provider != TtsProvider.OpenAiCompatible || address == Settings.NormalizeServiceUrl(savedSettings.OpenAiBaseUrl)),
             OpenAiAuthorizedBaseUrl = provider != TtsProvider.OpenAiCompatible || address == Settings.NormalizeServiceUrl(savedSettings.OpenAiBaseUrl) ? savedSettings.OpenAiAuthorizedBaseUrl : null,
             OutputDeviceIds = Outputs.SelectedItems.Cast<OutputChoice>().Select(d => d.Id).ToArray(),
-            StartWithWindows = AutoStart.IsChecked == true, OcrLanguage = (OcrLanguage)OcrLanguageChoice.SelectedIndex });
+            StartWithWindows = AutoStart.IsChecked == true, OcrLanguage = (OcrLanguage)OcrLanguageChoice.SelectedIndex,
+            LlmBaseUrl = llmAddress, LlmModel = LlmModel.Text.Trim(), LlmSystemPrompt = LlmSystemPrompt.Text,
+            LlmStreaming = LlmStreaming.IsChecked == true, LlmAutoRead = LlmAutoRead.IsChecked == true });
         SetNotice(error ?? "设置已保存，下次朗读生效。");
         if (error is null) OutputSaveHint.Text = "设备选择已保存，用于下一次朗读。";
+    }
+    private void LlmAddress_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        if (LlmKey is null || LlmCredentialStatus is null) return;
+        LlmKey.Clear(); UpdateLlmCredentialStatus();
+    }
+    private void UpdateLlmCredentialStatus()
+    {
+        if (LlmCredentialStatus is null) return;
+        try
+        {
+            LlmCredentialStatus.Text = Settings.NormalizeServiceUrl(LlmBaseUrl.Text) is null ? "地址无效。" :
+                string.IsNullOrWhiteSpace(AzureCredentials.Llm(LlmBaseUrl.Text).Read()) ? "当前 LLM 地址未配置 Key。" : "当前 LLM 地址已配置 Key（与 TTS 独立）。";
+        }
+        catch (UserFeedbackException ex) { LlmCredentialStatus.Text = ex.Message; }
+    }
+    private void SaveLlmKey_Click(object sender, RoutedEventArgs e)
+    {
+        try { AzureCredentials.Llm(LlmBaseUrl.Text).Write(LlmKey.Password); LlmKey.Clear(); LlmCredentialsChanged?.Invoke(); UpdateLlmCredentialStatus(); }
+        catch (UserFeedbackException ex) { SetNotice(ex.Message); }
+    }
+    private void ClearLlmKey_Click(object sender, RoutedEventArgs e)
+    {
+        try { AzureCredentials.Llm(LlmBaseUrl.Text).Clear(); LlmKey.Clear(); LlmCredentialsChanged?.Invoke(); UpdateLlmCredentialStatus(); }
+        catch (UserFeedbackException ex) { SetNotice(ex.Message); }
     }
     private void RefreshMiMoStyles()
     {

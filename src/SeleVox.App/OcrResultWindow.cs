@@ -14,7 +14,7 @@ internal sealed class OcrResultWindow : Window
     private bool hiddenForCapture;
     private Rect captureBounds;
     private WindowState captureState;
-    internal OcrResultWindow(CapturedText result, Func<Settings> settings, Func<CapturedText, Task> read)
+    internal OcrResultWindow(CapturedText result, Func<Settings> settings, Func<CapturedText, Task> read, Action<string>? ask = null)
     {
         this.settings = settings; this.read = read;
         Title = "SeleVox · 屏幕 OCR 结果"; Width = 660; Height = 480; MinWidth = 400; MinHeight = 280;
@@ -34,6 +34,7 @@ internal sealed class OcrResultWindow : Window
             catch (Exception) { notice.Text = "剪贴板正被占用或不可用，请重试。"; }
         });
         AddButton(actions, "朗读文字", () => { if (HasText() && this.read is { } action) { RefreshProviderNotice(); _ = action(new(editor.Text, TextSource.ScreenOcr)); } });
+        AddButton(actions, "问 AI", () => { if (HasText()) ask?.Invoke(editor.Text); });
         AddButton(actions, "关闭", Close);
         Content = grid;
         Activated += (_, _) => RefreshProviderNotice();
@@ -91,7 +92,7 @@ internal sealed class OcrResultWindow : Window
             TtsProvider.Azure => "Azure", TtsProvider.Edge => "微软 Edge 在线服务", TtsProvider.MiMo => "小米 MiMo",
             TtsProvider.OpenAiCompatible => current.OpenAiBaseUrl, _ => null
         };
-        notice.Text = prefix + (destination is null ? "朗读使用已保存的 Windows 本地 TTS。" : $"点击朗读将把当前文字发送到已保存服务：{destination}，可能产生费用。") + " 语速、音量与输出设备使用已保存设置。";
+        notice.Text = prefix + (destination is null ? "朗读使用已保存的 Windows 本地 TTS。" : $"点击朗读将把当前文字发送到已保存服务：{destination}，可能产生费用。") + " 语速、音量与输出设备使用已保存设置。" + $" 点击问 AI 将把编辑后的文字发送到 LLM：{current.LlmBaseUrl}，可能收费。";
     }
     private static void AddButton(Panel panel, string label, Action action)
     {

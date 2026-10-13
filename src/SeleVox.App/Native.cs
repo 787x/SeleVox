@@ -20,7 +20,7 @@ internal sealed class Hotkeys : IDisposable
     public Hotkeys()
     {
         source.AddHook(HandleMessage);
-        Register(1, 0x52, "Ctrl+Alt+R"); Register(2, 0x50, "Ctrl+Alt+P"); Register(3, 0x58, "Ctrl+Alt+X"); Register(4, 0x4F, "Ctrl+Alt+O");
+        Register(1, 0x52, "Ctrl+Alt+R"); Register(2, 0x50, "Ctrl+Alt+P"); Register(3, 0x58, "Ctrl+Alt+X"); Register(4, 0x4F, "Ctrl+Alt+O"); Register(5, 0x41, "Ctrl+Alt+A");
     }
     private void Register(int id, uint key, string name)
     {
