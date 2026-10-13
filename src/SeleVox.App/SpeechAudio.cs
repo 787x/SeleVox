@@ -8,13 +8,21 @@ namespace SeleVox.App;
 
 internal sealed record VoiceChoice(string Id, string Label);
 
-internal sealed class SpeechAudio : ISpeechSynthesis, IAudioPlaybackFactory
+internal sealed class SpeechAudio : ISpeechSynthesis, IAudioPlaybackFactory, IStreamingSpeechSynthesis, IStreamingPlaybackFactory
 {
+    public bool UsesStreaming(Settings settings) => settings.UsesMiMoStreaming;
+    public Task SynthesizeStreamingAsync(string text, Settings settings, StreamingPcmBuffer buffer, CancellationToken cancellation) =>
+        new MiMoSpeech().SynthesizeStreamingAsync(text, settings, buffer, cancellation);
+    public IAudioPlayback CreateStreamingPlayback(StreamingPcmBuffer buffer, Settings settings) => AudioOutputs.CreateStreamingPlayback(buffer, settings);
     public static IReadOnlyList<VoiceChoice> GetVoices() => SpeechSynthesizer.AllVoices
         .Select(v => new VoiceChoice(v.Id, $"{v.DisplayName} ({v.Language})")).ToList();
 
     public async Task<Stream> SynthesizeAsync(string text, Settings settings, CancellationToken cancellation)
     {
+        if (settings.Provider == TtsProvider.MiMo)
+            return await new MiMoSpeech().SynthesizeAsync(text, settings, cancellation).ConfigureAwait(false);
+        if (settings.Provider == TtsProvider.OpenAiCompatible)
+            return await new OpenAiSpeech().SynthesizeAsync(text, settings, cancellation).ConfigureAwait(false);
         if (settings.Provider == TtsProvider.Edge)
             return await new EdgeSpeech().SynthesizeAsync(text, settings, cancellation).ConfigureAwait(false);
         if (settings.Provider == TtsProvider.Azure)
@@ -47,7 +55,7 @@ internal sealed class SpeechAudio : ISpeechSynthesis, IAudioPlaybackFactory
 
 internal sealed record OutputChoice(string Id, string Label);
 
-internal static class AudioOutputs
+internal static partial class AudioOutputs
 {
     public static IReadOnlyList<OutputChoice> GetDevices()
     {

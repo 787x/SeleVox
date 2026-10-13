@@ -14,7 +14,7 @@ public sealed class ReadingSessionTests
         read = session.ReadTextAsync("fixture", settings with { AllowAutomaticCloud = true }); backend.Pending[1].SetResult(new TrackedStream()); await read;
         Assert.Equal(ReadingState.Playing, session.Status.State);
     }
-    [Theory] [InlineData(TtsProvider.Azure)] [InlineData(TtsProvider.Edge)]
+    [Theory] [InlineData(TtsProvider.Azure)] [InlineData(TtsProvider.Edge)] [InlineData(TtsProvider.MiMo)] [InlineData(TtsProvider.OpenAiCompatible)]
     public async Task UnauthorizedAutomaticOnlineRequestLeavesPlayingSessionUntouched(TtsProvider provider)
     {
         var backend = new Audio(); using var session = new ReadingSession(backend, backend);
@@ -24,7 +24,7 @@ public sealed class ReadingSessionTests
         var playingStatus = session.Status; Assert.Equal(ReadingState.Playing, playingStatus.State);
         var changes = 0; session.Changed += _ => ++changes;
 
-        await session.ReadTextAsync("new fixture", new(Provider: provider, AllowAutomaticCloud: provider == TtsProvider.Edge));
+        await session.ReadTextAsync("new fixture", new(Provider: provider, AllowAutomaticCloud: provider != TtsProvider.Azure, AllowAutomaticEdge: provider != TtsProvider.Edge));
 
         Assert.Equal(0, player.Stops); Assert.False(player.Disposed); Assert.False(audio.Disposed);
         Assert.Same(playingStatus, session.Status); Assert.Equal(ReadingState.Playing, session.Status.State);
@@ -83,7 +83,7 @@ public sealed class ReadingSessionTests
         Assert.False(session.Status.Notify);
         await session.ReadAsync(_ => throw new IOException(), new()); Assert.True(session.Status.Notify);
     }
-    [Theory] [InlineData(TtsProvider.Windows)] [InlineData(TtsProvider.Edge)]
+    [Theory] [InlineData(TtsProvider.Windows)] [InlineData(TtsProvider.Edge)] [InlineData(TtsProvider.MiMo)] [InlineData(TtsProvider.OpenAiCompatible)]
     public async Task StopRejectsLateNonCooperativeSynthesisAndDisposesAudio(TtsProvider provider)
     {
         var backend = new Audio(); using var session = new ReadingSession(backend, backend);
