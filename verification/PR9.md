@@ -143,8 +143,20 @@ Native.cs 的接收窗构造和旧 Hide+DwmFlush 路径在 PR8/main 中已有相
 
 ### 合并判断与限制
 
-这三项桌面回归已收尾，在本次真实交互式桌面环境中没有剩余阻塞。仍保留原计划的常用真实应用 UIA、完整 App 设置/托盘操作及真实在线双设备人工验收；本次没有在其他 Windows 构建、缩放比例、多屏或 RDP 断开/锁屏环境重跑。不能把隔离 WPF fixture 的通过扩大为所有应用均支持。
+这三项桌面回归已收尾，在本次真实交互式桌面环境中没有剩余阻塞。常用应用、设置/托盘、真实在线播放控制、双设备及完整 OCR 流程随后获得用户人工验收通过确认，见文末；没有在其他 Windows 构建、缩放比例、多屏或 RDP 断开/锁屏环境重跑。不能把隔离 WPF fixture 的通过扩大为所有应用均支持。
 
 重现原三项：设置 SELEVOX_OCR_DESKTOP_TESTS=1，在已解锁、可见且无其他 SeleVox 实例占用热键的桌面，串行执行 `dotnet test tests/SeleVox.Tests -c Release --filter "FullyQualifiedName~ExternalMouseSelection|FullyQualifiedName~ExternalUiaSelectionActualAsk|FullyQualifiedName~AnswerHiddenDuringRealScreenshot"`。测试会短暂移动鼠标及改变前台，请避免同时操作。TRX 保存在忽略提交的 TestResults 目录。
 
 实现核对：[HwndSourceParameters 默认窗口样式](https://learn.microsoft.com/en-us/dotnet/api/system.windows.interop.hwndsourceparameters.windowstyle?view=windowsdesktop-10.0)、[WS_EX_NOACTIVATE](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles)、[DWM transition 属性](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute)。
+
+## 用户人工验收确认（2026-10-13）
+
+用户在获得最新 PR9 Release 程序位置后明确反馈：“测试1-5全部通过”。以下为用户实测确认，未表述为 Codex 独立执行或另行复测：
+
+1. 实际 App 与常用应用选区 Auto Ask：授权白名单、普通点击/重复选择、不抢焦点。
+2. 设置与托盘开关同步，撤销上传授权及更换 LLM 地址生效，无关手动问答保持正常。
+3. 真实在线长回答中的暂停/继续/停止、连续提问、手动朗读替换及关闭窗口，旧音频不回流。
+4. 真实耳机与虚拟声卡双设备逐句输出，单设备失效隔离，接收端实际声音。
+5. AI/OCR 窗口打开时的完整框选、取消、重复框选；截图排除旧窗口，恢复位置、内容和焦点。
+
+以上五项人工验收已完成，结合自动回归，本次 PR9 合并前验收没有已报告的未解决阻塞。不据此推断未指定的应用、设备型号、其他 Windows 构建、多显示器/缩放或锁屏/RDP 场景均已验证；用户未提供这些详细环境数据。
