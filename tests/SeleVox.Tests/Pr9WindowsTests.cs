@@ -15,11 +15,13 @@ public sealed class Pr9WindowsTests(ITestOutputHelper log)
 {
     [Fact] public Task PromptDraftManagementThinkingAndPermissionUi() => OcrDesktopTests.RunSta(async () =>
     {
-        var saved = new Settings(Provider: TtsProvider.MiMo, LlmModel: "fixture", LlmSystemPrompt: "旧自由 Prompt"); MainWindow? window = null;
+        var saved = new Settings(Provider: TtsProvider.MiMo, LlmModel: "fixture", LlmSystemPrompt: "旧自由 Prompt", StartupSilenceMilliseconds: 150); MainWindow? window = null;
         window = new MainWindow(saved, value => { saved = value; window!.SetAutomaticSettings(value); return null; }, () => { }, () => { }, () => { }, () => Task.FromResult<string?>(null), () => { });
         try
         {
             var prompt = (TextBox)window.FindName("LlmSystemPrompt"); Assert.Equal("旧自由 Prompt", prompt.Text);
+            var startupSilence = (Slider)window.FindName("StartupSilence"); Assert.Equal(150, startupSilence.Value);
+            startupSilence.Value = 250;
             var presets = (ComboBox)window.FindName("PromptChoice"); presets.SelectedIndex = 1;
             Assert.Equal(PromptPresets.BuiltIn[1].Prompt, prompt.Text); Assert.Equal("旧自由 Prompt", saved.LlmSystemPrompt);
             prompt.Text = "编辑后的自由 Prompt"; ((TextBox)window.FindName("PromptName")).Text = "自定义";
@@ -28,9 +30,11 @@ public sealed class Pr9WindowsTests(ITestOutputHelper log)
             ((ComboBox)window.FindName("ThinkingOptionChoice")).SelectedValue = ThinkingOption.Enabled;
             await Pr9Tests.Until(() => ((ListBox)window.FindName("Outputs")).Items.Count > 0);
             Click(window, "保存设置"); Assert.Equal("编辑后的自由 Prompt", saved.LlmSystemPrompt); Assert.Single(saved.CustomPrompts!);
+            Assert.Equal(250, saved.StartupSilenceMilliseconds); startupSilence.Value = 0;
             Assert.Equal(ThinkingProtocol.MiMo, saved.LlmThinkingProtocol); Assert.Equal(ThinkingOption.Enabled, saved.LlmThinking);
             Click(window, "删除所选自定义预设"); Assert.Single(saved.CustomPrompts!); Click(window, "保存设置"); Assert.Empty(saved.CustomPrompts!);
             Assert.Equal("编辑后的自由 Prompt", saved.LlmSystemPrompt); Assert.Equal(4, presets.Items.Count);
+            Assert.Equal(0, saved.StartupSilenceMilliseconds);
             var consent = (CheckBox)window.FindName("AutomaticLlm"); consent.IsChecked = true; consent.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             Assert.True(saved.AllowsAutomaticLlm); Assert.False(saved.AutoAsk);
             ((TextBox)window.FindName("LlmBaseUrl")).Text = "https://different.invalid/v1"; Click(window, "保存设置");

@@ -164,3 +164,5 @@ Native.cs 的接收窗构造和旧 Hide+DwmFlush 路径在 PR8/main 中已有相
 ## 合并后起音问题（2026-10-13）
 
 用户随后报告 AirPods Pro 上 MiMo 流式或 LLM 逐句朗读偶发丢开头。以上 PR9 验收不作为起音完整性证明。独立诊断、100 ms 静音前导局部修复、端点 loopback 对比及 AirPods 待验收限制见 [StreamingOnset.md](StreamingOnset.md)。源游标消费与用户耳机实际听到完整内容必须分开判断。
+
+2026-10-14 用户明确确认“AirPods 测试通过”，随后要求静音时间可设置；人工验收确认及 0–250 ms 设置验证见同一记录末节。

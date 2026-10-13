@@ -20,7 +20,7 @@ internal static partial class AudioOutputs
                 if (device.DataFlow != DataFlow.Render || device.State != DeviceState.Active) throw new IOException();
                 if (resolved.Contains(device.ID)) { device.Dispose(); reader.Dispose(); return null; }
                 var actual = device.ID; var owned = device; device = null;
-                var playback = new StreamingWasapiPlayback(reader, volume, owned); resolved.Add(actual); return playback;
+                var playback = new StreamingWasapiPlayback(reader, volume, owned, settings.StartupSilenceMilliseconds); resolved.Add(actual); return playback;
             }
             catch { device?.Dispose(); throw; }
         });

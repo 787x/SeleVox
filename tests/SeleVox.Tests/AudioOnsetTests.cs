@@ -132,15 +132,17 @@ public sealed class AudioOnsetTests(ITestOutputHelper log)
         foreach (var choice in choices)
         {
             using var endpoint = enumerator.GetDevice(choice.Id);
+            var delays = new List<(int Lead, double Milliseconds)>();
             foreach (var lead in new[] { 0, 100, 150, 250 })
             for (var run = 0; run < 3; run++)
             foreach (var streaming in new[] { false, true })
             {
                 var pcm = Marker(); using var buffer = new StreamingPcmBuffer();
                 var clock = Stopwatch.StartNew();
+                var settings = new Settings(Volume: .2f, OutputDeviceIds: [choice.Id], StartupSilenceMilliseconds: lead);
                 using var player = streaming
-                    ? (IAudioPlayback)new StreamingWasapiPlayback(buffer.CreateReader(), .2f, enumerator.GetDevice(choice.Id), lead)
-                    : new WasapiPlayback(Wave(pcm), .2f, enumerator.GetDevice(choice.Id), lead);
+                    ? AudioOutputs.CreateStreamingPlayback(buffer, settings)
+                    : AudioOutputs.CreatePlayback(Wave(pcm), settings);
                 var createMs = clock.Elapsed.TotalMilliseconds;
                 if (streaming) { await buffer.WriteAsync(pcm, default); buffer.Complete(); }
                 var done = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -167,10 +169,19 @@ public sealed class AudioOnsetTests(ITestOutputHelper log)
                 float[] recorded; lock (gate) recorded = samples.ToArray();
                 var (correlation, lag, onsetRatio) = Analyze(recorded);
                 var firstSoundMs = firstQpc / 10000d + lag / 48d - playQpcMs;
+                if (firstSoundMs is { } delay && double.IsFinite(delay)) delays.Add((lead, delay));
                 log.WriteLine($"endpoint={choice.Label}; run={run}; streaming={streaming}; lead={lead}ms; created={createMs:F1}ms; play={playMs:F1}ms; finished={finishMs:F1}ms; disposed={disposeMs:F1}ms; captured={recorded.Length}; correlation={correlation:F3}; aligned-onset={lag / 48d:F2}ms; play-to-marker={firstSoundMs:F2}ms; first-10ms/same-frequency-reference-rms={onsetRatio:F3}");
                 if (correlation <= .8 || lead > 0 && onsetRatio <= .7)
                     failures.Add($"{choice.Label}, streaming={streaming}, lead={lead}, correlation={correlation:F3}, onsetRatio={onsetRatio:F3}");
             }
+            double MedianDelay(int lead)
+            {
+                var values = delays.Where(d => d.Lead == lead).Select(d => d.Milliseconds).Order().ToArray();
+                Assert.Equal(6, values.Length); return (values[2] + values[3]) / 2;
+            }
+            var baseline = MedianDelay(0);
+            foreach (var lead in new[] { 100, 150, 250 })
+                Assert.InRange(MedianDelay(lead) - baseline, lead - 40d, lead + 40d);
         }
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }

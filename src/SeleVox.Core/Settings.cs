@@ -19,7 +19,8 @@ public sealed record Settings(string? VoiceId = null, double Rate = 1, float Vol
     bool AutoAsk = false, bool AllowAutomaticLlm = false, string? LlmAuthorizedBaseUrl = null,
     AnswerReadingStrategy LlmReadingStrategy = AnswerReadingStrategy.Complete,
     ThinkingProtocol LlmThinkingProtocol = ThinkingProtocol.None, ThinkingOption LlmThinking = ThinkingOption.Default,
-    PromptPreset[]? CustomPrompts = null, string? SelectedPromptId = null)
+    PromptPreset[]? CustomPrompts = null, string? SelectedPromptId = null,
+    int StartupSilenceMilliseconds = 100)
 {
     public const string DefaultLlmPrompt = "你是一个准确、简洁的问答助手。直接回答用户的问题，尽量使用自然、清晰、适合朗读的表达。对于不确定的事实明确说明，不编造信息。";
     public bool HasValidLlmConfiguration => NormalizeServiceUrl(LlmBaseUrl) is not null &&
@@ -31,7 +32,7 @@ public sealed record Settings(string? VoiceId = null, double Rate = 1, float Vol
     public bool UsesMiMoStreaming => Provider == TtsProvider.MiMo && MiMoStreaming && MiMoModel == "mimo-v2.5-tts";
     public const string DefaultOutput = "default";
     public bool IsValid => double.IsFinite(Rate) && Rate is >= 0.5 and <= 2 &&
-                           float.IsFinite(Volume) && Volume is >= 0 and <= 1 &&
+                           float.IsFinite(Volume) && Volume is >= 0 and <= 1 && StartupSilenceMilliseconds is >= 0 and <= 250 &&
                            Enum.IsDefined(LlmReadingStrategy) && ThinkingSettings.IsValid(LlmThinkingProtocol, LlmThinking) &&
                            PromptPresets.IsValid(CustomPrompts) && Enum.IsDefined(Provider) && Enum.IsDefined(OcrLanguage) && EdgePitchHz is >= -100 and <= 100 && EdgeLocaleFilter is not null && AzureRegion is not null &&
                            NormalizeServiceUrl(LlmBaseUrl) is not null && LlmModel is { Length: <= 200 } && LlmSystemPrompt is { Length: <= 8192 } &&

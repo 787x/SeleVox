@@ -15,6 +15,8 @@ public sealed class SettingsTests : IDisposable
     [InlineData("null")]
     [InlineData("{\"Rate\":10}")]
     [InlineData("{\"Volume\":-1}")]
+    [InlineData("{\"StartupSilenceMilliseconds\":-1}")]
+    [InlineData("{\"StartupSilenceMilliseconds\":251}")]
     [InlineData("{\"Provider\":9}")]
     [InlineData("{\"EdgePitchHz\":101}")]
     [InlineData("{\"EdgeLocaleFilter\":null}")]
@@ -47,6 +49,7 @@ public sealed class SettingsTests : IDisposable
         File.WriteAllText(PathName, "{\"VoiceId\":\"fixture\",\"Rate\":1.5,\"Volume\":0.4,\"StartWithWindows\":true}");
         var loaded = new SettingsStore(PathName).Load();
         Assert.Null(loaded.Warning); Assert.False(loaded.Settings.AutoSpeak);
+        Assert.Equal(100, loaded.Settings.StartupSilenceMilliseconds);
         Assert.Null(loaded.Settings.Applications); Assert.Equal(1.5, loaded.Settings.Rate);
         Assert.Equal(TtsProvider.Windows, loaded.Settings.Provider); Assert.Null(loaded.Settings.OutputDeviceIds);
         Assert.False(loaded.Settings.AllowAutomaticCloud);
@@ -72,6 +75,15 @@ public sealed class SettingsTests : IDisposable
         Assert.Throws<ArgumentOutOfRangeException>(() => store.Save(settings with { Applications = [new("fixture.exe")] }));
     }
     public void Dispose() { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    [Theory] [InlineData(0)] [InlineData(100)] [InlineData(150)] [InlineData(250)]
+    public void StartupSilencePreferencePersists(int milliseconds)
+    {
+        var store = new SettingsStore(PathName);
+        store.Save(new(StartupSilenceMilliseconds: milliseconds));
+        Assert.Null(store.Load().Warning); Assert.Equal(milliseconds, store.Load().Settings.StartupSilenceMilliseconds);
+        Assert.Throws<ArgumentOutOfRangeException>(() => store.Save(new(StartupSilenceMilliseconds: -1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => store.Save(new(StartupSilenceMilliseconds: 251)));
+    }
     [Fact] public void Pr3AzureConsentNeverBecomesEdgeConsentAndNewSettingsPersist()
     {
         Directory.CreateDirectory(directory);

@@ -165,6 +165,9 @@
             <DockPanel><TextBlock DockPanel.Dock="Right" Width="46" Text="{Binding ElementName=Rate, Path=Value, StringFormat=F2}"/><Slider x:Name="Rate" Minimum="0.5" Maximum="2" TickFrequency="0.05" IsSnapToTickEnabled="True"/></DockPanel>
             <TextBlock Text="音量（0–1）" Margin="0,18,0,4"/>
             <DockPanel><TextBlock DockPanel.Dock="Right" Width="46" Text="{Binding ElementName=Volume, Path=Value, StringFormat=F2}"/><Slider x:Name="Volume" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"/></DockPanel>
+            <TextBlock Text="起始静音（0–250 ms）" Margin="0,18,0,4"/>
+            <DockPanel><TextBlock DockPanel.Dock="Right" Width="65" Text="{Binding ElementName=StartupSilence, Path=Value, StringFormat={}{0:0} ms}"/><Slider x:Name="StartupSilence" Minimum="0" Maximum="250" TickFrequency="10" IsSnapToTickEnabled="True"/></DockPanel>
+            <TextBlock Text="减少耳机起音缺失，默认 100 ms；0 表示关闭。保存后用于下一次朗读，逐句朗读每句都会增加此等待，暂停/继续不重复增加。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
             <TextBlock Text="音频输出 · 点击多选（无需按 Ctrl），选择后须保存" Margin="0,18,0,4"/>
             <ListBox x:Name="Outputs" SelectionMode="Multiple" Height="110" DisplayMemberPath="Label" SelectionChanged="Outputs_Changed"/>
             <TextBlock x:Name="OutputSaveHint" Text="设备选择保存后用于下一次朗读。" TextWrapping="Wrap" Foreground="#8A4D00" Margin="0,6,0,0"/>

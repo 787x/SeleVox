@@ -37,6 +37,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { VoiceWarning = $"无法枚举本地语音（{ex.GetType().Name}）。"; }
         Rate.Value = settings.Rate; Volume.Value = settings.Volume; AutoStart.IsChecked = settings.StartWithWindows;
+        StartupSilence.Value = settings.StartupSilenceMilliseconds;
         OcrLanguageChoice.SelectedIndex = (int)settings.OcrLanguage;
         Region.Text = settings.AzureRegion;
         if (settings.AzureVoice is { } cloudVoice)
@@ -106,6 +107,7 @@ public partial class MainWindow : Window
         if (provider == TtsProvider.OpenAiCompatible && OpenAiModel.Text.Trim() is "tts-1" or "tts-1-hd" && !string.IsNullOrWhiteSpace(OpenAiInstructions.Text))
         { SetNotice("tts-1 / tts-1-hd 不支持 Instructions，请清空或选择支持的模型。"); return; }
         var error = save(savedSettings with { VoiceId = Voice.SelectedValue as string, Rate = Rate.Value, Volume = (float)Volume.Value,
+            StartupSilenceMilliseconds = (int)Math.Round(StartupSilence.Value),
             Provider = provider, AzureRegion = provider == TtsProvider.Azure ? Region.Text.Trim() : savedSettings.AzureRegion,
             AzureVoice = provider == TtsProvider.Azure ? CloudVoice.SelectedValue as string : savedSettings.AzureVoice,
             AllowAutomaticCloud = AutomaticCloud.IsChecked == true,

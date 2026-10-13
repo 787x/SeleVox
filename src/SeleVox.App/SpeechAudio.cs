@@ -83,7 +83,7 @@ internal static partial class AudioOutputs
                 if (resolvedIds.Contains(device.ID)) { device.Dispose(); stream.Dispose(); return null; }
                 var resolved = device.ID;
                 var owned = device; device = null;
-                var player = new WasapiPlayback(stream, volume, owned);
+                var player = new WasapiPlayback(stream, volume, owned, settings.StartupSilenceMilliseconds);
                 resolvedIds.Add(resolved);
                 return player;
             }
