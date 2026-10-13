@@ -23,7 +23,7 @@ public sealed class OcrDesktopTests(ITestOutputHelper output)
 {
     [WindowsOcrFact] public Task RepeatSnapshotExcludesVisibleOldResultAndCancelRestoresEditedText() => RunSta(async () =>
     {
-        var originalClipboard = Clipboard.GetDataObject(); var originalFocus = Native.GetForegroundWindow();
+        var originalClipboard = ClipboardBackup.Capture(); var originalFocus = Native.GetForegroundWindow();
         var reads = 0; var automaticSelections = 0;
         using var monitor = new AutomaticMouseMonitor(); monitor.Selected += (_, _, _) => ++automaticSelections;
         using var source = new Drawing.Bitmap(1100, 700, System.Drawing.Imaging.PixelFormat.Format32bppRgb);
@@ -124,7 +124,7 @@ public sealed class OcrDesktopTests(ITestOutputHelper output)
     [WindowsOcrFact] public Task RepeatedResultKeepsWindowPositionSizeAndRestoresFromMinimized() => RunSta(async () =>
     {
         GetPhysicalCursorPos(out var cursor);
-        var original = Clipboard.GetDataObject(); var reads = 0;
+        var original = ClipboardBackup.Capture(); var reads = 0;
         var window = new OcrResultWindow(new("first fixture", TextSource.ScreenOcr), () => new Settings(), _ => { ++reads; return Task.CompletedTask; });
         try
         {
@@ -217,7 +217,7 @@ public sealed class OcrDesktopTests(ITestOutputHelper output)
 
     [WindowsOcrFact] public Task ResultEditsClipboardOnlyOnClickAndShowsSavedService() => RunSta(async () =>
     {
-        var original = Clipboard.GetDataObject();
+        var original = ClipboardBackup.Capture();
         OcrResultWindow? window = null;
         try
         {
@@ -268,19 +268,32 @@ public sealed class OcrDesktopTests(ITestOutputHelper output)
     }
     internal static Task RunSta(Func<Task> action)
     {
-        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Exception? failure = null;
         var thread = new Thread(() =>
         {
             var oldDpi = SetThreadDpiAwarenessContext(new nint(-4));
-            var dispatcher = Dispatcher.CurrentDispatcher; SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
-            dispatcher.BeginInvoke(async () =>
+            try
             {
-                try { await action(); completion.TrySetResult(); } catch (Exception ex) { completion.TrySetException(ex); }
-                finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Background); }
-            });
-            Dispatcher.Run(); if (oldDpi != 0) SetThreadDpiAwarenessContext(oldDpi);
+                using var desktop = DesktopTestScope.Acquire();
+                var dispatcher = Dispatcher.CurrentDispatcher;
+                SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+                dispatcher.BeginInvoke(async () =>
+                {
+                    try { await action(); } catch (Exception ex) { failure = ex; }
+                    finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Background); }
+                });
+                Dispatcher.Run();
+            }
+            catch (Exception ex) { failure ??= ex; }
+            finally { if (oldDpi != 0) SetThreadDpiAwarenessContext(oldDpi); }
         }) { IsBackground = true };
-        thread.SetApartmentState(ApartmentState.STA); thread.Start(); return completion.Task.WaitAsync(TimeSpan.FromSeconds(45));
+        thread.SetApartmentState(ApartmentState.STA); thread.Start();
+        return Task.Run(() =>
+        {
+            // Native/OLE thread teardown must finish before another desktop test starts.
+            if (!thread.Join(TimeSpan.FromSeconds(45))) throw new TimeoutException("桌面测试 STA 线程未在既有 45 秒预算内退出。");
+            if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        });
     }
     [StructLayout(LayoutKind.Sequential)] private struct PhysicalPoint { public int X, Y; }
     [StructLayout(LayoutKind.Sequential)] private struct PhysicalRect { public int Left, Top, Right, Bottom; }

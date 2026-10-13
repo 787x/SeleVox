@@ -73,7 +73,7 @@ internal sealed class AiAnswerWindow : Window
         if (hiddenForCapture || !IsVisible) return;
         captureState = WindowState;
         captureBounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
-        Hide(); hiddenForCapture = true;
+        ScreenSnapshot.HideWindowForCapture(this); hiddenForCapture = true;
     }
     internal void RestoreAfterCapture()
     {

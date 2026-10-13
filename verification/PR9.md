@@ -36,14 +36,14 @@
 
 实际短回答这一次逐句首声消费反而慢 1682ms；两次 LLM 首正文等待差 1964ms，回答在 MiMo 首音频之前就已生成完成。不能据此宣称在线速度提升或性能回归；样本量仅 1 对、回答内容也可能不同。完整模式 TTS 1 请求，逐句模式 2 请求。暂不预取下一句合成，可能存在段间合成等待；没有声学段间静默时长测量，不预设连续性已达特定目标。
 
-## 扩大桌面回归的失败与剩余限制
+## 初轮扩大桌面回归记录（桌面三项已由后文收尾）
 
 pr9-regression.trx：148 通过、3 失败、1 跳过（收费测试避免重复执行）。失败为：新增鼠标集成超时；原 PR8 手动 Ctrl+Alt+A 测试全局热键注册 1409 被占用；原 PR8 真实截图隐藏测试前后采样均为白色。桌面专项重试 pr9-desktop-retry.trx 中鼠标超时和截图白色问题仍存在。这些失败日志保留，未把此前一次通过当作稳定全量桌面验收通过。最终逻辑与音频验证独立执行通过。
 
-以下仍需人工验收或独立环境复测：
+以下是初轮遗留项；本次桌面收尾已完成热键、截图和鼠标重复验证，其他事项仍需人工验收：
 
 - 实际安装程序设置/托盘同步全流程，以及用户常用编辑器/浏览器鼠标选中到自动问答；本次鼠标验证使用真实组件的隔离集成测试，并非启动实际 App 后操作托盘。
-- 稳定桌面下重新验证全局手动热键、AI 与 OCR 遮罩截图像素和多次鼠标选区；初轮非激活窗口测试通过，扩大回归的环境冲突未解决。
+- 全局手动热键、AI/OCR 截图隐藏与多次鼠标选区已在本次收尾验证中完成；结果见文末。
 - 真实在线语音的双设备逐句、任意在线 TTS 故障时取消、在线语音 Stop/撤销授权的服务端行为；本次收费比较仅默认单设备正常完成，取消/故障/权限以可控后端验证。
 - 五种 TTS 的全部在线兼容性，以及真实 OpenAI / MiMo LLM Thinking 支持值未逐项收费验证；不根据域名猜测模型支持。
 - 当前单路合成，没有下一句预取；Markdown、复杂英文缩写和非常规标点使用保守启发式分句，不实现富文本清洗。长答案最多 32768 字符；背压和网络总超时仍适用，长时间暂停可能使 LLM 网络超时，界面会标注不完整。
@@ -106,3 +106,45 @@ LLM：`deepseek-v4.1-flash`（DeepSeek v4.1 Flash），服务推理等级 `high`
 测量客户端条件：第 2 题逐句成功样本的 LLM 总等待预算为 600 s，其他样本为 180 s；该样本实际读到生成正常结束为 159.286 s，低于 180 s。程序默认三分钟预算未修改。逐句读取结束时点包含队列背压，不等同于服务端纯生成耗时。所有时点、段间等待和预算收录于 [成功样本 JSON](PR9-long-success-metrics.json)，不含问题、回答正文、Key 或音频。
 
 新增 ThreeAdditionalLongQuestionPairsAlternateOrder 和独立 RepeatSecondAndThirdLongIncrementalExperiments 测量入口；最后独立重测 pr9-pair2-long-success.trx 通过。重现三对：设置 SELEVOX_LLM_SERVICE_TESTS=1，并可设置测量专用 SELEVOX_QA_LLM_TOTAL_TIMEOUT_SECONDS=600，再按名称过滤 ThreeAdditionalLongQuestionPairs。独立重测入口用 SELEVOX_QA_REPEAT_PAIR=2 或 3 指定题目。可用 SELEVOX_QA_TIMING_LOG 指定仅含时点/字符数/请求数的进度文件。运行会实际收费及播放语音，应串行执行，每种模式最多等十分钟。
+
+## PR9 合并前桌面回归收尾（2026-10-13）
+
+本次仅分析并修复桌面回归问题，没有新增功能，没有重跑收费 LLM/MiMo 长回答。环境为 Windows x64（报告版本 10.0.26300.0），交互式用户会话 1，单屏 2560×1600、DPI 144（150%）。
+
+### 原因与实际修改
+
+| 问题 | 定位证据 | 处理 |
+| --- | --- | --- |
+| Ctrl+Alt+A 注册 1409 | 残留 PR8 测试实例 PID 20032，路径 artifacts/pr8-zorder/bin/SeleVox.App/release/SeleVox.App.exe；五个热键全部冲突。经用户允许关闭后注册与接收成功 | 清除已授权的残留实例；保留产品热键冲突反馈，不换快捷键 |
+| 自动鼠标问答超时 | 独立基线复现；关闭残留实例后通过，最终连续 5 轮通过。未采集旧实例每个 Hook 回调，无法将干扰精确归因到某个回调 | 测试要求独占交互式桌面；增加真实输入前的前台/命中窗口断言，拖选用 finally 释放鼠标按键 |
+| 隐藏 AI 窗口后截图仍白色 | WindowFromPoint 已指向背景 fixture，截图却仍为 FFFFFFFF；独立运行偶见 ECF3F3，说明旧画面仍在过渡。仅禁用隐藏动画的实验立即得到 CadetBlue 5F9EA0 | AI 与 OCR 结果截图隐藏时暂禁用 DWM transitions，Hide 后恢复默认；沿用原 Dispatcher.Yield + DwmFlush 截图路径及恢复顺序 |
+| 扩展集合热键注册成功后焦点变化 | 前台 HWND/PID/标题诊断明确指向新建的 SeleVox hotkeys 接收窗，而非外部 fixture | HwndSource 显式 WindowStyle=0、WS_EX_NOACTIVATE，防止默认可见样式抢前台；保留创建前后及实际热键回调的前台断言 |
+| 扩展集合剪贴板清理异常 | OCR 像素断言已通过，失败位于 finally 中恢复 Clipboard.GetDataObject 返回的延迟 OLE 来源；完成数据备份后清理与扩展集合通过 | 测试在替换剪贴板前物化备份格式/数据，恢复独立 DataObject；数据仅存在内存，不记录正文 |
+
+Native.cs 的接收窗构造和旧 Hide+DwmFlush 路径在 PR8/main 中已有相同实现；这是扩展回归暴露的现有缺陷，并非需要改变 PR9 功能或白名单/权限语义。产品修改只限于隐藏接收窗、截图无动画隐藏及准备失败反馈；Auto Ask、分句队列、Prompt、Thinking、TTS 与多设备音频没有改动。
+
+### 测试隔离与清理
+
+- WindowsLifetimeTests 纳入同一 WPF desktop 串行集合，热键注册→冲突→释放→再次注册循环实际执行三次。
+- 桌面 STA helper 采用会话级命名 Mutex，覆盖不同 testhost；跨进程测试证明持有时另一进程无法同时获取，释放后可获取。等待锁最多 5 秒，竞争时明确报错，不跳过。
+- Edge/HTTP 语音设置窗口使用同一个 STA helper；等待 Dispatcher 关闭及整个 STA 线程退出再完成测试。保留原 45 秒线程预算、原 10 秒问答等待预算，没有延长全部超时。
+- 显式 opt-in 桌面测试检查交互式会话、可访问输入桌面与测试线程桌面身份；锁屏/不同输入桌面会明确失败，不伪称运行通过。已有应用仍可占用系统热键，测试不会自动关闭用户进程。
+- 截图断言从只检查像素不同增强为：显示/隐藏时命中对应 HWND，隐藏后精确等于背景色。没有删除或跳过失败测试，没有加入 Hide 后延时来等待动画。
+
+### 实际执行结果
+
+- 初始独立复现：三项均失败，pr9-desktop-closeout-baseline.trx。
+- 清除残留实例后：鼠标与手动 AI 热键通过，截图仍失败，pr9-desktop-closeout-without-residual.trx；保留作为原因分离证据。
+- DWM 隐藏动画实验与即时恢复动画实验：三项均通过，pr9-desktop-no-hide-animation-probe.trx / pr9-desktop-restore-animation-probe.trx。最终测试不再直接设置 DWM 属性，使用修复后的产品入口。
+- 桌面扩展集合：23 通过、0 失败、0 跳过，pr9-desktop-closeout-cleanup-fix.trx。
+- 三项原失败连续 5 轮：每轮 3 通过、0 失败、0 跳过，共 15 次成功；pr9-desktop-closeout-repeat-1.trx 至 repeat-5.trx。
+- 最终 Release 构建：0 警告、0 错误。
+- 最终直接相关回归：167 通过、0 失败、0 跳过，pr9-desktop-closeout-final.trx。包含问答/取消、选区稳定、SSE/本机 HTTP、配置/权限、分句/音频逻辑、多设备逻辑、设置 UI、实际鼠标与热键、截图/OCR 遮罩、非激活恢复及跨进程互斥。无付费服务测试。
+
+### 合并判断与限制
+
+这三项桌面回归已收尾，在本次真实交互式桌面环境中没有剩余阻塞。仍保留原计划的常用真实应用 UIA、完整 App 设置/托盘操作及真实在线双设备人工验收；本次没有在其他 Windows 构建、缩放比例、多屏或 RDP 断开/锁屏环境重跑。不能把隔离 WPF fixture 的通过扩大为所有应用均支持。
+
+重现原三项：设置 SELEVOX_OCR_DESKTOP_TESTS=1，在已解锁、可见且无其他 SeleVox 实例占用热键的桌面，串行执行 `dotnet test tests/SeleVox.Tests -c Release --filter "FullyQualifiedName~ExternalMouseSelection|FullyQualifiedName~ExternalUiaSelectionActualAsk|FullyQualifiedName~AnswerHiddenDuringRealScreenshot"`。测试会短暂移动鼠标及改变前台，请避免同时操作。TRX 保存在忽略提交的 TestResults 目录。
+
+实现核对：[HwndSourceParameters 默认窗口样式](https://learn.microsoft.com/en-us/dotnet/api/system.windows.interop.hwndsourceparameters.windowstyle?view=windowsdesktop-10.0)、[WS_EX_NOACTIVATE](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles)、[DWM transition 属性](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute)。

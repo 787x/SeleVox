@@ -147,9 +147,15 @@ public sealed class Pr9WindowsTests(ITestOutputHelper log)
             async Task Drag()
             {
                 var left = (int)(bounds.Left + 5 * scale); var top = (int)(bounds.Top + 15 * scale);
-                SetCursorPos(left, top); mouse_event(2, 0, 0, 0, 0);
-                for (var x = left + 10; x <= left + 270 * scale; x += 10) { SetCursorPos(x, top); await Task.Delay(8); }
-                mouse_event(4, 0, 0, 0, 0);
+                Assert.Equal(hwnd, Native.GetForegroundWindow());
+                Assert.True(SetCursorPos(left, top));
+                Assert.Equal(hwnd, GetAncestor(WindowFromPoint(new CursorPoint { X = left, Y = top }), 2));
+                mouse_event(2, 0, 0, 0, 0);
+                try
+                {
+                    for (var x = left + 10; x <= left + 270 * scale; x += 10) { Assert.True(SetCursorPos(x, top)); await Task.Delay(8); }
+                }
+                finally { mouse_event(4, 0, 0, 0, 0); }
             }
             await Drag(); await done.Task.WaitAsync(TimeSpan.FromSeconds(10)); await serving;
             Assert.Equal(QuestionState.Completed, qa.Snapshot.State); Assert.Equal(hwnd, Native.GetForegroundWindow()); Assert.Equal(1, calls);
@@ -174,6 +180,8 @@ public sealed class Pr9WindowsTests(ITestOutputHelper log)
         }
     }
     private static void Click(Window w, string name) => AiWindowTests.Descendants<Button>(w).Single(b => Equals(b.Content, name)).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+    [DllImport("user32.dll")] private static extern nint WindowFromPoint(CursorPoint point);
+    [DllImport("user32.dll")] private static extern nint GetAncestor(nint hwnd, uint flags);
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint hwnd);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(nint hwnd);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int w, int h, uint flags);

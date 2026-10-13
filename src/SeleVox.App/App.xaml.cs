@@ -294,6 +294,14 @@ public partial class App : System.Windows.Application
             }, message => { if (!exiting) { settingsWindow?.SetNotice(message); Notify(message); } },
                 () => { if (!exiting) settingsWindow?.SetNotice("屏幕 OCR 已取消。"); });
         }
+        catch (Exception ex)
+        {
+            if (!exiting)
+            {
+                var message = ex is UserFeedbackException ? ex.Message : "无法准备屏幕 OCR，请检查桌面访问权限后重试。";
+                settingsWindow?.SetNotice(message); Notify(message);
+            }
+        }
         finally
         {
             if (!exiting && !ocrOperation.IsActive)

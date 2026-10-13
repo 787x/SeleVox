@@ -11,7 +11,7 @@ public sealed class AiWindowTests
 {
     [Fact] public Task OcrAskUsesEditedTextWithoutCopyOrReadAndKeepsWindow() => OcrDesktopTests.RunSta(async () =>
     {
-        var original = Clipboard.GetDataObject(); var reads = 0; string? asked = null;
+        var original = ClipboardBackup.Capture(); var reads = 0; string? asked = null;
         var window = new OcrResultWindow(new("original", TextSource.ScreenOcr), () => new(), _ => { ++reads; return Task.CompletedTask; }, value => asked = value);
         try
         {

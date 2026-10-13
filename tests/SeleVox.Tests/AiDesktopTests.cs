@@ -6,11 +6,12 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using SeleVox.App;
 using SeleVox.Core;
+using Xunit.Abstractions;
 
 namespace SeleVox.Tests;
 
 [Collection("WPF desktop")]
-public sealed class AiDesktopTests
+public sealed class AiDesktopTests(ITestOutputHelper output)
 {
     [WindowsOcrFact, Trait("Category", "WindowsQaDesktop")]
     public Task CompletedOcrRemainsAboveRestoredAnswerOnFirstAndRepeatedCapture() => OcrDesktopTests.RunSta(async () =>
@@ -57,11 +58,22 @@ public sealed class AiDesktopTests
             var placement = (answer.Left, answer.Top, answer.Width, answer.Height);
             Assert.True(GetWindowRect(hwnd, out var rect));
             var x = (rect.Left + rect.Right) / 2; var y = rect.Bottom - 110;
+            var fixtureHwnd = new WindowInteropHelper(fixture).Handle;
+            Assert.True(GetWindowRect(fixtureHwnd, out var fixtureRect));
+            output.WriteLine($"answer-rect={rect.Left},{rect.Top},{rect.Right},{rect.Bottom}; fixture-rect={fixtureRect.Left},{fixtureRect.Top},{fixtureRect.Right},{fixtureRect.Bottom}; sample={x},{y}; dpi={GetDpiForWindow(hwnd)}");
+            var shownOwner = GetAncestor(WindowFromPoint(new Point { X = x, Y = y }), 2);
+            output.WriteLine($"shown-sample-owner={shownOwner}; answer={hwnd}; fixture={fixtureHwnd}");
+            Assert.Equal(hwnd, shownOwner);
             var before = await ScreenSnapshot.CaptureAsync(default); int shown;
             try { var shot = before.Single(s => s.Bounds.Contains(x, y)); shown = shot.Image.GetPixel(x - shot.Bounds.X, y - shot.Bounds.Y).ToArgb(); }
             finally { foreach (var shot in before) shot.Dispose(); }
-            answer.HideForCapture(); answer.HideForCapture(); var hidden = await ScreenSnapshot.CaptureAsync(default);
-            try { var shot = hidden.Single(s => s.Bounds.Contains(x, y)); Assert.NotEqual(shown, shot.Image.GetPixel(x - shot.Bounds.X, y - shot.Bounds.Y).ToArgb()); }
+            output.WriteLine($"shown-pixel={shown:X8}");
+            answer.HideForCapture(); answer.HideForCapture();
+            var hiddenOwner = GetAncestor(WindowFromPoint(new Point { X = x, Y = y }), 2);
+            output.WriteLine($"hidden-sample-owner={hiddenOwner}; visible={answer.IsVisible}");
+            Assert.Equal(fixtureHwnd, hiddenOwner);
+            var hidden = await ScreenSnapshot.CaptureAsync(default);
+            try { var shot = hidden.Single(s => s.Bounds.Contains(x, y)); var pixel = shot.Image.GetPixel(x - shot.Bounds.X, y - shot.Bounds.Y).ToArgb(); output.WriteLine($"hidden-pixel={pixel:X8}"); Assert.NotEqual(shown, pixel); Assert.Equal(System.Drawing.Color.CadetBlue.ToArgb(), pixel); }
             finally { foreach (var shot in hidden) shot.Dispose(); }
             var focus = Native.GetForegroundWindow(); answer.RestoreAfterCapture(); await Task.Delay(80);
             Assert.True(answer.IsVisible); Assert.Equal(focus, Native.GetForegroundWindow()); Assert.Equal(placement, (answer.Left, answer.Top, answer.Width, answer.Height));
@@ -95,13 +107,17 @@ public sealed class AiDesktopTests
             mouse_event(0x0002, 0, 0, 0, 0); mouse_event(0x0004, 0, 0, 0, 0);
             await Task.Delay(150); SetForegroundWindow(hwnd); await Task.Delay(100); Assert.Equal(hwnd, Native.GetForegroundWindow());
             using var hotkeys = new Hotkeys(); Assert.DoesNotContain(hotkeys.Conflicts, c => c.StartsWith("Ctrl+Alt+A"));
+            Assert.Equal(hwnd, Native.GetForegroundWindow()); // Constructing the receiver must not activate it.
             var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var capture = new SelectionCapture();
+            var presses = 0;
             hotkeys.Pressed += async (id, foreground) =>
             {
                 if (id != 5) return;
                 try
                 {
+                    Native.GetWindowThreadProcessId(foreground, out var foregroundPid);
+                    output.WriteLine($"ask-hotkey-press={++presses}; foreground={foreground}; pid={foregroundPid}; fixture={hwnd}; fixture-pid={fixture.Id}");
                     Assert.Equal(hwnd, foreground); var selected = await capture.CaptureTextAsync(foreground, default); Assert.Equal(text, selected.Text);
                     var running = qa.AskAsync(selected.Text, ChatCompletionTests.Options with { LlmBaseUrl = server.Address, LlmAutoRead = false }, "fake-key");
                     answer = new AiAnswerWindow(qa, () => new(), () => "idle", qa.Cancel, () => { }); answer.ShowAnswer();
@@ -118,6 +134,9 @@ public sealed class AiDesktopTests
                 await ChatNetworkTests.Server.Write(context.Response, ChatCompletionTests.Event("Four.")); await Task.Delay(150);
                 await ChatNetworkTests.Server.Write(context.Response, ChatCompletionTests.Finish); context.Response.Close();
             });
+            var readyForeground = Native.GetForegroundWindow(); Native.GetWindowThreadProcessId(readyForeground, out var readyPid);
+            output.WriteLine($"before-send-foreground={readyForeground}; pid={readyPid}; expected={hwnd}; fixture-pid={fixture.Id}");
+            Assert.Equal(hwnd, readyForeground);
             SendHotkey(0x41); await done.Task.WaitAsync(TimeSpan.FromSeconds(10)); await serving;
             OcrDesktopTests.RenderIfRequested(answer!, "pr8-uia-loopback");
         }
@@ -175,6 +194,9 @@ public sealed class AiDesktopTests
     }
     [StructLayout(LayoutKind.Sequential)] private struct Rect { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] private struct Point { public int X, Y; }
+    [DllImport("user32.dll")] private static extern nint WindowFromPoint(Point point);
+    [DllImport("user32.dll")] private static extern nint GetAncestor(nint hwnd, uint flags);
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint hwnd);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(nint window, out Rect rect);
     [DllImport("user32.dll")] private static extern nint GetWindow(nint window, uint command);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(nint window);

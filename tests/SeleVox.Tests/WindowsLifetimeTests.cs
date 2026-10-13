@@ -1,6 +1,7 @@
 using SeleVox.App;
 using ApplicationIdentity = SeleVox.App.ApplicationIdentity;
 namespace SeleVox.Tests;
+[Collection("WPF desktop")]
 public sealed class WindowsLifetimeTests
 {
     [Fact] public void SingleInstanceSignalsOriginalAndReleasesMutex()
@@ -22,12 +23,15 @@ public sealed class WindowsLifetimeTests
     {
         RunSta(() =>
         {
-            using (var first = new Hotkeys())
+            for (var attempt = 0; attempt < 3; attempt++)
             {
-                Assert.Empty(first.Conflicts);
-                using var second = new Hotkeys(); Assert.Equal(5, second.Conflicts.Count);
+                using (var first = new Hotkeys())
+                {
+                    Assert.Empty(first.Conflicts);
+                    using var second = new Hotkeys(); Assert.Equal(5, second.Conflicts.Count);
+                }
+                using var restarted = new Hotkeys(); Assert.Empty(restarted.Conflicts);
             }
-            using var restarted = new Hotkeys(); Assert.Empty(restarted.Conflicts);
         });
     }
     [Fact] public void MouseAndFocusHooksCanBeInstalledReleasedAndInstalledAgain()
@@ -47,7 +51,7 @@ public sealed class WindowsLifetimeTests
     private static void RunSta(Action action)
     {
         Exception? failure = null;
-        var thread = new Thread(() => { try { action(); } catch (Exception ex) { failure = ex; } }) { IsBackground = true };
+        var thread = new Thread(() => { try { using var desktop = DesktopTestScope.Acquire(); action(); } catch (Exception ex) { failure = ex; } }) { IsBackground = true };
         thread.SetApartmentState(ApartmentState.STA); thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(10)));
         if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();

@@ -27,6 +27,22 @@ internal sealed class ScreenSnapshot(Rectangle bounds, Bitmap image) : IDisposab
 {
     internal Rectangle Bounds { get; } = bounds;
     internal Bitmap Image { get; } = image;
+    internal static void HideWindowForCapture(System.Windows.Window window)
+    {
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+        const int transitionsForceDisabled = 3;
+        var disabled = 1;
+        if (DwmSetWindowAttribute(hwnd, transitionsForceDisabled, ref disabled, sizeof(int)) < 0)
+            throw new UserFeedbackException("无法无动画隐藏结果窗口，已取消截图，请重试。");
+        try { window.Hide(); }
+        finally
+        {
+            // Result windows use default transitions outside capture. Re-enabling affects future
+            // transitions; the synchronous hide above must not leave a fading copy in the snapshot.
+            disabled = 0;
+            _ = DwmSetWindowAttribute(hwnd, transitionsForceDisabled, ref disabled, sizeof(int));
+        }
+    }
     internal static async Task<List<ScreenSnapshot>> CaptureAsync(CancellationToken token)
     {
         // Let the UI dispatcher finish visibility/layout/render work after hiding a result.
@@ -68,6 +84,7 @@ internal sealed class ScreenSnapshot(Rectangle bounds, Bitmap image) : IDisposab
     public void Dispose() => Image.Dispose();
     [DllImport("user32.dll")] private static extern nint SetThreadDpiAwarenessContext(nint context);
     [DllImport("dwmapi.dll")] private static extern int DwmFlush();
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(nint hwnd, int attribute, ref int value, int size);
 }
 
 internal sealed class LocalOcr(string? dataDirectory = null)
