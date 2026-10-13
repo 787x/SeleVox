@@ -1,8 +1,8 @@
 {
   "date": "2026-10-13",
   "sample_selection": "Completed successful runs only",
-  "llm_model": "workbuddy/deepseek-v4.1-flash",
-  "reasoning_level": "high (user-confirmed service setting; client omits extra parameter)",
+  "llm_model": "deepseek-v4.1-flash",
+  "reasoning_level": "high",
   "tts_model": "mimo-v2.5-tts",
   "output": "default single WASAPI endpoint",
   "poll_interval_ms": 10,
