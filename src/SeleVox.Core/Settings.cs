@@ -13,8 +13,9 @@ public sealed record Settings(string? VoiceId = null, double Rate = 1, float Vol
     string MiMoVoice = "冰糖", string MiMoStyle = "", bool AllowAutomaticMiMo = false, string MiMoModel = "mimo-v2.5-tts",
     string OpenAiBaseUrl = "https://api.openai.com/v1", string OpenAiModel = "gpt-4o-mini-tts",
     string OpenAiVoice = "coral", string OpenAiInstructions = "", bool AllowAutomaticOpenAi = false,
-    string? OpenAiAuthorizedBaseUrl = null)
+    string? OpenAiAuthorizedBaseUrl = null, bool MiMoStreaming = true)
 {
+    public bool UsesMiMoStreaming => Provider == TtsProvider.MiMo && MiMoStreaming && MiMoModel == "mimo-v2.5-tts";
     public const string DefaultOutput = "default";
     public bool IsValid => double.IsFinite(Rate) && Rate is >= 0.5 and <= 2 &&
                            float.IsFinite(Volume) && Volume is >= 0 and <= 1 &&

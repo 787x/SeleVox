@@ -9,6 +9,18 @@ namespace SeleVox.Tests;
 
 public sealed class HttpSpeechWindowTests
 {
+    [Fact] public Task StreamingOptionRestoresSavesAndExplainsUnsupportedModel() => RunSta(async () =>
+    {
+        var saved = new Settings(Provider: TtsProvider.MiMo, MiMoStreaming: false); MainWindow? window = null;
+        window = new MainWindow(saved, updated => { saved = updated; window!.SetAutomaticSettings(updated); return null; },
+            () => { }, () => { }, () => { }, () => Task.FromResult<string?>(null), () => { });
+        var option = (CheckBox)window.FindName("MiMoStreaming"); var model = (TextBox)window.FindName("MiMoModel");
+        Assert.False(option.IsChecked); Assert.True(option.IsEnabled);
+        model.Text = "future-model"; Assert.False(option.IsEnabled); Assert.Contains("非流式", ((TextBlock)window.FindName("MiMoStreamingHint")).Text);
+        model.Text = "mimo-v2.5-tts"; Assert.True(option.IsEnabled); option.IsChecked = true;
+        await WaitForOutputs(window); Buttons(window).Single(b => b.Content as string == "保存设置").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Assert.True(saved.MiMoStreaming); Assert.True(saved.UsesMiMoStreaming); RenderIfRequested(window, "mimo-streaming"); window.Close();
+    });
     [Fact] public Task NewProvidersRestoreAndConsentDoesNotSaveDraftProvider() => RunSta(async () =>
     {
         var saved = new Settings(MiMoVoice: "Dean", MiMoStyle: "calm", MiMoModel: "fixture-mimo-model", OpenAiModel: "fixture-model", OpenAiVoice: "fixture-voice", OpenAiInstructions: "gentle");

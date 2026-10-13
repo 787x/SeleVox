@@ -8,8 +8,12 @@ namespace SeleVox.App;
 
 internal sealed record VoiceChoice(string Id, string Label);
 
-internal sealed class SpeechAudio : ISpeechSynthesis, IAudioPlaybackFactory
+internal sealed class SpeechAudio : ISpeechSynthesis, IAudioPlaybackFactory, IStreamingSpeechSynthesis, IStreamingPlaybackFactory
 {
+    public bool UsesStreaming(Settings settings) => settings.UsesMiMoStreaming;
+    public Task SynthesizeStreamingAsync(string text, Settings settings, StreamingPcmBuffer buffer, CancellationToken cancellation) =>
+        new MiMoSpeech().SynthesizeStreamingAsync(text, settings, buffer, cancellation);
+    public IAudioPlayback CreateStreamingPlayback(StreamingPcmBuffer buffer, Settings settings) => AudioOutputs.CreateStreamingPlayback(buffer, settings);
     public static IReadOnlyList<VoiceChoice> GetVoices() => SpeechSynthesizer.AllVoices
         .Select(v => new VoiceChoice(v.Id, $"{v.DisplayName} ({v.Language})")).ToList();
 
@@ -51,7 +55,7 @@ internal sealed class SpeechAudio : ISpeechSynthesis, IAudioPlaybackFactory
 
 internal sealed record OutputChoice(string Id, string Label);
 
-internal static class AudioOutputs
+internal static partial class AudioOutputs
 {
     public static IReadOnlyList<OutputChoice> GetDevices()
     {

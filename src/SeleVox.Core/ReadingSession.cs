@@ -22,6 +22,15 @@ public interface IAudioPlaybackFactory
 {
     IAudioPlayback CreatePlayback(Stream audio, Settings settings);
 }
+public interface IStreamingSpeechSynthesis
+{
+    bool UsesStreaming(Settings settings);
+    Task SynthesizeStreamingAsync(string text, Settings settings, StreamingPcmBuffer buffer, CancellationToken cancellation);
+}
+public interface IStreamingPlaybackFactory
+{
+    IAudioPlayback CreateStreamingPlayback(StreamingPcmBuffer buffer, Settings settings);
+}
 
 public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactory outputs) : IDisposable
 {
@@ -32,6 +41,10 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
     private long generation;
     private bool disposed;
     private bool automatic;
+    private StreamingPcmBuffer? streamingBuffer;
+    private CancellationTokenSource? streamingProducer;
+    private bool streamingStarted, streamingInterrupted;
+    private string? streamingError;
     public Status Status { get; private set; } = new(ReadingState.Idle, "就绪");
     public event Action<Status>? Changed;
 
@@ -41,9 +54,19 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
     {
         lock (sync)
         {
-            if (disposed || !automatic || current is null || playback is not null) return;
-            ++generation; current.Cancel(); current = null;
+            if (disposed || !automatic || current is null) return;
+            if (streamingBuffer is not null && streamingStarted && playback is not null)
+            {
+                // Keep already-started playback, but stop uploads/append immediately and drain only accepted PCM.
+                var accepted = streamingBuffer; var producer = streamingProducer;
+                streamingInterrupted = true; accepted.Complete();
+                SetStatus(Status.State, "自动流式合成已取消，仅继续播放已缓冲音频"); producer?.Cancel(); return;
+            }
+            if (playback is not null && streamingBuffer is null) return;
+            ++generation; var pending = current; current = null;
+            if (streamingBuffer is not null) ReleasePlayback();
             SetStatus(ReadingState.Idle, "自动朗读已取消");
+            pending.Cancel();
         }
     }
 
@@ -73,6 +96,11 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
             await synthesisGate.WaitAsync(request.Token).ConfigureAwait(false);
             try
             {
+                if (speech is IStreamingSpeechSynthesis streaming && streaming.UsesStreaming(settings) && outputs is IStreamingPlaybackFactory streamingOutputs)
+                {
+                    await ReadStreamingAsync(text, settings, id, request, streaming, streamingOutputs).ConfigureAwait(false);
+                    return;
+                }
                 audio = await speech.SynthesizeAsync(text, settings, request.Token).ConfigureAwait(false);
             }
             finally { synthesisGate.Release(); }
@@ -119,6 +147,76 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
         }
     }
 
+    private async Task ReadStreamingAsync(string text, Settings settings, long id, CancellationTokenSource request,
+        IStreamingSpeechSynthesis speechSource, IStreamingPlaybackFactory outputSource)
+    {
+        using var buffer = new StreamingPcmBuffer();
+        using var producerCancellation = CancellationTokenSource.CreateLinkedTokenSource(request.Token);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        IAudioPlayback? candidate = null; Task? production = null;
+        try
+        {
+            candidate = await Task.Run(() => outputSource.CreateStreamingPlayback(buffer, settings), request.Token).ConfigureAwait(false);
+            lock (sync)
+            {
+                if (disposed || id != generation || request.IsCancellationRequested) return;
+                streamingBuffer = buffer; streamingProducer = producerCancellation; streamingStarted = streamingInterrupted = false; streamingError = null;
+                playback = candidate; candidate = null; var owned = playback;
+                owned.Finished += error => _ = Task.Run(() => { Complete(id, owned, error); completed.TrySetResult(); });
+                if (owned is MultiOutputPlayback group) group.WarningChanged += () => _ = Task.Run(() => UpdateWarning(id, owned));
+                SetStatus(ReadingState.Synthesizing, WithWarning("MiMo 流式缓冲中…", owned));
+            }
+            production = Task.Run(async () =>
+            {
+                try
+                {
+                    await speechSource.SynthesizeStreamingAsync(text, settings, buffer, producerCancellation.Token).ConfigureAwait(false);
+                    producerCancellation.Token.ThrowIfCancellationRequested(); buffer.Complete();
+                }
+                catch (OperationCanceledException) when (producerCancellation.IsCancellationRequested) { buffer.Complete(); }
+                catch (Exception error)
+                {
+                    lock (sync)
+                    {
+                        if (!disposed && id == generation && !request.IsCancellationRequested &&
+                            !(producerCancellation.IsCancellationRequested && streamingInterrupted))
+                        {
+                            streamingError = error is UserFeedbackException ? $"MiMo 流中断：{error.Message}" : "MiMo 流中断，请检查网络及音频设备。";
+                            if (streamingStarted && playback is not null)
+                                SetStatus(Status.State, WithWarning(streamingError + " 仅继续播放已缓冲音频。", playback));
+                            else { request.Cancel(); ReleasePlayback(); SetStatus(ReadingState.Error, streamingError); }
+                        }
+                    }
+                    buffer.Complete();
+                }
+            });
+            await buffer.WaitForReadyAsync(request.Token).ConfigureAwait(false);
+            lock (sync)
+            {
+                if (disposed || id != generation || request.IsCancellationRequested || playback is null) return;
+                streamingStarted = true; playback.Play();
+                SetStatus(ReadingState.Playing, WithWarning("正在流式朗读（缓冲不足时等待音频）", playback));
+            }
+            await production.ConfigureAwait(false);
+            await completed.Task.WaitAsync(request.Token).ConfigureAwait(false);
+        }
+        catch
+        {
+            lock (sync) { if (id == generation) { request.Cancel(); ReleasePlayback(); } }
+            throw;
+        }
+        finally
+        {
+            producerCancellation.Cancel();
+            if (production is not null) await production.ConfigureAwait(false);
+            candidate?.Dispose();
+            lock (sync)
+            {
+                if (ReferenceEquals(streamingBuffer, buffer)) { streamingBuffer = null; streamingProducer = null; streamingStarted = false; }
+            }
+        }
+    }
+
     public void TogglePause()
     {
         lock (sync)
@@ -126,10 +224,14 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
             if (disposed || playback is null) return;
             try
             {
-                if (Status.State == ReadingState.Playing) { playback.Pause(); SetStatus(ReadingState.Paused, WithWarning("已暂停", playback)); }
-                else if (Status.State == ReadingState.Paused) { playback.Play(); SetStatus(ReadingState.Playing, WithWarning("正在朗读", playback)); }
+                if (Status.State == ReadingState.Playing) { playback.Pause(); SetStatus(ReadingState.Paused, WithWarning(streamingError is null ? "已暂停" : streamingError + " 已暂停缓冲音频。", playback)); }
+                else if (Status.State == ReadingState.Paused) { playback.Play(); SetStatus(ReadingState.Playing, WithWarning(streamingError is null ? "正在朗读" : streamingError + " 仅继续播放已缓冲音频。", playback)); }
             }
-            catch (Exception ex) { ReleasePlayback(); SetStatus(ReadingState.Error, $"音频操作失败（{ex.GetType().Name}）。"); }
+            catch (Exception ex)
+            {
+                var pending = streamingBuffer is not null ? current : null;
+                ReleasePlayback(); SetStatus(ReadingState.Error, $"音频操作失败（{ex.GetType().Name}）。"); pending?.Cancel();
+            }
         }
     }
 
@@ -150,9 +252,15 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
         lock (sync)
         {
             if (disposed || id != generation || !ReferenceEquals(source, playback)) return;
+            if (error is null && streamingBuffer is not null && streamingError is not null) error = new UserFeedbackException(streamingError);
+            if (error is null && streamingBuffer is not null && !streamingBuffer.IsComplete)
+                error = new UserFeedbackException("流式音频未完成，输出已提前停止。");
+            var pending = error is not null && streamingBuffer is not null ? current : null;
             ReleasePlayback();
             SetStatus(error is null ? ReadingState.Idle : ReadingState.Error,
-                error is null ? WithWarning("朗读完成", source) : "所有音频输出均失败，请检查设备连接后重试。");
+                error is null ? WithWarning(streamingBuffer is not null && streamingInterrupted ? "自动流式合成已取消，已缓冲音频播放结束" : "朗读完成", source) :
+                streamingBuffer is not null && streamingError is not null ? streamingError + " 已缓冲音频播放结束，未重试。" : "所有音频输出均失败，请检查设备连接后重试。");
+            pending?.Cancel();
         }
     }
     private static string WithWarning(string message, IAudioPlayback source) => source.Warning is { } warning ? $"{message} · {warning}" : message;
@@ -161,10 +269,18 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
         lock (sync)
         {
             if (disposed || id != generation || !ReferenceEquals(playback, source)) return;
-            SetStatus(Status.State, WithWarning(Status.State == ReadingState.Paused ? "已暂停" : "正在朗读", source));
+            var message = streamingError is not null ? streamingError + " 仅继续播放已缓冲音频。" :
+                streamingBuffer is not null && streamingInterrupted ? "自动流式合成已取消，仅继续播放已缓冲音频" :
+                Status.State == ReadingState.Paused ? "已暂停" : Status.State == ReadingState.Synthesizing ? "MiMo 流式缓冲中…" : "正在朗读";
+            SetStatus(Status.State, WithWarning(message, source));
         }
     }
-    private Exception? CancelAndRelease() { current?.Cancel(); current = null; return ReleasePlayback(); }
+    private Exception? CancelAndRelease()
+    {
+        current?.Cancel(); current = null;
+        streamingBuffer = null; streamingProducer = null; streamingStarted = streamingInterrupted = false; streamingError = null;
+        return ReleasePlayback();
+    }
     private Exception? ReleasePlayback()
     {
         var old = playback;

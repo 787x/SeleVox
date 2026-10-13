@@ -14,9 +14,31 @@ Windows 11 x64 的选区朗读工具，支持手动热键与可关闭的鼠标�
 
 **手动在线朗读会上传选中文字，可能产生 API 费用。** MiMo 和兼容服务的自动上传授权分别默认关闭，Azure/Edge 授权不会授予新 Provider 权限。兼容服务授权绑定到已保存地址；编辑成不同地址立即撤销旧许可、取消待播放的自动合成，必须先保存新地址，再明确开启新地址许可。编辑失败或取消编辑也不会自动恢复许可。关闭许可不会停止已经开始的音频，可按 Stop 停止。未授权自动触发不修改当前会话，不取消旧播放，不发送网络请求。失败不转发到其他在线服务。
 
-两个新 Provider 完整合成后复用原多设备 WASAPI 和会话取消机制。按句子/段落优先在 Unicode 文本元素边界分段，逐段验证完整、非空 PCM/IEEE Float WAVE，再按顺序写入同一个 WAVE 容器。兼容服务若返回 RIFF/data 长度均为 `0xFFFFFFFF` 的未知长度头，仅在 HTTP 响应成功完整读完后按实际 PCM 长度补全；普通声明长度与实际不符仍拒绝。格式不一致明确失败，不拼接独立 WAV 头，不返回部分结果。OpenAI 每段最多 4096 UTF-16 单元；MiMo 根据官方 8K 上下文保守限制每段 3000 UTF-8 字节、风格 1000 UTF-16 单元（最多约 3000 UTF-8 字节），保留协议开销空间。极长单个 Unicode 组合明确拒绝；不截断文本。单任务最多 32768 UTF-16 单元（现有 UIA 入口仍有原 10000 字符限制）、响应体每段 48 MiB、合并 WAVE 64 MiB，每段 90 秒、总计 10 分钟，超限请分次朗读。段之间可能出现短暂停顿。
+MiMo 非流式模式与 OpenAI-Compatible 完整合成后复用原多设备 WASAPI 和会话取消机制。按句子/段落优先在 Unicode 文本元素边界分段，逐段验证完整、非空 PCM/IEEE Float WAVE，再按顺序写入同一个 WAVE 容器。兼容服务若返回 RIFF/data 长度均为 `0xFFFFFFFF` 的未知长度头，仅在 HTTP 响应成功完整读完后按实际 PCM 长度补全；普通声明长度与实际不符仍拒绝。格式不一致明确失败，不拼接独立 WAV 头，不返回部分结果。OpenAI 每段最多 4096 UTF-16 单元；MiMo 根据官方 8K 上下文保守限制每段 3000 UTF-8 字节、风格 1000 UTF-16 单元（最多约 3000 UTF-8 字节），保留协议开销空间。极长单个 Unicode 组合明确拒绝；不截断文本。单任务最多 32768 UTF-16 单元（现有 UIA 入口仍有原 10000 字符限制）、响应体每段 48 MiB、合并 WAVE 64 MiB，每段 90 秒、总计 10 分钟，超限请分次朗读。段之间可能出现短暂停顿。
 
 协议参考：[MiMo 官方合成指南](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)、[MiMo 官方模型与上下文](https://mimo.mi.com/docs/zh-CN/quick-start/summary/model)、[OpenAI Speech API](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create)。实际验证与未验证项见 [PR5 验证记录](verification/PR5.md)。
+
+### MiMo 真正流式播放
+
+MiMo 设置新增“流式播放（推荐）”，默认开启，保存后生效并在重启恢复。只对官方 `mimo-v2.5-tts` 启用；自定义模型显示协议未验证，使用现有非流式 WAV 路径。取消勾选也使用原非流式合成，Windows/Azure/Edge/OpenAI-Compatible 不受影响。
+
+流式请求使用同一 Chat Completions 地址，`stream=true`、`audio.format=pcm16`，增量解析 SSE 的 `delta.audio.data`，得到 24 kHz / PCM16LE / 单声道。收到约 200 ms 有效音频即可启动 WASAPI，不等待当前文本段或全部文本段完成。段按原顺序接续，不重新生成已经播放的文字；正常完成必须收到 `[DONE]`，异常结束原因、中断、非法 Base64 和残缺采样帧均明确反馈。
+
+所有端点各有独立读取位置，共享一个 **240000 字节（5 秒）有界环形缓冲**。以最慢的有效输出为准施加背压，暂停时缓冲满即停止继续接收，不丢弃未播 PCM；慢设备可能影响整体接收速度。设备失败释放自己的位置，其他有效输出继续。暂时缺数据时输出静音等待，不提前结束；所有文本段正常完成且所有有效输出耗尽后才显示朗读完成。系统默认、指定单设备、多设备、虚拟声卡播放端点和原回退原则均支持；不保证采样级同步。
+
+Stop、替换和退出取消网络与全部播放器。自动权限撤销时，尚未播放的任务全部取消；已经开始的任务立即停止后续请求/追加，保留已缓冲 PCM 播放，并显示取消提示。播放中 SSE 异常中断也保留已接受的缓冲音频，最终显示流中断，不当作完整成功，不自动重试或转发。暂停/继续保持读取进度，不重新请求文本。
+
+流式单 SSE 事件最多 2 MiB，每个响应最多 48 MiB，总 PCM 最多 64 MiB；文本沿用原安全分段与长度限制。响应头 30 秒、单次网络读取闲置 45 秒、每段累计实际网络读取时间最多 10 分钟；应用缓冲背压/暂停不计入这两个读取时间预算。服务端自身仍可能在长时间暂停时断开，届时明确显示中断并保留已收到音频。
+
+流式真实服务比较测试独立显式启用，会使用已保存 MiMo Key 发送固定中英文及长文本并实际播放，可能产生费用。它记录首个 PCM 块、调用 Play、端点 loopback 首个非静音样本、网络完成和缓冲静音量；loopback 时点不是物理扬声器的声学测量。非流式长文本仅播放到首个样本以测量首声，流式长文本完整播放。
+
+```powershell
+$env:SELEVOX_MIMO_STREAM_TESTS = '1'
+dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr5-stream --filter 'Category=MiMoStreamingService'
+Remove-Item Env:SELEVOX_MIMO_STREAM_TESTS
+```
+
+默认测试不调用收费服务。可控 SSE 与真实 WASAPI/loopback 的组合测试位于 WindowsAudio 组，仍需独立启用 `SELEVOX_AUDIO_TESTS=1`。最新实际数据与限制见 [PR5 流式验证记录](verification/PR5.md)。
 
 ## 构建与运行
 

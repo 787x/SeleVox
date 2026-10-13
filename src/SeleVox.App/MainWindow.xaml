@@ -60,7 +60,9 @@
                 </DockPanel>
                 <TextBlock x:Name="MiMoCredentialStatus" TextWrapping="Wrap" Margin="0,4,0,0"/>
                 <TextBlock Text="Model（默认 mimo-v2.5-tts，可填写其他兼容模型名称）" Margin="0,10,0,4"/>
-                <TextBox x:Name="MiMoModel" Height="28" MaxLength="200"/>
+                <TextBox x:Name="MiMoModel" Height="28" MaxLength="200" TextChanged="MiMoModel_Changed"/>
+                <CheckBox x:Name="MiMoStreaming" Content="流式播放（推荐）" Margin="0,10,0,0"/>
+                <TextBlock x:Name="MiMoStreamingHint" TextWrapping="Wrap" Foreground="#546575" Margin="0,4,0,0"/>
                 <TextBlock Text="预置音色（默认冰糖）" Margin="0,10,0,4"/>
                 <ComboBox x:Name="MiMoVoice" Height="32"/>
                 <TextBlock Text="可选自然语言风格说明（最多 1000 字符）" Margin="0,10,0,4"/>

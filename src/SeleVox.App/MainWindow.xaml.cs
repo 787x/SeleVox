@@ -42,6 +42,7 @@ public partial class MainWindow : Window
         AutomaticCloud.IsChecked = settings.AllowAutomaticCloud;
         AutomaticEdge.IsChecked = settings.AllowAutomaticEdge;
         MiMoVoice.ItemsSource = Settings.MiMoVoices; MiMoVoice.SelectedItem = settings.MiMoVoice; MiMoModel.Text = settings.MiMoModel;
+        MiMoStreaming.IsChecked = settings.MiMoStreaming;
         MiMoStyle.Text = settings.MiMoStyle; AutomaticMiMo.IsChecked = settings.AllowAutomaticMiMo;
         OpenAiBaseUrl.Text = settings.OpenAiBaseUrl; OpenAiModel.Text = settings.OpenAiModel;
         OpenAiVoice.Text = settings.OpenAiVoice; OpenAiInstructions.Text = settings.OpenAiInstructions;
@@ -96,6 +97,7 @@ public partial class MainWindow : Window
             MiMoVoice = provider == TtsProvider.MiMo ? MiMoVoice.SelectedItem as string ?? "冰糖" : savedSettings.MiMoVoice,
             MiMoStyle = provider == TtsProvider.MiMo ? MiMoStyle.Text : savedSettings.MiMoStyle,
             MiMoModel = provider == TtsProvider.MiMo ? MiMoModel.Text.Trim() : savedSettings.MiMoModel,
+            MiMoStreaming = provider == TtsProvider.MiMo ? MiMoStreaming.IsChecked == true : savedSettings.MiMoStreaming,
             OpenAiBaseUrl = provider == TtsProvider.OpenAiCompatible ? address! : savedSettings.OpenAiBaseUrl,
             OpenAiModel = provider == TtsProvider.OpenAiCompatible ? OpenAiModel.Text.Trim() : savedSettings.OpenAiModel,
             OpenAiVoice = provider == TtsProvider.OpenAiCompatible ? OpenAiVoice.Text.Trim() : savedSettings.OpenAiVoice,
@@ -174,6 +176,14 @@ public partial class MainWindow : Window
         catch (UserFeedbackException ex) { OpenAiCredentialStatus.Text = ex.Message; }
     }
     private void SaveHttpKey_Click(object sender, RoutedEventArgs e) => ChangeHttpKey(sender, false);
+    private void MiMoModel_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        if (MiMoStreaming is null || MiMoStreamingHint is null) return;
+        var supported = MiMoModel.Text.Trim() == "mimo-v2.5-tts";
+        MiMoStreaming.IsEnabled = supported;
+        MiMoStreamingHint.Text = supported ? "保存后边合成边播放；关闭后完整合成为 WAV 再播放。流中断不会重试已播文本。" :
+            "该自定义模型的流式协议尚未验证，将使用非流式 WAV 模式。";
+    }
     private void ClearHttpKey_Click(object sender, RoutedEventArgs e) => ChangeHttpKey(sender, true);
     private void MiMoApiKey_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
     {

@@ -9,9 +9,18 @@ using SeleVox.Core;
 
 namespace SeleVox.App;
 
-internal sealed class MiMoSpeech(HttpClient? client = null, Func<string?>? readKey = null)
+internal sealed partial class MiMoSpeech(HttpClient? client = null, Func<string?>? readKey = null)
 {
     public async Task<Stream> SynthesizeAsync(string text, Settings settings, CancellationToken cancellation)
+    {
+        var style = GetStyle(settings);
+        // 8K context: conservatively bound UTF-8 bytes (including up to 3K style bytes),
+        // leaving room for message framing. No approximate tokenizer or source rewriting.
+        return await HttpSpeech.SynthesizeAsync(client, readKey ?? AzureCredentials.MiMo().Read,
+            new Uri("https://api.xiaomimimo.com/v1/chat/completions"), text, 3000, true,
+            part => CreateRequest(part, settings.MiMoVoice, style, settings.MiMoModel), Decode, "MiMo", cancellation).ConfigureAwait(false);
+    }
+    private static string GetStyle(Settings settings)
     {
         if (!double.IsFinite(settings.Rate) || settings.Rate is < .5 or > 2 || !Settings.MiMoVoices.Contains(settings.MiMoVoice) ||
             settings.MiMoStyle is not { Length: <= 1000 } || string.IsNullOrWhiteSpace(settings.MiMoModel) || settings.MiMoModel.Length > 200)
@@ -20,19 +29,15 @@ internal sealed class MiMoSpeech(HttpClient? client = null, Func<string?>? readK
         if (settings.Rate != 1) style += (style.Length > 0 ? "\n" : "") +
             (settings.Rate < 1 ? "请放慢朗读速度。" : "请加快朗读速度。") +
             $"目标约为正常语速的 {settings.Rate.ToString("0.##", CultureInfo.InvariantCulture)} 倍。";
-        // 8K context: conservatively bound UTF-8 bytes (including up to 3K style bytes),
-        // leaving room for message framing. No approximate tokenizer or source rewriting.
-        return await HttpSpeech.SynthesizeAsync(client, readKey ?? AzureCredentials.MiMo().Read,
-            new Uri("https://api.xiaomimimo.com/v1/chat/completions"), text, 3000, true,
-            part => CreateRequest(part, settings.MiMoVoice, style, settings.MiMoModel), Decode, "MiMo", cancellation).ConfigureAwait(false);
+        return style;
     }
 
-    internal static object CreateRequest(string text, string voice, string style, string model)
+    internal static object CreateRequest(string text, string voice, string style, string model, bool streaming = false)
     {
         var messages = new List<object>();
         if (!string.IsNullOrWhiteSpace(style)) messages.Add(new { role = "user", content = style });
         messages.Add(new { role = "assistant", content = text });
-        return new { model, stream = false, messages, audio = new { format = "wav", voice } };
+        return new { model, stream = streaming, messages, audio = new { format = streaming ? "pcm16" : "wav", voice } };
     }
 
     internal static byte[] Decode(byte[] body, CancellationToken cancellation)
