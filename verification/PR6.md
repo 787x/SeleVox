@@ -66,6 +66,29 @@ TRX 位于本地 `tests/SeleVox.Tests/TestResults`，不提交。可运行 self-
 
 本次实际执行 `Category=WindowsOcr|FullyQualifiedName~OcrWindowTests`：窗口复用、框选、结果动作、设置窗口共 **4 项通过**；新热键测试因用户当前运行的 PR6 已占用 Ctrl+Alt+O 而失败（错误 1409），没有退出用户实例。排除 `ActualOcrHotkey` 后复测 **4 项全部通过**。新增真实 WPF 测试移动并调整窗口，连续更新结果时 HWND、位置、尺寸保持，窗口置前；最小化后更新恢复同一位置；更新本身不写 Clipboard、不触发朗读。Release 目录式 self-contained 更新版输出至 `artifacts/pr6-window-reuse-portable`，避免覆盖正在运行的 `pr6-portable`。新版本的重复 OCR 整应用体验待用户再次验收。
 
+## 重复 OCR 截图排除旧结果窗口修复
+
+当前 PR6 跟进：启动 OCR 时先停用 Auto Speak Hook 并作废旧 UIA 捕获，再临时 Hide 已有结果窗口，保留编辑文字、选择范围、位置、正常尺寸和窗口状态。截图等待 WPF dispatcher 的可见性/布局/渲染更新，再在后台 DwmFlush 等待桌面合成展示完成后 CopyFromScreen。旧结果在整个任务期间保持隐藏；新任务继承该隐藏状态，旧任务的 finally 不得提前显示窗口。最新任务成功仍复用原 HWND 更新结果并置前；取消/失败则不激活地恢复旧窗口与内容，在恢复完成后才重新安装 Auto Speak。取消时原最小化状态保留，成功时沿用最小化恢复行为。关闭/退出不再恢复已关闭窗口。
+
+真实桌面测试发现仅 Hide 后立即 DwmFlush 仍可能截到旧画面，已加 WPF dispatcher 渲染等待；隐藏最小化窗口也可能导致 WPF 使用最小化 HWND 尺寸，已显式缓存和恢复正常边界。最终截图像素对照通过。输入/前台激活测试初轮曾超时或未激活；为窗口恢复测试增加与实际框选相同的真实标题栏鼠标输入以取得前台权限，原拖动/Esc 测试单独复测及最终组合复测通过。没有关闭用户运行中的旧版实例或改系统前台权限策略。
+
+本轮实际执行：
+
+```powershell
+$env:SELEVOX_OCR_DESKTOP_TESTS='1'
+dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr6-hide-result --filter '(Category=WindowsOcr|FullyQualifiedName~OcrTests|FullyQualifiedName~OcrWindowTests)&FullyQualifiedName!~ActualOcrHotkey' --logger 'trx;LogFileName=PR6-hide-result-directed-final.trx'
+dotnet test SeleVox.slnx -c Release --no-build --artifacts-path artifacts/pr6-hide-result --filter 'FullyQualifiedName~ReadingSessionTests|FullyQualifiedName~AutomaticSelectionTests|FullyQualifiedName~StreamingSessionTests' --logger 'trx;LogFileName=PR6-hide-result-regression.trx'
+dotnet build SeleVox.slnx -c Release --no-restore --artifacts-path artifacts/pr6-hide-result
+dotnet publish src/SeleVox.App/SeleVox.App.csproj -c Release -r win-x64 --self-contained true --artifacts-path artifacts/pr6-hide-result -o artifacts/pr6-hide-result-portable
+git diff --check
+```
+
+- 还原及 Release 构建成功，0 警告、0 错误；PR6 定向 **22 项通过**（16 项真实 OCR/坐标/取消测试、5 项桌面测试、1 项设置窗口测试），相关会话/Auto Speak/流式回归 **45 项通过**。
+- 新增实际桌面截图测试：固定非敏感背景窗口上覆盖真实旧结果窗口，先确认其可见像素与背景不同；隐藏后不加固定延时，直接通过生产 CaptureAsync 截图，采样点恢复为准确背景颜色（`FF1A5C84`），真实 OCR 得到背景的 Fresh screen capture / Second line text，而非旧结果。截图全程只在内存，不写桌面图文件。框选取消后同一 HWND 恢复，原编辑文字、文字选择、位置和尺寸均保留，Clipboard 未变、手动朗读回调与真实 Mouse Hook 的选区回调均为 0。
+- 新增替换/失败测试：不合作的旧任务迟到结果不能更新文字或提前显示隐藏窗口；最新任务失败后恢复原内容且不抢前台；最小化取消保持最小化。窗口复用原测试加入 Hide 后成功恢复，正常和最小化状态的原位置、尺寸与置前均通过。
+- 原真实拖动/截图裁剪、Esc、结果编辑/主动复制、模型识别和语言保存测试一起通过。当前用户实例已占用 O，明确排除其注册测试；本轮不重复收费 TTS、音频压力或干净机器部署。45 项回归验证会话取消、自动授权与流式行为，未新增真实播放时隐藏/恢复的人工听音验收。
+- 环境仍为单屏 2560×1600、150%；混合 DPI 双屏未新增实测。本轮验证是生产窗口/截图/任务代次组件组成的桌面测试，整应用新版本 Ctrl+Alt+O 重复框选仍待用户验收。新增 portable 输出使用独立目录 `artifacts/pr6-hide-result-portable`，保留正在运行的 `pr6-window-reuse-portable`。
+
 ## 人工验收清单（1、2、3、4、5、7 已通过；6、8 待验证）
 
 1. 退出旧 SeleVox，普通权限启动 portable 目录 EXE；托盘正常，Ctrl+Alt+R/P/X/O 均生效。让其他程序占用 O 时确认冲突提示；退出后 O 可再次注册。

@@ -27,6 +27,14 @@ internal sealed class ScreenSnapshot(Rectangle bounds, Bitmap image) : IDisposab
 {
     internal Rectangle Bounds { get; } = bounds;
     internal Bitmap Image { get; } = image;
+    internal static async Task<List<ScreenSnapshot>> CaptureAsync(CancellationToken token)
+    {
+        // Let the UI dispatcher finish visibility/layout/render work after hiding a result.
+        // Capture then waits for DWM presentation on the worker before reading desktop pixels.
+        await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+        token.ThrowIfCancellationRequested();
+        return await Task.Run(() => Capture(token), token);
+    }
     internal static List<ScreenSnapshot> Capture(CancellationToken token)
     {
         // Thread DPI context also covers test hosts without the application manifest.
@@ -34,7 +42,7 @@ internal sealed class ScreenSnapshot(Rectangle bounds, Bitmap image) : IDisposab
         var snapshots = new List<ScreenSnapshot>();
         try
         {
-            // Wait for recently closed overlays to leave the composed desktop before a retry snapshot.
+            // Wait for hidden OCR results and closed overlays to leave the composed desktop.
             if (DwmFlush() < 0) throw new UserFeedbackException("桌面合成截图暂不可用，请重试。");
             var screens = System.Windows.Forms.Screen.AllScreens;
             if (screens.Sum(s => (long)s.Bounds.Width * s.Bounds.Height) > ScreenGeometry.MaxScreenPixels)

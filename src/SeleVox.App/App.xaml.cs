@@ -165,12 +165,13 @@ public partial class App : System.Windows.Application
         settingsWindow?.SetNotice("正在准备屏幕框选；旧 OCR 计算尚未结束时需稍候。Ctrl+Alt+X 可取消。");
         try
         {
+            ocrResult?.HideForCapture();
             await ocrOperation.RunAsync(async token =>
             {
                 await ocrGate.WaitAsync(token);
                 try
                 {
-                    var snapshots = await Task.Run(() => ScreenSnapshot.Capture(token), token);
+                    var snapshots = await ScreenSnapshot.CaptureAsync(token);
                     System.Drawing.Bitmap image;
                     try
                     {
@@ -209,6 +210,9 @@ public partial class App : System.Windows.Application
         {
             if (!exiting && !ocrOperation.IsActive)
             {
+                // A superseded request leaves the prior result hidden for its successor.
+                // Restore before reinstalling Auto Speak so focus changes cannot form gestures.
+                ocrResult?.RestoreAfterCapture();
                 ++mouseEpoch; var error = ApplyAutomatic();
                 if (error is not null) Notify(error);
             }

@@ -11,6 +11,9 @@ internal sealed class OcrResultWindow : Window
     private readonly TextBlock notice = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 10) };
     private readonly Func<Settings> settings;
     private Func<CapturedText, Task>? read;
+    private bool hiddenForCapture;
+    private Rect captureBounds;
+    private WindowState captureState;
     internal OcrResultWindow(CapturedText result, Func<Settings> settings, Func<CapturedText, Task> read)
     {
         this.settings = settings; this.read = read;
@@ -35,7 +38,7 @@ internal sealed class OcrResultWindow : Window
         Content = grid;
         Activated += (_, _) => RefreshProviderNotice();
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
-        Closed += (_, _) => { editor.Clear(); this.read = null; Content = null; };
+        Closed += (_, _) => { hiddenForCapture = false; editor.Clear(); this.read = null; Content = null; };
         RefreshProviderNotice();
     }
     private bool HasText()
@@ -45,11 +48,40 @@ internal sealed class OcrResultWindow : Window
     }
     internal void ShowResult(CapturedText result)
     {
+        if (hiddenForCapture) RestorePlacement(captureState == WindowState.Minimized ? WindowState.Normal : captureState);
         editor.Text = result.Text;
         editor.CaretIndex = 0; editor.ScrollToHome();
         RefreshProviderNotice();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Show(); Activate(); editor.Focus();
+    }
+    internal void HideForCapture()
+    {
+        // A replacement OCR inherits the hidden window; never clear its edited result.
+        if (hiddenForCapture || !IsVisible) return;
+        captureState = WindowState;
+        captureBounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+        Hide(); hiddenForCapture = true;
+    }
+    internal void RestoreAfterCapture()
+    {
+        if (!hiddenForCapture) return;
+        RestorePlacement(captureState);
+        // Cancellation/failure should restore visibility without stealing foreground focus
+        // or changing a previously minimized window's state.
+        var activated = ShowActivated;
+        try { ShowActivated = false; Show(); }
+        finally { ShowActivated = activated; }
+    }
+    private void RestorePlacement(WindowState state)
+    {
+        // Hide while minimized can cause WPF to adopt the minimized HWND's dimensions.
+        // Restore the normal bounds explicitly before showing the same HWND again.
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        WindowState = WindowState.Normal;
+        Left = captureBounds.Left; Top = captureBounds.Top;
+        Width = captureBounds.Width; Height = captureBounds.Height;
+        WindowState = state; hiddenForCapture = false;
     }
     internal void RefreshProviderNotice(string prefix = "")
     {
