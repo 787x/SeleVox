@@ -140,7 +140,7 @@ internal sealed class WasapiPlayback : IAudioPlayback
     public event Action<Exception?>? Finished;
 
     internal string DeviceId => device.ID;
-    public WasapiPlayback(Stream audio, float volume, MMDevice? device = null)
+    public WasapiPlayback(Stream audio, float volume, MMDevice? device = null, int startupSilenceMilliseconds = StartupSilenceProvider.DefaultMilliseconds)
     {
         this.audio = audio;
         WaveFileReader? openedReader = null;
@@ -160,7 +160,7 @@ internal sealed class WasapiPlayback : IAudioPlayback
             // NAudio 3.1 standard shared mode uses WASAPI AutoConvertPcm and
             // SrcDefaultQuality: each endpoint engine resamples/maps its own format.
             openedOutput = new WasapiPlayerBuilder().WithDevice(device).WithSharedMode().WithLatency(80).Build();
-            var samples = new VolumeSampleProvider(openedReader.ToSampleProvider()) { Volume = volume };
+            var samples = new VolumeSampleProvider(new StartupSilenceProvider(openedReader.ToSampleProvider(), startupSilenceMilliseconds)) { Volume = volume };
             openedOutput.Init(samples.ToWaveProvider());
             reader = openedReader;
             output = openedOutput;

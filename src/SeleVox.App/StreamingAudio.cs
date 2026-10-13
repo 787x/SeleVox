@@ -56,14 +56,14 @@ internal sealed class StreamingWasapiPlayback : IAudioPlayback
     public event Action<Exception?>? Finished;
     internal long SourcePosition => reader.ConsumedBytes;
     internal long SilenceBytes => reader.SilenceBytes;
-    public StreamingWasapiPlayback(StreamingPcmBuffer.Reader reader, float volume, MMDevice device)
+    public StreamingWasapiPlayback(StreamingPcmBuffer.Reader reader, float volume, MMDevice device, int startupSilenceMilliseconds = StartupSilenceProvider.DefaultMilliseconds)
     {
         this.reader = reader; this.device = device;
         WasapiPlayer? opened = null;
         try
         {
             opened = new WasapiPlayerBuilder().WithDevice(device).WithSharedMode().WithLatency(80).Build();
-            var samples = new VolumeSampleProvider(new PcmProvider(reader).ToSampleProvider()) { Volume = volume };
+            var samples = new VolumeSampleProvider(new StartupSilenceProvider(new PcmProvider(reader).ToSampleProvider(), startupSilenceMilliseconds)) { Volume = volume };
             opened.Init(samples.ToWaveProvider()); output = opened; output.PlaybackStopped += OnStopped;
         }
         catch { try { opened?.Dispose(); } finally { try { reader.Dispose(); } finally { device.Dispose(); } } throw; }
