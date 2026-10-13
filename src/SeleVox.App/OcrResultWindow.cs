@@ -43,6 +43,14 @@ internal sealed class OcrResultWindow : Window
         if (!string.IsNullOrWhiteSpace(editor.Text)) return true;
         notice.Text = "没有文字，请先输入或重新框选。"; return false;
     }
+    internal void ShowResult(CapturedText result)
+    {
+        editor.Text = result.Text;
+        editor.CaretIndex = 0; editor.ScrollToHome();
+        RefreshProviderNotice();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Show(); Activate(); editor.Focus();
+    }
     internal void RefreshProviderNotice(string prefix = "")
     {
         var current = settings();

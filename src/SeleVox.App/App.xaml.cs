@@ -190,15 +190,18 @@ public partial class App : System.Windows.Application
             }, text =>
             {
                 if (exiting) return;
-                ocrResult?.Close();
-                var window = new OcrResultWindow(text, () => settings, result =>
+                if (ocrResult is null)
                 {
-                    mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
-                    return reading!.ReadCapturedTextAsync(result, settings);
-                });
-                ocrResult = window;
-                window.Closed += (_, _) => { if (ReferenceEquals(ocrResult, window)) ocrResult = null; };
-                window.Show(); window.Activate(); settingsWindow?.SetNotice("OCR 已完成，复制或朗读请在结果窗口主动操作。");
+                    var window = new OcrResultWindow(text, () => settings, result =>
+                    {
+                        mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
+                        return reading!.ReadCapturedTextAsync(result, settings);
+                    });
+                    ocrResult = window;
+                    window.Closed += (_, _) => { if (ReferenceEquals(ocrResult, window)) ocrResult = null; };
+                }
+                ocrResult.ShowResult(text);
+                settingsWindow?.SetNotice("OCR 已完成，复制或朗读请在结果窗口主动操作。");
             }, message => { if (!exiting) { settingsWindow?.SetNotice(message); Notify(message); } },
                 () => { if (!exiting) settingsWindow?.SetNotice("屏幕 OCR 已取消。"); });
         }

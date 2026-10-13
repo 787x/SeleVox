@@ -21,6 +21,30 @@ public sealed class WindowsOcrFactAttribute : FactAttribute
 [Collection("WPF desktop")]
 public sealed class OcrDesktopTests(ITestOutputHelper output)
 {
+    [WindowsOcrFact] public Task RepeatedResultKeepsWindowPositionSizeAndRestoresFromMinimized() => RunSta(async () =>
+    {
+        var original = Clipboard.GetDataObject(); var reads = 0;
+        var window = new OcrResultWindow(new("first fixture", TextSource.ScreenOcr), () => new Settings(), _ => { ++reads; return Task.CompletedTask; });
+        try
+        {
+            Clipboard.SetText("PR6 unchanged clipboard");
+            window.ShowResult(new("first fixture", TextSource.ScreenOcr)); await Task.Delay(80);
+            window.Left = 80; window.Top = 90; window.Width = 500; window.Height = 380;
+            await Task.Delay(80);
+            var handle = new WindowInteropHelper(window).Handle;
+            window.ShowResult(new("second fixture", TextSource.ScreenOcr)); await Task.Delay(80);
+            Assert.Equal(handle, new WindowInteropHelper(window).Handle); Assert.Equal(handle, Native.GetForegroundWindow());
+            Assert.Equal(80, window.Left); Assert.Equal(90, window.Top); Assert.Equal(500, window.Width); Assert.Equal(380, window.Height);
+            Assert.Equal("second fixture", Descendants<TextBox>(window).Single().Text);
+            window.WindowState = WindowState.Minimized; await Task.Delay(80);
+            window.ShowResult(new("third fixture", TextSource.ScreenOcr)); await Task.Delay(80);
+            Assert.Equal(WindowState.Normal, window.WindowState);
+            Assert.Equal(80, window.Left); Assert.Equal(90, window.Top); Assert.Equal(500, window.Width); Assert.Equal(380, window.Height);
+            Assert.Equal(handle, Native.GetForegroundWindow()); Assert.Equal("third fixture", Descendants<TextBox>(window).Single().Text);
+            Assert.Equal(0, reads); Assert.Equal("PR6 unchanged clipboard", Clipboard.GetText());
+        }
+        finally { window.Close(); if (original is not null) Clipboard.SetDataObject(original, true); else Clipboard.Clear(); }
+    });
     [WindowsOcrFact] public Task RealDesktopCaptureDragEscapeAndCancelReleaseAllOverlays() => RunSta(async () =>
     {
         GetPhysicalCursorPos(out var savedCursor);
