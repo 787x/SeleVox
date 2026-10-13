@@ -18,6 +18,8 @@ public partial class MainWindow : Window
     private bool filteringEdge;
     private bool refreshingOutputs;
     private MiMoStyleTags miMoStyles = new();
+    private List<PromptPreset> customPrompts = [];
+    private bool refreshingPrompts;
     public string? VoiceWarning { get; }
     internal MainWindow(Settings settings, Func<Settings, string?> save, Action pause, Action stop, Action exit,
         Func<Task<string?>> addForeground, Action cancelAutomatic,
@@ -52,6 +54,10 @@ public partial class MainWindow : Window
         OpenAiVoice.Text = settings.OpenAiVoice; OpenAiInstructions.Text = settings.OpenAiInstructions;
         LlmBaseUrl.Text = settings.LlmBaseUrl; LlmModel.Text = settings.LlmModel; LlmSystemPrompt.Text = settings.LlmSystemPrompt;
         LlmStreaming.IsChecked = settings.LlmStreaming; LlmAutoRead.IsChecked = settings.LlmAutoRead;
+        LlmReadingStrategy.SelectedIndex = (int)settings.LlmReadingStrategy;
+        ThinkingProtocolChoice.SelectedIndex = (int)settings.LlmThinkingProtocol;
+        ThinkingOptionChoice.SelectedValue = settings.LlmThinking;
+        customPrompts = (settings.CustomPrompts ?? []).ToList(); RefreshPrompts(settings.SelectedPromptId);
         UpdateLlmCredentialStatus();
         AutomaticOpenAi.IsChecked = settings.AllowAutomaticOpenAi && settings.OpenAiAuthorizedBaseUrl == Settings.NormalizeServiceUrl(settings.OpenAiBaseUrl);
         UpdateHttpCredentialStatus();
@@ -68,7 +74,9 @@ public partial class MainWindow : Window
     public void SetAutomaticStatus(string message) => AutomaticStatus.Text = message;
     public void SetAutomaticSettings(Settings settings)
     {
-        savedSettings = settings; AutoSpeak.IsChecked = settings.AutoSpeak;
+        savedSettings = settings; AutoSpeak.IsChecked = settings.AutoSpeak; AutoAsk.IsChecked = settings.AutoAsk;
+        AutomaticLlm.IsChecked = settings.AllowsAutomaticLlm;
+        AutomaticLlmStatus.Text = $"自动上传：{(settings.AllowsAutomaticLlm ? "已授权" : "未授权")} · {Settings.NormalizeServiceUrl(settings.LlmBaseUrl)}（可能产生费用）";
         AutomaticMiMo.IsChecked = settings.AllowAutomaticMiMo;
         AutomaticOpenAi.IsChecked = settings.AllowAutomaticOpenAi && settings.OpenAiAuthorizedBaseUrl == Settings.NormalizeServiceUrl(settings.OpenAiBaseUrl);
         Rules.ItemsSource = settings.Applications ?? [];
@@ -117,9 +125,74 @@ public partial class MainWindow : Window
             OutputDeviceIds = Outputs.SelectedItems.Cast<OutputChoice>().Select(d => d.Id).ToArray(),
             StartWithWindows = AutoStart.IsChecked == true, OcrLanguage = (OcrLanguage)OcrLanguageChoice.SelectedIndex,
             LlmBaseUrl = llmAddress, LlmModel = LlmModel.Text.Trim(), LlmSystemPrompt = LlmSystemPrompt.Text,
+            LlmReadingStrategy = (AnswerReadingStrategy)LlmReadingStrategy.SelectedIndex,
+            LlmThinkingProtocol = (ThinkingProtocol)ThinkingProtocolChoice.SelectedIndex,
+            LlmThinking = ThinkingOptionChoice.SelectedValue is ThinkingOption thinking ? thinking : ThinkingOption.Default,
+            CustomPrompts = customPrompts.ToArray(), SelectedPromptId = (PromptChoice.SelectedItem as PromptPreset)?.Id,
+            AllowAutomaticLlm = savedSettings.AllowAutomaticLlm && llmAddress == Settings.NormalizeServiceUrl(savedSettings.LlmBaseUrl),
+            LlmAuthorizedBaseUrl = llmAddress == Settings.NormalizeServiceUrl(savedSettings.LlmBaseUrl) ? savedSettings.LlmAuthorizedBaseUrl : null,
             LlmStreaming = LlmStreaming.IsChecked == true, LlmAutoRead = LlmAutoRead.IsChecked == true });
         SetNotice(error ?? "设置已保存，下次朗读生效。");
         if (error is null) OutputSaveHint.Text = "设备选择已保存，用于下一次朗读。";
+    }
+    private void ThinkingProtocol_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (ThinkingOptionChoice is null) return;
+        var protocol = (ThinkingProtocol)ThinkingProtocolChoice.SelectedIndex;
+        var values = protocol switch
+        {
+            ThinkingProtocol.OpenAi => new[] { ThinkingOption.Default, ThinkingOption.Disabled, ThinkingOption.Low, ThinkingOption.Medium, ThinkingOption.High },
+            ThinkingProtocol.MiMo => new[] { ThinkingOption.Default, ThinkingOption.Disabled, ThinkingOption.Enabled },
+            _ => new[] { ThinkingOption.Default }
+        };
+        ThinkingOptionChoice.DisplayMemberPath = "Label"; ThinkingOptionChoice.SelectedValuePath = "Value";
+        ThinkingOptionChoice.ItemsSource = values.Select(v => new { Value = v, Label = v switch {
+            ThinkingOption.Default => "服务默认（不发送参数）", ThinkingOption.Disabled => "关闭（模型须支持）",
+            ThinkingOption.Low => "低", ThinkingOption.Medium => "中", ThinkingOption.High => "高", _ => "开启思考" } }).ToArray();
+        ThinkingOptionChoice.SelectedValue = ThinkingOption.Default;
+    }
+    private void RefreshPrompts(string? selected)
+    {
+        refreshingPrompts = true;
+        try { PromptChoice.ItemsSource = PromptPresets.BuiltIn.Concat(customPrompts).ToArray();
+            PromptChoice.SelectedItem = PromptChoice.Items.Cast<PromptPreset>().FirstOrDefault(p => p.Id == selected);
+            PromptName.Text = (PromptChoice.SelectedItem as PromptPreset)?.Name ?? ""; }
+        finally { refreshingPrompts = false; }
+    }
+    private void PromptChoice_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (refreshingPrompts || LlmSystemPrompt is null || PromptName is null) return;
+        if (PromptChoice.SelectedItem is PromptPreset preset) { LlmSystemPrompt.Text = preset.Prompt; PromptName.Text = preset.Name; }
+    }
+    private void AddPrompt_Click(object sender, RoutedEventArgs e) => EditPrompt(false);
+    private void UpdatePrompt_Click(object sender, RoutedEventArgs e) => EditPrompt(true);
+    private void EditPrompt(bool update)
+    {
+        var old = PromptChoice.SelectedItem as PromptPreset;
+        if (update && (old is null || !customPrompts.Any(p => p.Id == old.Id))) { SetNotice("内置预设请另存为自定义预设。"); return; }
+        if (string.IsNullOrWhiteSpace(PromptName.Text) || !update && customPrompts.Count >= 50) { SetNotice("请填写名称；最多 50 个自定义预设。"); return; }
+        var preset = new PromptPreset(update ? old!.Id : Guid.NewGuid().ToString("N"), PromptName.Text.Trim(), LlmSystemPrompt.Text);
+        if (update) customPrompts.RemoveAll(p => p.Id == preset.Id);
+        customPrompts.Add(preset); RefreshPrompts(preset.Id); SetNotice("预设修改尚未保存，请点击底部保存设置。");
+    }
+    private void DeletePrompt_Click(object sender, RoutedEventArgs e)
+    {
+        if (PromptChoice.SelectedItem is PromptPreset p && customPrompts.RemoveAll(x => x.Id == p.Id) > 0)
+        { RefreshPrompts(null); SetNotice("预设删除尚未保存；当前 Prompt 原文保留。"); }
+    }
+    private void AutomaticLlm_Click(object sender, RoutedEventArgs e)
+    {
+        if (AutomaticLlm.IsChecked == true && Settings.NormalizeServiceUrl(LlmBaseUrl.Text) != Settings.NormalizeServiceUrl(savedSettings.LlmBaseUrl))
+        { AutomaticLlm.IsChecked = savedSettings.AllowsAutomaticLlm; SetNotice("请先保存 LLM 地址，再明确授权当前服务。"); return; }
+        SaveAutomatic(savedSettings with { AllowAutomaticLlm = AutomaticLlm.IsChecked == true,
+            LlmAuthorizedBaseUrl = AutomaticLlm.IsChecked == true ? Settings.NormalizeServiceUrl(savedSettings.LlmBaseUrl) : null });
+    }
+    private void AutoAsk_Click(object sender, RoutedEventArgs e) => SaveAutomatic(savedSettings with { AutoAsk = AutoAsk.IsChecked == true });
+    private void AskRule_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.CheckBox { DataContext: ApplicationRule rule } box)
+            SaveAutomatic(savedSettings with { Applications = (savedSettings.Applications ?? []).Select(r =>
+                r == rule ? r with { AutoAsk = box.IsChecked == true } : r).ToArray() });
     }
     private void LlmAddress_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {

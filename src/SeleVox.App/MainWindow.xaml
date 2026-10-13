@@ -122,7 +122,7 @@
             </StackPanel>
             <Expander x:Name="LlmPanel" Header="AI 问答 · Ctrl+Alt+A（独立于 TTS）" Margin="0,18,0,0" IsExpanded="True">
                 <StackPanel Margin="0,8,0,0">
-                    <TextBlock Text="主动按 Ctrl+Alt+A 或在 OCR 结果点击“问 AI”，会将问题和 System Prompt 发送至以下 LLM，可能产生费用。不会自动发送选区或 OCR。" TextWrapping="Wrap" Foreground="#8A4D00"/>
+                    <TextBlock Text="主动按 Ctrl+Alt+A 或在 OCR 结果点击“问 AI”，会将问题和 System Prompt 发送至以下 LLM，可能产生费用。Auto Ask 仅在独立开关、应用规则和当前地址上传授权全部开启时自动发送选区。" TextWrapping="Wrap" Foreground="#8A4D00"/>
                     <TextBlock Text="LLM Base URL（HTTPS；本机回环允许 HTTP）" Margin="0,8,0,4"/>
                     <TextBox x:Name="LlmBaseUrl" MaxLength="2048" TextChanged="LlmAddress_Changed"/>
                     <TextBlock Text="Model（手工填写服务支持的模型）" Margin="0,8,0,4"/>
@@ -134,10 +134,30 @@
                         <Button Content="清除 LLM Key" Click="ClearLlmKey_Click" Padding="8,4"/>
                     </StackPanel>
                     <TextBlock x:Name="LlmCredentialStatus" TextWrapping="Wrap"/>
+                    <ComboBox x:Name="PromptChoice" SelectionChanged="PromptChoice_Changed" Margin="0,8,0,4"/>
+                    <TextBox x:Name="PromptName" MaxLength="100" ToolTip="自定义预设名称"/>
+                    <WrapPanel Margin="0,6,0,4">
+                        <Button Content="保存为自定义预设" Click="AddPrompt_Click" Padding="8,4"/>
+                        <Button Content="修改所选自定义预设" Click="UpdatePrompt_Click" Padding="8,4"/>
+                        <Button Content="删除所选自定义预设" Click="DeletePrompt_Click" Padding="8,4"/>
+                    </WrapPanel>
+                    <TextBlock Text="预设与 Prompt 编辑后须点击底部保存设置才生效；内置预设始终保留。" TextWrapping="Wrap"/>
                     <TextBlock Text="System Prompt（可完全编辑或清空；最多 8192 字符）" Margin="0,8,0,4"/>
                     <TextBox x:Name="LlmSystemPrompt" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="100" MaxLength="8192"/>
                     <CheckBox x:Name="LlmStreaming" Content="Streaming · 流式显示回答" Margin="0,8,0,0"/>
-                    <CheckBox x:Name="LlmAutoRead" Content="完整回答后自动朗读（使用当前保存的 TTS）" Margin="0,8,0,0"/>
+                    <CheckBox x:Name="LlmAutoRead" Content="回答自动朗读（使用当前保存的 TTS）" Margin="0,8,0,0"/>
+                    <ComboBox x:Name="LlmReadingStrategy" Margin="0,8,0,0">
+                        <ComboBoxItem Content="完整回答后朗读（默认）"/>
+                        <ComboBoxItem Content="边生成边逐句朗读（需 Streaming）"/>
+                    </ComboBox>
+                    <TextBlock Text="Thinking 协议（请确认服务及模型支持；拒绝时不自动重试）" Margin="0,8,0,4"/>
+                    <ComboBox x:Name="ThinkingProtocolChoice" SelectionChanged="ThinkingProtocol_Changed">
+                        <ComboBoxItem Content="不发送附加参数"/><ComboBoxItem Content="OpenAI reasoning_effort"/><ComboBoxItem Content="MiMo thinking.type"/>
+                    </ComboBox>
+                    <ComboBox x:Name="ThinkingOptionChoice" Margin="0,4,0,4"/>
+                    <CheckBox x:Name="AutomaticLlm" Content="允许自动上传选区到当前已保存 LLM 地址（立即保存，可能收费）" Click="AutomaticLlm_Click" Margin="0,8,0,0"/>
+                    <TextBlock x:Name="AutomaticLlmStatus" TextWrapping="Wrap"/>
+                    <TextBlock Text="自动问答在线朗读还需独立 TTS 自动上传授权；未授权仅显示回答。更换 LLM 地址后须保存并重新授权。" TextWrapping="Wrap"/>
                     <TextBlock Text="在线 TTS 会将回答再次发送给所选 TTS 服务，可能另行收费。切换 LLM 地址须配置该地址的 Key。配置修改后点击底部“保存设置”；不兼容流式时可关闭 Streaming，主动重试，不自动重复请求。" TextWrapping="Wrap" Foreground="#546575" Margin="0,8,0,0"/>
                 </StackPanel>
             </Expander>
@@ -152,10 +172,13 @@
             <TextBlock Text="未选择时使用系统默认输出。部分设备不可用时跳过；全部不可用时回退默认输出并提示。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
             <CheckBox x:Name="AutoStart" Content="登录 Windows 时启动（驻留托盘）" Margin="0,20,0,16"/>
             <CheckBox x:Name="AutoSpeak" Content="Auto Speak · 鼠标选中即朗读（立即保存）" Click="AutoSpeak_Click" Margin="0,0,0,10"/>
-            <TextBlock Text="自动朗读应用白名单 · 仅使用 UIA 选区" FontWeight="SemiBold"/>
+            <CheckBox x:Name="AutoAsk" Content="Auto Ask · 鼠标选中即问 AI（立即保存）" Click="AutoAsk_Click" Margin="0,0,0,10"/>
+            <TextBlock Text="应用白名单：Ask 与 Speak 独立；同时启用时 Auto Ask 优先。仅使用 UIA 选区。" TextWrapping="Wrap"/>
+            <TextBlock Text="自动操作应用白名单 · 仅使用 UIA 选区" FontWeight="SemiBold"/>
             <ListBox x:Name="Rules" Height="110" Margin="0,8,0,8" HorizontalContentAlignment="Stretch">
                 <ListBox.ItemTemplate><DataTemplate><DockPanel>
-                    <CheckBox IsChecked="{Binding AutoSpeak, Mode=OneWay}" Click="Rule_Click" DockPanel.Dock="Left" Margin="0,0,8,0"/>
+                    <CheckBox Content="Ask" IsChecked="{Binding AutoAsk, Mode=OneWay}" Click="AskRule_Click" DockPanel.Dock="Left" Margin="0,0,8,0"/>
+                    <CheckBox Content="Speak" IsChecked="{Binding AutoSpeak, Mode=OneWay}" Click="Rule_Click" DockPanel.Dock="Left" Margin="0,0,8,0"/>
                     <TextBlock Text="{Binding ExecutablePath}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ExecutablePath}"/>
                 </DockPanel></DataTemplate></ListBox.ItemTemplate>
             </ListBox>

@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace SeleVox.Core;
 
-public sealed record ApplicationRule(string ExecutablePath, bool AutoSpeak = true);
+public sealed record ApplicationRule(string ExecutablePath, bool AutoSpeak = true, bool AutoAsk = false);
 public enum TtsProvider { Windows = 0, Azure = 1, Edge = 2, MiMo = 3, OpenAiCompatible = 4 }
 
 public sealed record Settings(string? VoiceId = null, double Rate = 1, float Volume = 0.8f, bool StartWithWindows = false,
@@ -15,16 +15,25 @@ public sealed record Settings(string? VoiceId = null, double Rate = 1, float Vol
     string OpenAiVoice = "coral", string OpenAiInstructions = "", bool AllowAutomaticOpenAi = false,
     string? OpenAiAuthorizedBaseUrl = null, bool MiMoStreaming = true, OcrLanguage OcrLanguage = OcrLanguage.ChineseEnglish,
     string[]? MiMoOverallStyles = null, string LlmBaseUrl = "https://api.openai.com/v1", string LlmModel = "",
-    string LlmSystemPrompt = Settings.DefaultLlmPrompt, bool LlmStreaming = true, bool LlmAutoRead = true)
+    string LlmSystemPrompt = Settings.DefaultLlmPrompt, bool LlmStreaming = true, bool LlmAutoRead = true,
+    bool AutoAsk = false, bool AllowAutomaticLlm = false, string? LlmAuthorizedBaseUrl = null,
+    AnswerReadingStrategy LlmReadingStrategy = AnswerReadingStrategy.Complete,
+    ThinkingProtocol LlmThinkingProtocol = ThinkingProtocol.None, ThinkingOption LlmThinking = ThinkingOption.Default,
+    PromptPreset[]? CustomPrompts = null, string? SelectedPromptId = null)
 {
     public const string DefaultLlmPrompt = "你是一个准确、简洁的问答助手。直接回答用户的问题，尽量使用自然、清晰、适合朗读的表达。对于不确定的事实明确说明，不编造信息。";
     public bool HasValidLlmConfiguration => NormalizeServiceUrl(LlmBaseUrl) is not null &&
         !string.IsNullOrWhiteSpace(LlmModel) && LlmModel.Length <= 200 && LlmSystemPrompt is { Length: <= 8192 };
+    public bool AllowsAutomaticLlm => AllowAutomaticLlm && NormalizeServiceUrl(LlmBaseUrl) is { } address && address == LlmAuthorizedBaseUrl;
+    public bool AllowsAutomaticAsk(string? path) => AutoAsk && !string.IsNullOrWhiteSpace(path) &&
+        Path.IsPathFullyQualified(path) && (Applications ?? []).Any(r => r.AutoAsk &&
+            string.Equals(r.ExecutablePath, path, StringComparison.OrdinalIgnoreCase));
     public bool UsesMiMoStreaming => Provider == TtsProvider.MiMo && MiMoStreaming && MiMoModel == "mimo-v2.5-tts";
     public const string DefaultOutput = "default";
     public bool IsValid => double.IsFinite(Rate) && Rate is >= 0.5 and <= 2 &&
                            float.IsFinite(Volume) && Volume is >= 0 and <= 1 &&
-                           Enum.IsDefined(Provider) && Enum.IsDefined(OcrLanguage) && EdgePitchHz is >= -100 and <= 100 && EdgeLocaleFilter is not null && AzureRegion is not null &&
+                           Enum.IsDefined(LlmReadingStrategy) && ThinkingSettings.IsValid(LlmThinkingProtocol, LlmThinking) &&
+                           PromptPresets.IsValid(CustomPrompts) && Enum.IsDefined(Provider) && Enum.IsDefined(OcrLanguage) && EdgePitchHz is >= -100 and <= 100 && EdgeLocaleFilter is not null && AzureRegion is not null &&
                            NormalizeServiceUrl(LlmBaseUrl) is not null && LlmModel is { Length: <= 200 } && LlmSystemPrompt is { Length: <= 8192 } &&
                            MiMoVoices.Contains(MiMoVoice) && MiMoStyle is { Length: <= 1000 } && MiMoStyleTags.IsValid(MiMoOverallStyles) && !string.IsNullOrWhiteSpace(MiMoModel) && MiMoModel.Length <= 200 &&
                            NormalizeServiceUrl(OpenAiBaseUrl) is not null && !string.IsNullOrWhiteSpace(OpenAiModel) && OpenAiModel.Length <= 200 &&

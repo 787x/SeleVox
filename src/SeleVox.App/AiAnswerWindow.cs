@@ -43,7 +43,12 @@ internal sealed class AiAnswerWindow : Window
         Closed += (_, _) => { timer.Stop(); session.Cancel(); question.Clear(); answer.Clear(); Content = null; };
         Refresh();
     }
-    internal void ShowAnswer() { Refresh(); Show(); if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal; Activate(); }
+    internal void ShowAnswer(bool activate = true)
+    {
+        Refresh(); var saved = ShowActivated;
+        try { ShowActivated = activate; Show(); if (activate && WindowState == WindowState.Minimized) WindowState = WindowState.Normal; if (activate) Activate(); }
+        finally { ShowActivated = saved; }
+    }
     internal void Refresh()
     {
         var snapshot = session.Snapshot;
@@ -57,11 +62,11 @@ internal sealed class AiAnswerWindow : Window
             if (follow) answer.ScrollToEnd();
         }
         status.Text = snapshot.Message + " · 音频：" + readingStatus();
-        readButton.IsEnabled = snapshot.State == QuestionState.Completed && snapshot.Answer.Length > 0;
+        readButton.IsEnabled = snapshot.AnswerComplete && snapshot.State is not (QuestionState.Generating or QuestionState.Speaking) && snapshot.Answer.Length > 0;
         var current = settings();
         privacy.Text = "主动提问会将问题和 System Prompt 发送至所配置 LLM，可能收费。" +
             (current.Provider == TtsProvider.Windows ? "回答朗读使用 Windows 本地 TTS。" : "回答朗读使用在线 TTS，将再次发送回答到当前 TTS 服务，可能另行收费。") +
-            (current.LlmAutoRead ? "完整回答将自动朗读。" : "自动朗读已关闭。");
+            (current.LlmAutoRead ? current.LlmReadingStrategy == AnswerReadingStrategy.Incremental && current.LlmStreaming ? "逐句朗读已启用；自动问答须满足独立 TTS 授权。" : "完整回答将自动朗读；自动问答须满足独立 TTS 授权。" : "自动朗读已关闭。");
     }
     internal void HideForCapture()
     {
