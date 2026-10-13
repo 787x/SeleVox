@@ -58,6 +58,8 @@ Release：`dotnet build SeleVox.slnx -c Release`。
 
 ## 补充：长复杂问题实测（2026-10-13）
 
+测试服务配置（用户补充确认）：LLM 为 `deepseek-v4.1-flash`，推理等级为 `high`；TTS 为 `mimo-v2.5-tts`。客户端实际模型标识为 `workbuddy/deepseek-v4.1-flash`。`high` 是用户确认的服务推理配置；当前本机设置未保存 LlmThinkingProtocol / LlmThinking，因此测试客户端使用默认行为，未显式附加 reasoning_effort 字段。两种朗读策略沿用同一保存配置。
+
 按用户要求，使用同一个固定复杂工程问题，要求解释 Windows 流式语音问答的权限、代次隔离、队列背压、暂停取消、迟到回调、多设备故障、UI 状态及验证设计，并比较延迟/费用/完整性，要求 800–1000 字、10–14 个自然段。沿用保存的 LLM 与 MiMo 凭据，默认单设备、MiMo PCM Streaming，两种模式串行各请求一次，未改用户配置。新增 LongComplexQuestionComparesActualFirstAudioAndContinuity 收费测试，通过（pr9-long-paid.trx），总测试约 7 分 4 秒。正文未保存或输出。
 
 | 指标 | 完整模式 | 逐句模式 |
