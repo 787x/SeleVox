@@ -1,6 +1,14 @@
-# SeleVox — PR6
+# SeleVox — PR7
 
 Windows 11 x64 的选区朗读工具，支持手动热键与可关闭的鼠标自动朗读，普通用户权限运行。WPF 设置窗口关闭后驻留托盘；托盘双击或“设置”重新打开，“退出”结束程序。重复启动会通知已有实例显示设置窗口。
+
+## PR7：MiMo 整体风格与唱歌流式修复
+
+MiMo 新增**独立整体风格标签选择器**：八类 48 项推荐风格，支持搜索、多选、自定义、移除和清空。选择 `温柔`、`清亮` 等风格后，程序在每个 MiMo 合成分段的 `assistant.content` 开头生成统一的 `(温柔 清亮)` 前缀，计入 UTF-8 字节预算；已有“自然语言风格说明”仍原样发送到 `user.content`，旧配置默认无整体标签。`唱歌` 作为独立模式，适合中文歌词。
+
+PR7 还修复了唱歌返回较大型 SSE 音频事件时因原 **2 MiB** 客户端限制而误判“事件过大”的问题：改为有界 **16 MiB**，优化事件解析与 Base64 解码中的大块内存复制，保留总响应/PCM 限制、取消、背压和多设备播放。真实较长歌词曾出现约 **4.30 MB** 单事件，首个有效 PCM 等待约 **50–53 秒**；提高接收上限解决误拒收，**不会缩短服务端首音频生成时间**。
+
+开发维护请参阅 [MiMo TTS 完整技术指南](docs/MiMoTTS.md)；真实测试及边界见 [风格验证](verification/MiMoStyles.md) 和 [大型 SSE 修复记录](verification/MiMoSseFix.md)。
 
 ## PR6：离线屏幕框选 OCR
 
@@ -26,11 +34,11 @@ dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr6 --filter 'Cat
 
 OCR 不保证小字体、花体、低对比度、复杂多栏/表格、竖排或艺术排版的准确率；请在结果窗口校对。实际验证、混合 DPI 双屏等未实测项与人工清单见 [PR6 验证记录](verification/PR6.md)。
 
-## PR5：MiMo 与 OpenAI-Compatible
+## MiMo 与 OpenAI-Compatible（PR5 接入，PR7 增强）
 
 默认仍为 Windows 本地 TTS。Provider 下拉框追加 **MiMo TTS** 和 **OpenAI-Compatible TTS**；选择、模型、音色、风格和设备均需点击固定底部“保存设置”才能用于下一次朗读。底部提示实际生效的 Provider，独立自动授权不会保存尚未保存的 Provider。
 
-**MiMo**：保存 API Key（不回填明文），按钮行右侧“获取 API Key”可用默认浏览器打开[小米 Key 控制台](https://platform.xiaomimimo.com/console/api-keys)。选择预置音色并填写可选自然语言风格。默认中文音色为 `冰糖`，还提供 `mimo_default`、`茉莉`、`苏打`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。模型名默认 `mimo-v2.5-tts`，可手工填写其他采用相同预置音色协议的模型名称，保存后生效；使用 `https://api.xiaomimimo.com/v1/chat/completions`；待合成内容放在 assistant 消息，自然语言风格说明单独放在 user 消息，读取 JSON 中的 Base64 WAV。语速滑块转换为自然语言快慢指导，属于近似控制，不保证精确倍速，不发送数值 speed，不改写或翻译原文。只实现预置音色。
+**MiMo**：保存 API Key（不回填明文），按钮行右侧“获取 API Key”可用默认浏览器打开[小米 Key 控制台](https://platform.xiaomimimo.com/console/api-keys)。选择预置音色并填写可选自然语言风格。默认中文音色为 `冰糖`，还提供 `mimo_default`、`茉莉`、`苏打`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。模型名默认 `mimo-v2.5-tts`，可手工填写其他模型名称，但目前仅验证该预置音色模型；其他模型使用非流式路径且不保证协议兼容，保存后生效；使用 `https://api.xiaomimimo.com/v1/chat/completions`；待合成内容放在 assistant 消息，自然语言风格说明单独放在 user 消息，读取 JSON 中的 Base64 WAV。语速滑块转换为自然语言快慢指导，属于近似控制，不保证精确倍速，不发送数值 speed，不改写或翻译原文。只实现预置音色。
 
 **开发者技术参考：** [MiMo TTS 协议、风格控制、流式音频与唱歌 SSE 技术指南](docs/MiMoTTS.md)。本文说明官方协议与项目实现的区别，并保留用户风格实验及后续维护约束。
 
@@ -78,7 +86,7 @@ dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr5-stream --filt
 Remove-Item Env:SELEVOX_MIMO_STREAM_TESTS
 ```
 
-默认测试不调用收费服务。可控 SSE 与真实 WASAPI/loopback 的组合测试位于 WindowsAudio 组，仍需独立启用 `SELEVOX_AUDIO_TESTS=1`。最新实际数据与限制见 [PR5 流式验证记录](verification/PR5.md)。
+默认测试不调用真实 MiMo 服务。可控 SSE 与真实 WASAPI/loopback 的组合测试位于 WindowsAudio 组，仍需独立启用 `SELEVOX_AUDIO_TESTS=1`。最新实际数据与限制见 [PR5 流式验证记录](verification/PR5.md)。
 
 ## 构建与运行
 
@@ -147,7 +155,7 @@ Edge 通过固定版本 **EdgeTTS.DotNet 0.4.0** 的局部传输适配接入。�
 - 本地 WinRT、Azure REST 与 Edge（MP3 解码后）均先生成完整 RIFF/WAVE 音频，检查 PCM/IEEE float，再交由同一 NAudio/WASAPI 播放层。Azure 不使用 SDK 直接播放，当前不实现网络流式播放；长文本受服务请求和音频时长限制，可缩小选区后重试。
 - 暂停保留播放器及缓冲区，继续使用原音频位置；Stop、替换和会话结束释放全部播放器与流，单设备错误只释放对应输出。会话代次和取消检查共同阻止迟到的旧音频重新播放，合成调用串行且等待的新请求可取消。
 - 自动模式还需要 UIA 提供实际选区的屏幕矩形与稳定焦点身份；不提供时忽略自动触发，手动热键保留 PR1 的读取路径。不监测键盘选区变化，没有剪贴板回退。鼠标 Hook 回调只记录手势并安排后台工作，不吞输入；前台或焦点变化取消待处理捕获。关闭模式及退出时释放 Hook。
-- 本地模式不上传文字；仅在选择 Azure/Edge 并触发对应授权的朗读动作时发送选区。不记录选区、合成文本或 Key，不模拟复制。本 PR 没有 OCR、LLM 或虚拟麦克风驱动功能。
+- 本地 TTS 与离线 OCR 不上传文字；手动选用 Azure、Edge、MiMo 或 OpenAI-Compatible TTS 时，待朗读文字才会发送至所选服务；自动云端朗读还需要对应 Provider 的独立授权。不记录选区、合成文本或 Key，不通过模拟复制来捕获选区。当前已支持离线框选 OCR，尚未实现 LLM 问答或虚拟麦克风驱动。
 
 ## 验证
 
