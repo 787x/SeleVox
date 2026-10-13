@@ -1,6 +1,28 @@
-# SeleVox — PR8
+# SeleVox — PR9
 
 Windows 11 x64 的选区朗读工具，支持手动热键与可关闭的鼠标自动朗读，普通用户权限运行。WPF 设置窗口关闭后驻留托盘；托盘双击或“设置”重新打开，“退出”结束程序。重复启动会通知已有实例显示设置窗口。
+
+## PR9：Auto Ask、逐句朗读、Prompt 与 Thinking
+
+Auto Ask 默认关闭，可在设置和托盘独立切换。为应用完整可执行文件路径勾选 Ask，并明确勾选“允许自动上传选区到当前已保存 LLM 地址”。授权绑定规范化后的完整 Base URL；更换地址并保存会撤销授权，凭据也按地址隔离。应用规则同时启用 Ask 和 Speak 时，Auto Ask 优先；未授权或配置无效时不发送，也不改动当前问答/音频。普通点击、重复选区、密码控件和白名单外应用不触发自动问答。复用同一鼠标 Hook 与 UIA 稳定选区流程，无自动 OCR、剪贴板读取或屏幕监控。自动回答窗口显示和更新不激活前台。
+
+回答自动朗读可选“完整回答后朗读”（旧配置默认）或“边生成边逐句朗读”。逐句模式仅在 Streaming 开启时生效；仅使用最终正文 content，忽略 reasoning_content。按中文/英文句末或段落分句，长段在安全文本边界限长切分。待合成队列最多 8 段，每段通常最多 512 UTF-16 字符；背压停止继续接收新段，单路合成并等待真实播放完成，未合成后续句子不会在暂停时无限积累音频。本版不预取下一句音频，段间仍可能等待合成。MiMo TTS 可继续使用自身 PCM 流式输出和多设备 WASAPI。只有 LLM 正常完成且已提交音频全部播放结束，语音问答才显示完成。网络中断保留已显示正文并标注不完整，停止待读段；TTS 失败保留完整回答，支持主动重新朗读。Stop、新提问、手动朗读替换、关闭回答窗口和退出会取消生产及语音队列。已正常生成的完整回答即使停止语音仍可主动重读。
+
+Auto Ask 回答使用在线 TTS 时还需该 TTS 的独立自动上传授权；未授权仅显示回答。Windows 本地 TTS 不受云端授权限制。关闭 Auto Ask、撤销 LLM/TTS 自动授权、改变服务地址或应用规则会取消相关自动问答；手动问答和手动重读保留用户主动控制。Prompt/Thinking 普通编辑保存不改变已经开始的请求快照。
+
+四个内置 Prompt：快速问答、详细解释、翻译、文本总结。可自由编辑完整 System Prompt（含清空）、另存自定义预设、改名/修改或删除自定义预设；内置文本始终保留。预设列表操作与 Prompt 编辑须点击底部“保存设置”才生效，旧自由 Prompt 原文及选中预设后的编辑内容均保留。
+
+Thinking 默认不发附加字段，协议须明确选择，不能根据域名猜测：
+
+| 协议 | 服务默认 | 可选字段 |
+| --- | --- | --- |
+| 无附加参数 | 不发送 | 无 |
+| OpenAI | 不发送 | reasoning_effort: none / low / medium / high |
+| MiMo | 不发送 | thinking.type: disabled / enabled |
+
+不同 OpenAI 模型未必支持 none 或 high；第三方服务须自行确认协议，HTTP 拒绝会明确提示检查 Thinking，不自动重发可能收费的请求。MiMo LLM Thinking 与 MiMo TTS 的风格/唱歌参数互不影响。依据：[OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)、[MiMo 深度思考](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/text-generation/deep-thinking)。
+
+实际测试、时点数据和未验收项见 [PR9 验证记录](verification/PR9.md)。短回答与慢 TTS 不保证逐句模式更快；逐句调用也可能增加 TTS 请求次数/费用。
 
 ## PR8：选区与 OCR 的 AI 问答
 
@@ -15,7 +37,7 @@ System Prompt 可完全编辑或清空并保存，重启保持；请求以独立
 
 只在完整、非空回答正常完成后启动一次 TTS，沿用当前保存的五种 Provider、语音、MiMo 风格、语速、音量、输出设备及 Pause/Resume/Stop。失败、断流或取消保留已接收正文但不自动朗读；TTS 失败不会删除回答，可调整设置后重新朗读。OCR 截图期间隐藏回答窗口，完成/取消后恢复位置与可见状态，不抢焦点；框选尚未完成时需先结束 OCR 才能发起新问答。
 
-**提问会发送问题与 System Prompt 到配置的 LLM，可能收费；在线 TTS 会再次发送回答到所选 TTS 服务，也可能收费。** 提问始终由热键或按钮主动触发，与 Auto Speak 白名单及自动云端 TTS 授权独立。没有 Auto Ask、多轮历史、搜索、工具执行或云端 OCR。问题、回答和截图不持久化，不记录正文、请求/响应体或 Key。
+**提问会发送问题与 System Prompt 到配置的 LLM，可能收费；在线 TTS 会再次发送回答到所选 TTS 服务，也可能收费。** 手动提问与自动授权独立。Auto Ask 需要下述独立开关、完整路径应用规则和当前 LLM 地址授权。没有多轮历史、搜索、工具执行或云端 OCR。问题、回答和截图不持久化，不记录正文、请求/响应体或 Key。
 
 单次问题/回答最多 32768 UTF-16 单元（UIA 捕获仍沿用原 10000 字符上限），System Prompt 最多 8192 单元，SSE 单事件 256 KiB、总响应 4 MiB，响应头/每次读取空闲 45 秒、问答总计 3 分钟。只接受文本和正常 `stop` 结束；流式还必须收到 `[DONE]`，`length`、过滤或工具结束均不当作完整成功。不默认发送 temperature、工具或模型专有参数。客户端输出上限用于有界拒绝和取消，不承诺限制服务端已产生的费用。
 

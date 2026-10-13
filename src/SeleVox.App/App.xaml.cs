@@ -15,7 +15,7 @@ public partial class App : System.Windows.Application
     private bool exiting;
     private readonly AutomaticSelection automaticSelection = new();
     private AutomaticMouseMonitor? mouse;
-    private Forms.ToolStripMenuItem? autoMenu;
+    private Forms.ToolStripMenuItem? autoMenu, autoAskMenu;
     private long mouseEpoch;
     private readonly TextCaptureOperation ocrOperation = new();
     private readonly LocalOcr ocr = new();
@@ -36,7 +36,7 @@ public partial class App : System.Windows.Application
         reading = new ReadingSession(speech, speech);
         var chat = new ChatCompletionClient();
         questionSession = new QuestionSession(chat.GenerateAsync,
-            (text, options) => reading.ReadCapturedTextAsync(new(text, TextSource.Selection), options), reading.Stop);
+            (text, options) => reading.ReadSentenceAsync(text, options, CancellationToken.None), reading.Stop, reading.ReadSentenceAsync);
         settingsWindow = new MainWindow(settings, SaveSettings, () => reading.TogglePause(), StopReading, ExitApplication, AddForegroundApplicationAsync, CancelAutomaticReading);
         settingsWindow.LlmCredentialsChanged = () => { InvalidateSelectionAction(); questionSession.Cancel(); };
         MainWindow = settingsWindow;
@@ -50,6 +50,9 @@ public partial class App : System.Windows.Application
             if (error is not null) settingsWindow.SetNotice(error);
         };
         menu.Items.Add(autoMenu);
+        autoAskMenu = new Forms.ToolStripMenuItem("Auto Ask · 自动选中问 AI") { Checked = settings.AutoAsk };
+        autoAskMenu.Click += (_, _) => { var error = SaveSettings(settings with { AutoAsk = !settings.AutoAsk }); if (error is not null) settingsWindow.SetNotice(error); };
+        menu.Items.Add(autoAskMenu);
         menu.Items.Add("暂停 / 继续", null, (_, _) => reading.TogglePause());
         menu.Items.Add("停止", null, (_, _) => StopReading());
         menu.Items.Add(new Forms.ToolStripSeparator());
@@ -104,12 +107,19 @@ public partial class App : System.Windows.Application
     {
         try
         {
+            if (Settings.NormalizeServiceUrl(updated.LlmBaseUrl) != Settings.NormalizeServiceUrl(settings.LlmBaseUrl))
+                updated = updated with { AllowAutomaticLlm = false, LlmAuthorizedBaseUrl = null };
+            var invalidateAutomaticQuestion = !updated.AutoAsk || !updated.AllowsAutomaticLlm ||
+                !(updated.Applications ?? []).SequenceEqual(settings.Applications ?? []) ||
+                settings.AllowsAutomaticProvider && !updated.AllowsAutomaticProvider ||
+                updated.Provider != settings.Provider || Settings.NormalizeServiceUrl(updated.LlmBaseUrl) != Settings.NormalizeServiceUrl(settings.LlmBaseUrl);
             StartupRegistration.Apply(updated.StartWithWindows); store.Save(updated); settings = updated;
-            InvalidateSelectionAction(); questionSession?.Cancel();
+            InvalidateSelectionAction(); if (invalidateAutomaticQuestion) questionSession?.CancelAutomatic();
             CancelAutomaticReading();
             settingsWindow?.SetAutomaticSettings(settings);
             ocrResult?.RefreshProviderNotice();
             if (autoMenu is not null) autoMenu.Checked = settings.AutoSpeak;
+            if (autoAskMenu is not null) autoAskMenu.Checked = settings.AutoAsk;
             var warning = ApplyAutomatic();
             if (warning is not null) settingsWindow?.SetAutomaticStatus(warning);
             return null;
@@ -122,10 +132,10 @@ public partial class App : System.Windows.Application
     }
     private string? ApplyAutomatic()
     {
-        if (!settings.AutoSpeak || ocrOperation.IsActive)
+        if (!(settings.AutoSpeak || settings.AutoAsk) || ocrOperation.IsActive)
         {
             mouse?.Dispose(); mouse = null;
-            settingsWindow?.SetAutomaticStatus("自动选中朗读已关闭");
+            settingsWindow?.SetAutomaticStatus("自动选区操作已关闭");
             return null;
         }
         if (mouse is not null) return null;
@@ -138,10 +148,10 @@ public partial class App : System.Windows.Application
                 var epoch = mouseEpoch;
                 Dispatcher.BeginInvoke(() =>
                 {
-                    if (epoch == mouseEpoch && !exiting && !ocrOperation.IsActive && settings.AutoSpeak) _ = AutoReadAsync(window, start, end, epoch);
+                    if (epoch == mouseEpoch && !exiting && !ocrOperation.IsActive && (settings.AutoSpeak || settings.AutoAsk)) _ = AutoReadAsync(window, start, end, epoch);
                 });
             };
-            settingsWindow?.SetAutomaticStatus("仅在启用的应用规则中自动朗读（UIA）");
+            settingsWindow?.SetAutomaticStatus("仅在启用的应用规则中自动操作（UIA；Auto Ask 优先）");
             return null;
         }
         catch (Exception ex) { return $"自动鼠标监听不可用（{ex.GetType().Name}），可继续使用手动热键。"; }
@@ -150,18 +160,19 @@ public partial class App : System.Windows.Application
     {
         // Process identity lookup runs outside the low-level hook and UI thread.
         var path = await Task.Run(() => ApplicationIdentity.FromWindow(window));
-        if (epoch != mouseEpoch || exiting || ocrOperation.IsActive || !settings.AllowsAutomatic(path) || Native.GetForegroundWindow() != window) return;
+        if (epoch != mouseEpoch || exiting || ocrOperation.IsActive || !(settings.AllowsAutomatic(path) || settings.AllowsAutomaticAsk(path)) || Native.GetForegroundWindow() != window) return;
         var identity = path! + "|" + window;
         await automaticSelection.RequestAsync(identity, async token =>
         {
             var stable = await StableSelection.CaptureAsync((focus, sampleToken) =>
                 capture.CaptureSnapshotAsync(window, sampleToken, start, end, focus), token);
             return stable.Text;
-        }, () => epoch == mouseEpoch && !exiting && settings.AllowsAutomatic(path) && Native.GetForegroundWindow() == window,
+        }, () => epoch == mouseEpoch && !exiting && (settings.AllowsAutomatic(path) || settings.AllowsAutomaticAsk(path)) && Native.GetForegroundWindow() == window,
             text =>
             {
                 settingsWindow?.SetAutomaticStatus("已获取有效选区");
-                if (settings.AllowsAutomaticProvider) { InvalidateSelectionAction(); questionSession?.Cancel(); _ = reading!.ReadTextAsync(text, settings); }
+                if (settings.AllowsAutomaticAsk(path)) { AskAi(text, true); }
+                else if (settings.AllowsAutomatic(path) && settings.AllowsAutomaticProvider) { InvalidateSelectionAction(); questionSession?.Cancel(); _ = reading!.ReadTextAsync(text, settings); }
             },
             message => settingsWindow?.SetAutomaticStatus(message));
     }
@@ -197,18 +208,20 @@ public partial class App : System.Windows.Application
         }
         finally { if (ReferenceEquals(selectionAction, request)) selectionAction = null; }
     }
-    private void AskAi(string text)
+    private void AskAi(string text) => AskAi(text, false);
+    private void AskAi(string text, bool automatic)
     {
         if (exiting) return;
         var started = false;
         try
         {
             if (ocrOperation.IsActive) throw new UserFeedbackException("请先完成或取消当前 OCR 框选，再问 AI。");
+            if (automatic && (!settings.AutoAsk || !settings.AllowsAutomaticLlm)) { settingsWindow?.SetAutomaticStatus("Auto Ask 未获当前 LLM 地址上传授权，未发送。"); return; }
             if (!settings.HasValidLlmConfiguration) throw new UserFeedbackException("请在设置的 AI 问答区域保存合法地址和模型。");
             var key = AzureCredentials.Llm(settings.LlmBaseUrl).Read();
             ChatCompletionClient.Validate(text, settings, key);
             InvalidateSelectionAction(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
-            var task = questionSession!.AskAsync(text, settings, key!);
+            var task = questionSession!.AskAsync(text, settings, key!, automatic);
             started = true;
             if (aiAnswer is null)
             {
@@ -218,7 +231,7 @@ public partial class App : System.Windows.Application
                 aiAnswer = window;
                 window.Closed += (_, _) => { InvalidateSelectionAction(); if (ReferenceEquals(aiAnswer, window)) aiAnswer = null; };
             }
-            aiAnswer.ShowAnswer();
+            aiAnswer.ShowAnswer(!automatic);
             _ = task;
         }
         catch (Exception ex)
@@ -272,7 +285,7 @@ public partial class App : System.Windows.Application
                         mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
                         InvalidateSelectionAction(); questionSession?.Cancel();
                         return reading!.ReadCapturedTextAsync(result, settings);
-                    }, AskAi);
+                    }, text => AskAi(text));
                     ocrResult = window;
                     window.Closed += (_, _) => { if (ReferenceEquals(ocrResult, window)) ocrResult = null; };
                 }
@@ -280,6 +293,14 @@ public partial class App : System.Windows.Application
                 settingsWindow?.SetNotice("OCR 已完成，复制或朗读请在结果窗口主动操作。");
             }, message => { if (!exiting) { settingsWindow?.SetNotice(message); Notify(message); } },
                 () => { if (!exiting) settingsWindow?.SetNotice("屏幕 OCR 已取消。"); });
+        }
+        catch (Exception ex)
+        {
+            if (!exiting)
+            {
+                var message = ex is UserFeedbackException ? ex.Message : "无法准备屏幕 OCR，请检查桌面访问权限后重试。";
+                settingsWindow?.SetNotice(message); Notify(message);
+            }
         }
         finally
         {

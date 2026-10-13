@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using System.Windows.Threading;
 using SeleVox.App;
 using SeleVox.Core;
 
@@ -164,20 +163,6 @@ public sealed class HttpSpeechWindowTests
             foreach (var nested in Buttons(child)) yield return nested;
         }
     }
-    private static Task RunSta(Func<Task> action)
-    {
-        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
-        {
-            var dispatcher = Dispatcher.CurrentDispatcher;
-            dispatcher.BeginInvoke(async () =>
-            {
-                try { await action(); completed.SetResult(); }
-                catch (Exception error) { completed.SetException(error); }
-                finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Background); }
-            });
-            Dispatcher.Run();
-        });
-        thread.SetApartmentState(ApartmentState.STA); thread.Start(); return completed.Task;
-    }
+    private static Task RunSta(Func<Task> action) => OcrDesktopTests.RunSta(action);
+
 }

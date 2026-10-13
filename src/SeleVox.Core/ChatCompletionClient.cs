@@ -22,6 +22,8 @@ public sealed class ChatCompletionClient
         if (string.IsNullOrWhiteSpace(question) || question.Length > MaxText)
             throw new UserFeedbackException("问题为空或超过 32768 字符，请缩短后重试。");
         if (!settings.HasValidLlmConfiguration) throw new UserFeedbackException("请先保存合法的 AI Base URL、Model 和 System Prompt（最多 8192 字符）。");
+        if (!ThinkingSettings.IsValid(settings.LlmThinkingProtocol, settings.LlmThinking))
+            throw new UserFeedbackException("Thinking 协议与选项不匹配，请重新保存设置。");
         if (string.IsNullOrWhiteSpace(key) || key.Length > 1280 || key.Any(char.IsControl))
             throw new UserFeedbackException("请为当前 AI 服务地址保存有效的 API Key。");
     }
@@ -35,16 +37,24 @@ public sealed class ChatCompletionClient
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, Settings.NormalizeServiceUrl(settings.LlmBaseUrl) + "/chat/completions");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
-            request.Content = new StringContent(JsonSerializer.Serialize(new
+            var payload = new Dictionary<string, object>
             {
-                model = settings.LlmModel, stream = settings.LlmStreaming,
-                messages = new[] { new { role = "system", content = settings.LlmSystemPrompt }, new { role = "user", content = question } }
-            }), Encoding.UTF8, "application/json");
+                ["model"] = settings.LlmModel, ["stream"] = settings.LlmStreaming,
+                ["messages"] = new[] { new { role = "system", content = settings.LlmSystemPrompt }, new { role = "user", content = question } }
+            };
+            if (settings.LlmThinking != ThinkingOption.Default)
+            {
+                if (settings.LlmThinkingProtocol == ThinkingProtocol.OpenAi)
+                    payload["reasoning_effort"] = settings.LlmThinking == ThinkingOption.Disabled ? "none" : settings.LlmThinking.ToString().ToLowerInvariant();
+                else if (settings.LlmThinkingProtocol == ThinkingProtocol.MiMo)
+                    payload["thinking"] = new { type = settings.LlmThinking == ThinkingOption.Disabled ? "disabled" : "enabled" };
+            }
+            request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
             using var headers = CancellationTokenSource.CreateLinkedTokenSource(token); headers.CancelAfter(idleTimeout);
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headers.Token).ConfigureAwait(false);
             headers.CancelAfter(Timeout.InfiniteTimeSpan);
             if (!response.IsSuccessStatusCode)
-                throw new UserFeedbackException($"AI 服务返回 HTTP {(int)response.StatusCode}。请检查地址、模型、凭据或额度；未自动重试。流式不兼容时可关闭 Streaming 后主动重试。");
+                throw new UserFeedbackException($"AI 服务返回 HTTP {(int)response.StatusCode}。请检查地址、模型、凭据、额度及 Thinking 协议/取值是否受模型支持；未自动重试。流式不兼容时可关闭 Streaming 后主动重试。");
             if (response.Content.Headers.ContentLength > MaxResponseBytes) throw Limit();
             using var body = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
             if (response.Content.Headers.ContentType?.MediaType == "application/json")

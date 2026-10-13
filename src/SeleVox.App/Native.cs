@@ -13,7 +13,10 @@ internal static class Native
 }
 internal sealed class Hotkeys : IDisposable
 {
-    private readonly HwndSource source = new(new HwndSourceParameters("SeleVox hotkeys") { ParentWindow = new nint(-3) });
+    // HwndSourceParameters defaults to WS_VISIBLE. This message-only receiver must never
+    // become a foreground window when created by a background/secondary dispatcher.
+    private readonly HwndSource source = new(new HwndSourceParameters("SeleVox hotkeys")
+    { ParentWindow = new nint(-3), WindowStyle = 0, ExtendedWindowStyle = 0x08000000 /* WS_EX_NOACTIVATE */ });
     private readonly List<int> registered = [];
     public event Action<int, nint>? Pressed;
     public List<string> Conflicts { get; } = [];

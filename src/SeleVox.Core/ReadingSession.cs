@@ -38,6 +38,7 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
     private readonly SemaphoreSlim synthesisGate = new(1, 1);
     private CancellationTokenSource? current;
     private IAudioPlayback? playback;
+    private TaskCompletionSource? playbackCompletion;
     private long generation;
     private bool disposed;
     private bool automatic;
@@ -52,6 +53,10 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
 
     public Task ReadCapturedTextAsync(CapturedText text, Settings settings) =>
         string.IsNullOrWhiteSpace(text.Text) ? Task.CompletedTask : ReadAsync(_ => Task.FromResult(text.Text), settings);
+
+    // Unlike the ordinary read entry point, this completes only after actual playback finishes.
+    public Task ReadSentenceAsync(string text, Settings settings, CancellationToken cancellation) =>
+        ReadAsync(_ => Task.FromResult(text), settings, false, true, cancellation);
 
     public void CancelPendingAutomatic()
     {
@@ -73,9 +78,10 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
         }
     }
 
-    public async Task ReadAsync(Func<CancellationToken, Task<string>> capture, Settings settings, bool isAutomatic = false)
+    public async Task ReadAsync(Func<CancellationToken, Task<string>> capture, Settings settings, bool isAutomatic = false, bool waitForPlayback = false, CancellationToken cancellation = default)
     {
         CancellationTokenSource request;
+        TaskCompletionSource? completion = null;
         long id;
         lock (sync)
         {
@@ -84,11 +90,18 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
             if (isAutomatic && !settings.AllowsAutomaticProvider) return;
             automatic = isAutomatic;
             var cleanupError = CancelAndRelease();
-            if (cleanupError is not null) { SetStatus(ReadingState.Error, $"停止旧音频失败（{cleanupError.GetType().Name}），请重试。"); return; }
-            request = current = new();
+            if (cleanupError is not null)
+            {
+                SetStatus(ReadingState.Error, $"停止旧音频失败（{cleanupError.GetType().Name}），请重试。");
+                if (waitForPlayback) throw new UserFeedbackException(Status.Message);
+                return;
+            }
+            request = current = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            if (waitForPlayback) completion = playbackCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             id = ++generation;
             SetStatus(ReadingState.Synthesizing, "正在获取选区并合成…");
         }
+        using var registration = cancellation.Register(() => { lock (sync) { if (id == generation) Stop(); } });
         Stream? audio = null;
         IAudioPlayback? candidate = null;
         try
@@ -122,8 +135,9 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
                 owned.Play();
                 SetStatus(ReadingState.Playing, WithWarning("正在朗读", owned));
             }
+            if (completion is not null) await completion.Task.WaitAsync(request.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { if (waitForPlayback) throw; }
         catch (Exception ex)
         {
             lock (sync)
@@ -134,6 +148,7 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
                     SetStatus(ReadingState.Error, ex is UserFeedbackException ? ex.Message : $"朗读失败（{ex.GetType().Name}）。请检查语音服务及输出设备。");
                 }
             }
+            if (waitForPlayback) throw;
         }
         finally
         {
@@ -147,6 +162,7 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
             }
             lock (sync) { if (ReferenceEquals(current, request)) current = null; }
             request.Dispose();
+            _ = completion?.Task.Exception; // Streaming has its own completion path; observe any device error.
         }
     }
 
@@ -203,6 +219,7 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
             }
             await production.ConfigureAwait(false);
             await completed.Task.WaitAsync(request.Token).ConfigureAwait(false);
+            if (Status.State == ReadingState.Error) throw new UserFeedbackException(Status.Message);
         }
         catch
         {
@@ -260,7 +277,9 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
             if (error is null && streamingBuffer is not null && !streamingBuffer.IsComplete)
                 error = new UserFeedbackException("流式音频未完成，输出已提前停止。");
             var pending = error is not null && streamingBuffer is not null ? current : null;
+            var completion = playbackCompletion; playbackCompletion = null;
             ReleasePlayback();
+            if (error is null) completion?.TrySetResult(); else completion?.TrySetException(error);
             SetStatus(error is null ? ReadingState.Idle : ReadingState.Error,
                 error is null ? WithWarning(streamingBuffer is not null && streamingInterrupted ? "自动流式合成已取消，已缓冲音频播放结束" : "朗读完成", source) :
                 streamingBuffer is not null && streamingError is not null ? streamingError + " 已缓冲音频播放结束，未重试。" : "所有音频输出均失败，请检查设备连接后重试。");
@@ -287,6 +306,7 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
     }
     private Exception? ReleasePlayback()
     {
+        playbackCompletion?.TrySetCanceled(); playbackCompletion = null;
         var old = playback;
         playback = null;
         if (old is null) return null;
