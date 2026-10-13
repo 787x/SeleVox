@@ -10,6 +10,8 @@
 
 新增实际 Windows z-order 回归检查首次及连续三次 OCR：调用生产显示流程，执行 finally 恢复后遍历原生 HWND 层级，确认 OCR 在 AI 上方、两个窗口可见且新文字正确。首次修复验证组 6 通过、1 失败，失败仍为已有截图隐藏测试的像素没有改变；新增层级测试通过。最终 Release 构建 0 警告/错误，层级与 WPF 定向 6 项通过（`pr8-zorder-final.trx`），修正版输出在 `artifacts/pr8-zorder/bin/SeleVox.App/release/`。这次没有把旧像素失败算作通过，已有人工反馈也不能代替本次修复后的人工复验。
 
+随后用户运行修正版并明确反馈 **“验证通过”**，确认这次 OCR 结果被 AI 回答窗口遮挡的问题修复后人工复验通过。该反馈仅更新本次窗口层级的人工验收，不撤销上面保留的自动测试失败记录。
+
 ## 修改与配置
 
 - 独立 Chat Completions 客户端向规范化 `{LlmBaseUrl}/chat/completions` 发起一个请求，Bearer 凭据，独立 system/user 消息，默认 SSE，可选择非流式。同一响应直接返回 JSON 时可以消费，不重新提交。不发送 temperature、工具或模型专有参数，不执行回答中的代码/HTML。
