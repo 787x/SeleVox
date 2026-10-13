@@ -66,14 +66,9 @@ internal sealed partial class MiMoSpeech(HttpClient? client = null, Func<string?
 
     internal static byte[] DecodeBase64(string data, CancellationToken cancellation)
     {
-        using var output = new MemoryStream();
-        var chars = new char[65536]; var decoded = new byte[49152]; var count = 0; var padding = 0;
-        void Flush()
-        {
-            cancellation.ThrowIfCancellationRequested();
-            if (!Convert.TryFromBase64Chars(chars.AsSpan(0, count), decoded, out var written)) throw new FormatException();
-            output.Write(decoded, 0, written); count = 0;
-        }
+        // Count first, then decode cancellable blocks directly into one exact-size PCM allocation.
+        // Avoid MemoryStream growth plus ToArray duplicating a large SSE audio payload.
+        var meaningful = 0; var padding = 0;
         for (var i = 0; i < data.Length; ++i)
         {
             if ((i & 16383) == 0) cancellation.ThrowIfCancellationRequested();
@@ -81,12 +76,28 @@ internal sealed partial class MiMoSpeech(HttpClient? client = null, Func<string?
             if (ch is ' ' or '\t' or '\r' or '\n') continue;
             if (ch == '=') { if (++padding > 2) throw new FormatException(); }
             else if (padding > 0) throw new FormatException();
+            ++meaningful;
+        }
+        if (meaningful % 4 != 0) throw new FormatException();
+        var output = new byte[meaningful / 4 * 3 - padding];
+        var chars = new char[65536]; var count = 0; var offset = 0;
+        void Flush()
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (!Convert.TryFromBase64Chars(chars.AsSpan(0, count), output.AsSpan(offset), out var written)) throw new FormatException();
+            offset += written; count = 0;
+        }
+        for (var i = 0; i < data.Length; ++i)
+        {
+            if ((i & 16383) == 0) cancellation.ThrowIfCancellationRequested();
+            var ch = data[i];
+            if (ch is ' ' or '\t' or '\r' or '\n') continue;
             chars[count++] = ch;
             if (count == chars.Length) Flush();
         }
         if (count > 0) Flush();
         cancellation.ThrowIfCancellationRequested();
-        return output.ToArray();
+        return output;
     }
 }
 
