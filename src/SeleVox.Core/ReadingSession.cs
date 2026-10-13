@@ -50,6 +50,9 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
 
     public Task ReadTextAsync(string text, Settings settings) => ReadAsync(_ => Task.FromResult(text), settings, true);
 
+    public Task ReadCapturedTextAsync(CapturedText text, Settings settings) =>
+        string.IsNullOrWhiteSpace(text.Text) ? Task.CompletedTask : ReadAsync(_ => Task.FromResult(text.Text), settings);
+
     public void CancelPendingAutomatic()
     {
         lock (sync)

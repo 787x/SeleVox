@@ -17,6 +17,10 @@ public partial class App : System.Windows.Application
     private AutomaticMouseMonitor? mouse;
     private Forms.ToolStripMenuItem? autoMenu;
     private long mouseEpoch;
+    private readonly TextCaptureOperation ocrOperation = new();
+    private readonly LocalOcr ocr = new();
+    private readonly SemaphoreSlim ocrGate = new(1, 1);
+    private OcrResultWindow? ocrResult;
     internal bool IsExiting => exiting;
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -30,6 +34,7 @@ public partial class App : System.Windows.Application
         MainWindow = settingsWindow;
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("设置", null, (_, _) => ShowSettings());
+        menu.Items.Add("屏幕框选 OCR · Ctrl+Alt+O", null, (_, _) => StartOcr());
         autoMenu = new Forms.ToolStripMenuItem("Auto Speak · 自动选中朗读") { Checked = settings.AutoSpeak };
         autoMenu.Click += (_, _) =>
         {
@@ -54,9 +59,10 @@ public partial class App : System.Windows.Application
         {
             switch (id)
             {
-                case 1: mouse?.CancelGesture(); automaticSelection.Invalidate(); ++mouseEpoch; _ = reading.ReadAsync(token => capture.CaptureAsync(foreground, token), settings); break;
+                case 1: mouse?.CancelGesture(); automaticSelection.Invalidate(); ++mouseEpoch; _ = reading.ReadAsync(async token => (await capture.CaptureTextAsync(foreground, token)).Text, settings); break;
                 case 2: reading.TogglePause(); break;
                 case 3: StopReading(); break;
+                case 4: StartOcr(); break;
             }
         };
         instance.Listen(() => Dispatcher.BeginInvoke(ShowSettings));
@@ -92,6 +98,7 @@ public partial class App : System.Windows.Application
             StartupRegistration.Apply(updated.StartWithWindows); store.Save(updated); settings = updated;
             CancelAutomaticReading();
             settingsWindow?.SetAutomaticSettings(settings);
+            ocrResult?.RefreshProviderNotice();
             if (autoMenu is not null) autoMenu.Checked = settings.AutoSpeak;
             var warning = ApplyAutomatic();
             if (warning is not null) settingsWindow?.SetAutomaticStatus(warning);
@@ -105,7 +112,7 @@ public partial class App : System.Windows.Application
     }
     private string? ApplyAutomatic()
     {
-        if (!settings.AutoSpeak)
+        if (!settings.AutoSpeak || ocrOperation.IsActive)
         {
             mouse?.Dispose(); mouse = null;
             settingsWindow?.SetAutomaticStatus("自动选中朗读已关闭");
@@ -121,7 +128,7 @@ public partial class App : System.Windows.Application
                 var epoch = mouseEpoch;
                 Dispatcher.BeginInvoke(() =>
                 {
-                    if (epoch == mouseEpoch && !exiting && settings.AutoSpeak) _ = AutoReadAsync(window, start, end, epoch);
+                    if (epoch == mouseEpoch && !exiting && !ocrOperation.IsActive && settings.AutoSpeak) _ = AutoReadAsync(window, start, end, epoch);
                 });
             };
             settingsWindow?.SetAutomaticStatus("仅在启用的应用规则中自动朗读（UIA）");
@@ -133,7 +140,7 @@ public partial class App : System.Windows.Application
     {
         // Process identity lookup runs outside the low-level hook and UI thread.
         var path = await Task.Run(() => ApplicationIdentity.FromWindow(window));
-        if (epoch != mouseEpoch || exiting || !settings.AllowsAutomatic(path) || Native.GetForegroundWindow() != window) return;
+        if (epoch != mouseEpoch || exiting || ocrOperation.IsActive || !settings.AllowsAutomatic(path) || Native.GetForegroundWindow() != window) return;
         var identity = path! + "|" + window;
         await automaticSelection.RequestAsync(identity, async token =>
         {
@@ -144,7 +151,66 @@ public partial class App : System.Windows.Application
             text => { settingsWindow?.SetAutomaticStatus("已获取有效选区"); _ = reading!.ReadTextAsync(text, settings); },
             message => settingsWindow?.SetAutomaticStatus(message));
     }
-    private void StopReading() { mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); reading?.Stop(); }
+    private void StopReading()
+    {
+        if (ocrOperation.IsActive) settingsWindow?.SetNotice("屏幕 OCR 已取消。");
+        ocrOperation.Cancel(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); reading?.Stop();
+    }
+    private async void StartOcr()
+    {
+        if (exiting) return;
+        // Suppress overlay gestures and invalidate pending UIA capture without stopping current speech.
+        mouse?.Dispose(); mouse = null; ++mouseEpoch; automaticSelection.Invalidate();
+        var language = settings.OcrLanguage;
+        settingsWindow?.SetNotice("正在准备屏幕框选；旧 OCR 计算尚未结束时需稍候。Ctrl+Alt+X 可取消。");
+        try
+        {
+            await ocrOperation.RunAsync(async token =>
+            {
+                await ocrGate.WaitAsync(token);
+                try
+                {
+                    var snapshots = await Task.Run(() => ScreenSnapshot.Capture(token), token);
+                    System.Drawing.Bitmap image;
+                    try
+                    {
+                        token.ThrowIfCancellationRequested();
+                        using var selection = new ScreenSelection(snapshots, token);
+                        image = await selection.Result;
+                    }
+                    finally { foreach (var snapshot in snapshots) snapshot.Dispose(); }
+                    using (image)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        settingsWindow?.SetNotice("正在离线识别屏幕文字… Ctrl+Alt+X 可取消。");
+                        return await ocr.RecognizeAsync(image, language, token).ConfigureAwait(false);
+                    }
+                }
+                finally { ocrGate.Release(); }
+            }, text =>
+            {
+                if (exiting) return;
+                ocrResult?.Close();
+                var window = new OcrResultWindow(text, () => settings, result =>
+                {
+                    mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
+                    return reading!.ReadCapturedTextAsync(result, settings);
+                });
+                ocrResult = window;
+                window.Closed += (_, _) => { if (ReferenceEquals(ocrResult, window)) ocrResult = null; };
+                window.Show(); window.Activate(); settingsWindow?.SetNotice("OCR 已完成，复制或朗读请在结果窗口主动操作。");
+            }, message => { if (!exiting) { settingsWindow?.SetNotice(message); Notify(message); } },
+                () => { if (!exiting) settingsWindow?.SetNotice("屏幕 OCR 已取消。"); });
+        }
+        finally
+        {
+            if (!exiting && !ocrOperation.IsActive)
+            {
+                ++mouseEpoch; var error = ApplyAutomatic();
+                if (error is not null) Notify(error);
+            }
+        }
+    }
     private void CancelAutomaticReading()
     {
         mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(true);
@@ -174,7 +240,7 @@ public partial class App : System.Windows.Application
     private void ExitApplication() { if (exiting) return; exiting = true; Shutdown(); }
     protected override void OnExit(ExitEventArgs e)
     {
-        exiting = true; mouse?.Dispose(); automaticSelection.Dispose(); hotkeys?.Dispose(); reading?.Dispose();
+        exiting = true; ocrOperation.Dispose(); ocrResult?.Close(); mouse?.Dispose(); automaticSelection.Dispose(); hotkeys?.Dispose(); reading?.Dispose();
         if (tray is not null) { tray.Visible = false; tray.ContextMenuStrip?.Dispose(); tray.Dispose(); }
         instance?.Dispose(); base.OnExit(e);
     }

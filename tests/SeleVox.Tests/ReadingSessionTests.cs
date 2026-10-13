@@ -3,6 +3,22 @@ namespace SeleVox.Tests;
 public sealed class ReadingSessionTests
 {
     private static Task<string> Capture(CancellationToken _) => Task.FromResult("non-sensitive fixture");
+    [Theory] [InlineData(TtsProvider.Windows)] [InlineData(TtsProvider.Azure)] [InlineData(TtsProvider.Edge)] [InlineData(TtsProvider.MiMo)] [InlineData(TtsProvider.OpenAiCompatible)]
+    public async Task OcrReadUsesManualConsentAndBlankLeavesExistingPlayback(TtsProvider provider)
+    {
+        var backend = new Audio(); using var session = new ReadingSession(backend, backend);
+        var read = session.ReadCapturedTextAsync(new("OCR fixture", TextSource.ScreenOcr), new(Provider: provider));
+        backend.Pending[0].SetResult(new TrackedStream()); await read;
+        Assert.Equal(ReadingState.Playing, session.Status.State);
+        var old = backend.Players[0];
+        await session.ReadCapturedTextAsync(new(" \n ", TextSource.ScreenOcr), new(Provider: provider));
+        Assert.False(old.Disposed); Assert.Single(backend.Pending);
+        read = session.ReadCapturedTextAsync(new("edited OCR fixture", TextSource.ScreenOcr), new(Provider: provider));
+        Assert.True(old.Disposed); backend.Pending[1].SetResult(new TrackedStream()); await read;
+        session.TogglePause(); Assert.Equal(ReadingState.Paused, session.Status.State);
+        session.TogglePause(); Assert.Equal(ReadingState.Playing, session.Status.State);
+        session.Stop(); Assert.Equal(ReadingState.Idle, session.Status.State);
+    }
     [Fact] public async Task AutomaticCloudRequiresSeparatePermissionAndManualStillWorks()
     {
         var backend = new Audio(); using var session = new ReadingSession(backend, backend);

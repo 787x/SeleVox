@@ -6,6 +6,7 @@ using SeleVox.Core;
 
 namespace SeleVox.Tests;
 
+[Collection("WPF desktop")]
 public sealed class EdgeVoiceWindowTests
 {
     [Fact] public Task RepeatRefreshProviderSwitchAndCloseRejectStaleResults() => RunSta(async () =>

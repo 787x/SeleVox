@@ -1,6 +1,30 @@
-# SeleVox — PR5
+# SeleVox — PR6
 
 Windows 11 x64 的选区朗读工具，支持手动热键与可关闭的鼠标自动朗读，普通用户权限运行。WPF 设置窗口关闭后驻留托盘；托盘双击或“设置”重新打开，“退出”结束程序。重复启动会通知已有实例显示设置窗口。
+
+## PR6：离线屏幕框选 OCR
+
+在任何普通桌面应用中按 **Ctrl+Alt+O**（或托盘“屏幕框选 OCR”），拖动框选文字，松开后离线识别。Esc 取消框选，切换到其他应用也会释放遮罩。设置窗口提供“简体中文 + 英文”（默认）与“英文”，点击“保存设置”生效。原 Ctrl+Alt+R/P/X 保持不变，Ctrl+Alt+X 也取消待完成 OCR。
+
+识别完成显示可编辑结果，可主动“复制文字”“朗读文字”或“关闭”。不会自动写剪贴板或朗读，空白文字不执行动作。朗读使用**已保存**的 Provider、语速、音量、输出设备，沿用暂停/继续/停止与 MiMo 流式播放。选择在线 Provider 时，窗口明确提示点击朗读将发送当前编辑文字到哪个服务，沿用现有手动授权；与 Auto Speak 自动上传许可独立。启动、取消、失败、复制和关闭 OCR 均不停止已有语音。没有云端 OCR、自动 OCR、截图历史或 LLM。
+
+框选前取得显示器快照，使用物理桌面坐标和本显示器 WPF DIP 映射；负坐标显示器受支持，单次选择限一台显示器，跨屏拖动明确拒绝。桌面总截图上限 3200 万像素，区域上限 800 万像素，任一边不足 8 像素不识别。截图与原文只存在内存，取消/关闭释放，不写日志、临时截图或配置。受保护画面可能呈现空白，无法识别时说明原因，不尝试绕过保护。原生 OCR 不能立即中止，但计算串行，新请求最多等待旧计算结束，取消后旧结果不会显示。
+
+使用 Tesseract 5.2.0 .NET Standard 封装、本地 x64 Tesseract/Leptonica 与 `tessdata_fast` 简中/英文 LSTM 模型，已经在本项目 .NET 10 x64 上实测。模型来源、固定 revision、校验值与许可证见 [OCR 资产说明](src/SeleVox.App/OcrData/NOTICE.md)。普通 Release 构建和目录式 publish 均复制模型、原生 DLL、许可与 app-local Visual C++ 运行库；保留整个输出目录，**不要只复制 EXE**。不需要 MSIX 包身份、Copilot+ PC、管理员权限或运行时联网。沿用原 .NET 10 桌面运行时要求，可用下方 self-contained 命令打包 .NET。微软运行库的再分发说明见 [运行库说明](src/SeleVox.App/OcrRuntime/NOTICE.md)。
+
+```powershell
+dotnet restore SeleVox.slnx --artifacts-path artifacts/pr6
+dotnet build SeleVox.slnx -c Release --no-restore --artifacts-path artifacts/pr6
+# 目录式分发，含 .NET 桌面运行时；直接运行输出目录中的 SeleVox.App.exe。
+dotnet publish src/SeleVox.App/SeleVox.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/pr6-portable
+# 固定非敏感图像直接调用真实引擎，取消、语言兼容与坐标转换测试。
+dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr6 --filter 'FullyQualifiedName~OcrTests|FullyQualifiedName~OcrWindowTests|FullyQualifiedName~OcrReadUsesManual'
+# 会短暂移动鼠标、操作固定测试窗口、写入测试剪贴板内容后恢复。请勿并行操作桌面。
+$env:SELEVOX_OCR_DESKTOP_TESTS='1'
+dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr6 --filter 'Category=WindowsOcr'
+```
+
+OCR 不保证小字体、花体、低对比度、复杂多栏/表格、竖排或艺术排版的准确率；请在结果窗口校对。实际验证、混合 DPI 双屏等未实测项与人工清单见 [PR6 验证记录](verification/PR6.md)。
 
 ## PR5：MiMo 与 OpenAI-Compatible
 

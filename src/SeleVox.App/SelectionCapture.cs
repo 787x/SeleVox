@@ -10,6 +10,8 @@ internal sealed class SelectionCapture
     private readonly SemaphoreSlim gate = new(1, 1);
     public async Task<string> CaptureAsync(nint foreground, CancellationToken cancellation)
         => (await CaptureSnapshotAsync(foreground, cancellation).ConfigureAwait(false)).Text;
+    internal async Task<CapturedText> CaptureTextAsync(nint foreground, CancellationToken cancellation)
+        => new(await CaptureAsync(foreground, cancellation).ConfigureAwait(false), TextSource.Selection);
 
     internal async Task<SelectionSnapshot> CaptureSnapshotAsync(nint foreground, CancellationToken cancellation,
         System.Windows.Point? selectionStart = null, System.Windows.Point? selectionEnd = null, string? expectedFocus = null)
