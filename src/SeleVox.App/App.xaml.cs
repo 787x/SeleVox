@@ -276,7 +276,7 @@ public partial class App : System.Windows.Application
                     ocrResult = window;
                     window.Closed += (_, _) => { if (ReferenceEquals(ocrResult, window)) ocrResult = null; };
                 }
-                ocrResult.ShowResult(text);
+                PresentOcrResult(ocrResult, aiAnswer, text);
                 settingsWindow?.SetNotice("OCR 已完成，复制或朗读请在结果窗口主动操作。");
             }, message => { if (!exiting) { settingsWindow?.SetNotice(message); Notify(message); } },
                 () => { if (!exiting) settingsWindow?.SetNotice("屏幕 OCR 已取消。"); });
@@ -287,12 +287,19 @@ public partial class App : System.Windows.Application
             {
                 // A superseded request leaves the prior result hidden for its successor.
                 // Restore before reinstalling Auto Speak so focus changes cannot form gestures.
-                ocrResult?.RestoreAfterCapture();
                 aiAnswer?.RestoreAfterCapture();
+                ocrResult?.RestoreAfterCapture();
                 ++mouseEpoch; var error = ApplyAutomatic();
                 if (error is not null) Notify(error);
             }
         }
+    }
+    internal static void PresentOcrResult(OcrResultWindow result, AiAnswerWindow? answer, CapturedText text)
+    {
+        // ShowActivated=false preserves focus, but Show still raises a restored window in z-order.
+        // Restore the answer first so the new OCR result remains the last window shown/activated.
+        answer?.RestoreAfterCapture();
+        result.ShowResult(text);
     }
     private void CancelAutomaticReading()
     {

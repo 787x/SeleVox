@@ -2,6 +2,14 @@
 
 日期：2026-10-13。基于最新 `origin/main` 的 `4dbc4b7`（PR7 已合并及 README 修订），Windows x64，.NET 10。本记录区分模拟协议、真实 Windows 资源与尚未执行的在线服务/人工验收。
 
+## 用户人工验收与窗口层级修复
+
+用户在本聊天明确反馈：**“1、2、3、4、5、6、7、8全部人工检查通过”**，对应配置/重启、Edge/记事本选区、OCR 编辑提问、真实流式回答、回答朗读、取消替换、单/双设备、连续 OCR 与恢复清单。这是用户报告的人工验收结果，未提供逐 Provider、设备和协议的单独测量，不改写下方代理执行时的未实测记录。
+
+随后用户报告：AI 回答窗口已打开时，OCR 完成弹出的结果被 AI 窗口遮挡。原因是成功回调显示 OCR 后，finally 才恢复隐藏 AI 窗口；`ShowActivated=false` 不抢焦点，但 Show 仍会抬高窗口层级。修复为成功回调先恢复 AI、再显示/激活 OCR；取消/失败恢复时也先 AI 后 OCR。没有设置永久置顶、窗口 Owner 或改变截图隐藏规则。
+
+新增实际 Windows z-order 回归检查首次及连续三次 OCR：调用生产显示流程，执行 finally 恢复后遍历原生 HWND 层级，确认 OCR 在 AI 上方、两个窗口可见且新文字正确。首次修复验证组 6 通过、1 失败，失败仍为已有截图隐藏测试的像素没有改变；新增层级测试通过。最终 Release 构建 0 警告/错误，层级与 WPF 定向 6 项通过（`pr8-zorder-final.trx`），修正版输出在 `artifacts/pr8-zorder/bin/SeleVox.App/release/`。这次没有把旧像素失败算作通过，已有人工反馈也不能代替本次修复后的人工复验。
+
 ## 修改与配置
 
 - 独立 Chat Completions 客户端向规范化 `{LlmBaseUrl}/chat/completions` 发起一个请求，Bearer 凭据，独立 system/user 消息，默认 SSE，可选择非流式。同一响应直接返回 JSON 时可以消费，不重新提交。不发送 temperature、工具或模型专有参数，不执行回答中的代码/HTML。

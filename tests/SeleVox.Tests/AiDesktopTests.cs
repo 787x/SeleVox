@@ -13,6 +13,34 @@ namespace SeleVox.Tests;
 public sealed class AiDesktopTests
 {
     [WindowsOcrFact, Trait("Category", "WindowsQaDesktop")]
+    public Task CompletedOcrRemainsAboveRestoredAnswerOnFirstAndRepeatedCapture() => OcrDesktopTests.RunSta(async () =>
+    {
+        using var session = new QuestionSession((_, _, _, _, _) => Task.FromResult("answer"), (_, _) => Task.CompletedTask, () => { });
+        var answer = new AiAnswerWindow(session, () => new(), () => "idle", session.Cancel, () => { }) { Topmost = true };
+        OcrResultWindow? result = null;
+        var original = Native.GetForegroundWindow();
+        try
+        {
+            answer.ShowAnswer();
+            for (var capture = 0; capture < 3; ++capture)
+            {
+                answer.HideForCapture(); result?.HideForCapture();
+                result ??= new OcrResultWindow(new("original", TextSource.ScreenOcr), () => new(), _ => Task.CompletedTask) { Topmost = true };
+                SeleVox.App.App.PresentOcrResult(result, answer, new("fresh OCR", TextSource.ScreenOcr));
+                // The operation's finally restoration must now be a no-op for the answer.
+                answer.RestoreAfterCapture(); result.RestoreAfterCapture(); await Task.Delay(80);
+                var answerHandle = new WindowInteropHelper(answer).Handle;
+                var below = GetWindow(new WindowInteropHelper(result).Handle, 2); var found = false;
+                for (var i = 0; below != 0 && i < 1000; ++i, below = GetWindow(below, 2))
+                    if (below == answerHandle) { found = true; break; }
+                Assert.True(found, "OCR result must remain above the restored answer in native window z-order.");
+                Assert.True(result.IsVisible); Assert.True(answer.IsVisible);
+                Assert.Equal("fresh OCR", AiWindowTests.Descendants<TextBox>(result).Single().Text);
+            }
+        }
+        finally { result?.Close(); answer.Close(); if (original != 0) SetForegroundWindow(original); }
+    });
+    [WindowsOcrFact, Trait("Category", "WindowsQaDesktop")]
     public Task AnswerHiddenDuringRealScreenshotRestoresPlacementWithoutFocus() => OcrDesktopTests.RunSta(async () =>
     {
         using var session = new QuestionSession((_, _, _, _, _) => Task.FromResult("fixed answer"), (_, _) => Task.CompletedTask, () => { });
@@ -148,6 +176,7 @@ public sealed class AiDesktopTests
     [StructLayout(LayoutKind.Sequential)] private struct Rect { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] private struct Point { public int X, Y; }
     [DllImport("user32.dll")] private static extern bool GetWindowRect(nint window, out Rect rect);
+    [DllImport("user32.dll")] private static extern nint GetWindow(nint window, uint command);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(nint window);
     [DllImport("user32.dll")] private static extern void keybd_event(byte key, byte scan, uint flags, nuint extra);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint window, nint after, int x, int y, int width, int height, uint flags);
