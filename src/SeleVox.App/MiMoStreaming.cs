@@ -19,17 +19,19 @@ internal sealed partial class MiMoSpeech
         if (settings.MiMoModel != "mimo-v2.5-tts") throw new UserFeedbackException("当前只支持 mimo-v2.5-tts 流式协议；自定义模型请使用非流式模式。");
         if (string.IsNullOrWhiteSpace(text) || text.Length > HttpSpeech.MaxTextLength) throw new UserFeedbackException("文本为空或过长，请分次朗读。");
         var style = GetStyle(settings); long audioBytes = 0;
+        var prefix = MiMoStyleTags.GetPrefix(settings.MiMoOverallStyles);
+        var textBudget = GetTextBudget(prefix);
         var key = (readKey ?? AzureCredentials.MiMo().Read)();
         if (string.IsNullOrWhiteSpace(key)) throw new UserFeedbackException("请先保存 MiMo API Key。");
         try
         {
-            foreach (var part in HttpSpeech.SplitText(text, 3000, true, cancellation))
+            foreach (var part in HttpSpeech.SplitText(text, textBudget, true, cancellation))
             {
                 cancellation.ThrowIfCancellationRequested();
                 using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.xiaomimimo.com/v1/chat/completions");
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-                request.Content = new StringContent(JsonSerializer.Serialize(CreateRequest(part, settings.MiMoVoice, style, settings.MiMoModel, true)), Encoding.UTF8, "application/json");
+                request.Content = new StringContent(JsonSerializer.Serialize(CreateRequest(prefix + part, settings.MiMoVoice, style, settings.MiMoModel, true)), Encoding.UTF8, "application/json");
                 using var headers = CancellationTokenSource.CreateLinkedTokenSource(cancellation); headers.CancelAfter(TimeSpan.FromSeconds(30));
                 using var response = await (client ?? StreamingClient).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headers.Token).ConfigureAwait(false);
                 headers.CancelAfter(Timeout.InfiniteTimeSpan);

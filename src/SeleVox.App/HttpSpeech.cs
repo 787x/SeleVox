@@ -14,11 +14,18 @@ internal sealed partial class MiMoSpeech(HttpClient? client = null, Func<string?
     public async Task<Stream> SynthesizeAsync(string text, Settings settings, CancellationToken cancellation)
     {
         var style = GetStyle(settings);
+        var prefix = MiMoStyleTags.GetPrefix(settings.MiMoOverallStyles);
         // 8K context: conservatively bound UTF-8 bytes (including up to 3K style bytes),
         // leaving room for message framing. No approximate tokenizer or source rewriting.
         return await HttpSpeech.SynthesizeAsync(client, readKey ?? AzureCredentials.MiMo().Read,
-            new Uri("https://api.xiaomimimo.com/v1/chat/completions"), text, 3000, true,
-            part => CreateRequest(part, settings.MiMoVoice, style, settings.MiMoModel), Decode, "MiMo", cancellation).ConfigureAwait(false);
+            new Uri("https://api.xiaomimimo.com/v1/chat/completions"), text, GetTextBudget(prefix), true,
+            part => CreateRequest(prefix + part, settings.MiMoVoice, style, settings.MiMoModel), Decode, "MiMo", cancellation).ConfigureAwait(false);
+    }
+    internal static int GetTextBudget(string prefix)
+    {
+        var budget = 3000 - Encoding.UTF8.GetByteCount(prefix);
+        if (budget <= 0) throw new UserFeedbackException("整体风格前缀占满单段 UTF-8 字节预算，请减少风格。");
+        return budget;
     }
     private static string GetStyle(Settings settings)
     {

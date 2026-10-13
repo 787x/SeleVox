@@ -69,8 +69,37 @@
                 <TextBlock x:Name="MiMoStreamingHint" TextWrapping="Wrap" Foreground="#546575" Margin="0,4,0,0"/>
                 <TextBlock Text="预置音色（默认冰糖）" Margin="0,10,0,4"/>
                 <ComboBox x:Name="MiMoVoice" Height="32"/>
+                <TextBlock Text="整体风格标签（可多选；保存后生效）" Margin="0,10,0,4" FontWeight="SemiBold"/>
+                <ItemsControl x:Name="MiMoSelectedStyles">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate><DataTemplate>
+                        <Button Tag="{Binding}" Click="RemoveMiMoStyle_Click"
+                                ToolTip="点击或按空格移除此风格" Padding="8,4" Margin="0,0,6,6">
+                            <TextBlock Text="{Binding StringFormat={}{0} ×}"/>
+                        </Button>
+                    </DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock x:Name="MiMoStylePrefix" TextWrapping="Wrap" Foreground="#193B56"/>
+                <TextBlock x:Name="MiMoStyleHint" TextWrapping="Wrap" Foreground="#8A4D00" Margin="0,4,0,4"/>
+                <Expander Header="浏览 / 搜索预设与添加自定义风格">
+                    <StackPanel Margin="0,6,0,0">
+                        <TextBlock Text="搜索风格名称或类别"/>
+                        <TextBox x:Name="MiMoStyleSearch" Height="28" TextChanged="MiMoStyleSearch_Changed" Margin="0,4,0,6"/>
+                        <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="MiMoPresetGroups"/>
+                        </ScrollViewer>
+                        <TextBlock Text="自定义风格（如上海话、说书腔、新闻播报；每项最多 64 字符）" TextWrapping="Wrap" Margin="0,6,0,4"/>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="添加" Click="AddMiMoStyle_Click" Padding="8,4" Margin="6,0,0,0"/>
+                            <TextBox x:Name="MiMoCustomStyle" Height="28" KeyDown="MiMoCustomStyle_KeyDown"/>
+                        </DockPanel>
+                        <TextBlock x:Name="MiMoStyleError" TextWrapping="Wrap" Foreground="#8A4D00" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Expander>
+                <Button Content="清空整体风格" Click="ClearMiMoStyles_Click" HorizontalAlignment="Left" Padding="8,4" Margin="0,6,0,0"/>
                 <TextBlock Text="可选自然语言风格说明（最多 1000 字符）" Margin="0,10,0,4"/>
                 <TextBox x:Name="MiMoStyle" AcceptsReturn="True" TextWrapping="Wrap" Height="65" MaxLength="1000"/>
+                <TextBlock Text="自然语言说明独立发送，原样保留。可同时使用整体标签；矛盾风格可能影响效果。" TextWrapping="Wrap" Foreground="#546575" Margin="0,4,0,0"/>
                 <CheckBox x:Name="AutomaticMiMo" Content="允许自动发送白名单选区到 MiMo（立即保存）" Click="AutomaticHttp_Click" Margin="0,10,0,0"/>
                 <TextBlock Text="手动朗读会发送选中文字到小米，可能产生 API 费用。语速滑块转换为自然语言快慢指导，是近似控制，不保证精确倍速。原文保持不变。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
             </StackPanel>

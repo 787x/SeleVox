@@ -30,7 +30,17 @@ OCR 不保证小字体、花体、低对比度、复杂多栏/表格、竖排或
 
 默认仍为 Windows 本地 TTS。Provider 下拉框追加 **MiMo TTS** 和 **OpenAI-Compatible TTS**；选择、模型、音色、风格和设备均需点击固定底部“保存设置”才能用于下一次朗读。底部提示实际生效的 Provider，独立自动授权不会保存尚未保存的 Provider。
 
-**MiMo**：保存 API Key（不回填明文），按钮行右侧“获取 API Key”可用默认浏览器打开[小米 Key 控制台](https://platform.xiaomimimo.com/console/api-keys)。选择预置音色并填写可选自然语言风格。默认中文音色为 `冰糖`，还提供 `mimo_default`、`茉莉`、`苏打`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。模型名默认 `mimo-v2.5-tts`，可手工填写其他采用相同预置音色协议的模型名称，保存后生效；使用 `https://api.xiaomimimo.com/v1/chat/completions`；原文放在 assistant 消息，风格单独放在 user 消息，读取 JSON 中的 Base64 WAV。语速滑块转换为自然语言快慢指导，属于近似控制，不保证精确倍速，不发送数值 speed，不改写或翻译原文。只实现预置音色。
+**MiMo**：保存 API Key（不回填明文），按钮行右侧“获取 API Key”可用默认浏览器打开[小米 Key 控制台](https://platform.xiaomimimo.com/console/api-keys)。选择预置音色并填写可选自然语言风格。默认中文音色为 `冰糖`，还提供 `mimo_default`、`茉莉`、`苏打`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。模型名默认 `mimo-v2.5-tts`，可手工填写其他采用相同预置音色协议的模型名称，保存后生效；使用 `https://api.xiaomimimo.com/v1/chat/completions`；待合成内容放在 assistant 消息，自然语言风格说明单独放在 user 消息，读取 JSON 中的 Base64 WAV。语速滑块转换为自然语言快慢指导，属于近似控制，不保证精确倍速，不发送数值 speed，不改写或翻译原文。只实现预置音色。
+
+### MiMo 整体风格标签
+
+新增独立的“整体风格标签”选择器：展开后按八个类别浏览 48 个推荐项，可搜索风格或类别，点击即可选择/取消；也可输入 `上海话`、`说书腔`、`新闻播报` 等自定义名称，按 Enter 或“添加”加入。已选标签按选择顺序显示，点击标签上的 × 移除，或使用“清空整体风格”。折叠后仍显示已选项及实际前缀。名称不限定为预设，去除两端空格后每项 1–64 字符、最多 16 项；禁止换行、控制字符、不可见格式控制及括号。同名项不会重复添加。
+
+例如选择 `温柔`、`清亮`、`上海话` 后，每个 MiMo 请求的 `assistant.content` 为 `(温柔 清亮 上海话)原文`。流式与非流式每段均保留同一完整前缀，并从每段 3000 UTF-8 字节预算扣除前缀；继续按 Unicode 文本元素边界分段，不修改原文中已有的音频标签。前缀占满预算或单个文本元素超过剩余预算会明确报错。标签只在 MiMo 请求中添加，选区、OCR 结果和其他 Provider 输入不变，音色定位标签不会改变预置 Voice。
+
+“自然语言风格说明”继续使用原有 `MiMoStyle` 配置，原样放入 `user.content`，自行填写的 `(上海话)` 也不会转换为整体标签；原有语速指导仍追加到该说明。两种风格可同时启用，矛盾指导可能影响效果。`唱歌` 是独立模式，选择它会清除普通标签，选择普通风格则退出唱歌并恢复多选；适合中文歌词，普通文章未必能自然演唱。官方唱歌别名 `sing`、`singing` 的自定义项也按独立模式处理。
+
+标签修改需点击固定底部“保存设置”才用于下一次朗读，切换 Provider 不清空已选项，保存和重启会恢复自定义名称及顺序。默认无标签，旧配置无需迁移，自然语言说明及现有授权保持原行为。实际合成、Windows 播放验证与未验证项见 [整体风格验证记录](verification/MiMoStyles.md)。
 
 **OpenAI-Compatible**：默认 Base URL `https://api.openai.com/v1`、Model `gpt-4o-mini-tts`、Voice `coral`；模型和音色可手工输入。程序向 `{Base URL}/audio/speech` 发送 Bearer Key、原文 input、WAV 格式和 0.5～2 倍 speed，读取二进制 WAVE。填写支持的模型时可发送 Instructions；`tts-1` / `tts-1-hd` 必须清空 Instructions，否则明确拒绝请求。第三方必须支持这些协议字段，拒绝可选参数时可清空 Instructions，不自动重试不同参数或服务。Base URL 填写完整 API 前缀（含 `/v1` 或服务自定义前缀），末尾斜杠会规范化，不额外添加 `/v1`。远程地址必须 HTTPS，明确填写 `localhost`、`127.0.0.1` 或 `[::1]` 可使用 HTTP。禁止用户名、查询串、片段和 HTTP 重定向。
 
