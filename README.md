@@ -1,6 +1,22 @@
-# SeleVox — PR4
+# SeleVox — PR5
 
 Windows 11 x64 的选区朗读工具，支持手动热键与可关闭的鼠标自动朗读，普通用户权限运行。WPF 设置窗口关闭后驻留托盘；托盘双击或“设置”重新打开，“退出”结束程序。重复启动会通知已有实例显示设置窗口。
+
+## PR5：MiMo 与 OpenAI-Compatible
+
+默认仍为 Windows 本地 TTS。Provider 下拉框追加 **MiMo TTS** 和 **OpenAI-Compatible TTS**；选择、模型、音色、风格和设备均需点击固定底部“保存设置”才能用于下一次朗读。底部提示实际生效的 Provider，独立自动授权不会保存尚未保存的 Provider。
+
+**MiMo**：保存 API Key（不回填明文），按钮行右侧“获取 API Key”可用默认浏览器打开[小米 Key 控制台](https://platform.xiaomimimo.com/console/api-keys)。选择预置音色并填写可选自然语言风格。默认中文音色为 `冰糖`，还提供 `mimo_default`、`茉莉`、`苏打`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。模型名默认 `mimo-v2.5-tts`，可手工填写其他采用相同预置音色协议的模型名称，保存后生效；使用 `https://api.xiaomimimo.com/v1/chat/completions`；原文放在 assistant 消息，风格单独放在 user 消息，读取 JSON 中的 Base64 WAV。语速滑块转换为自然语言快慢指导，属于近似控制，不保证精确倍速，不发送数值 speed，不改写或翻译原文。只实现预置音色。
+
+**OpenAI-Compatible**：默认 Base URL `https://api.openai.com/v1`、Model `gpt-4o-mini-tts`、Voice `coral`；模型和音色可手工输入。程序向 `{Base URL}/audio/speech` 发送 Bearer Key、原文 input、WAV 格式和 0.5～2 倍 speed，读取二进制 WAVE。填写支持的模型时可发送 Instructions；`tts-1` / `tts-1-hd` 必须清空 Instructions，否则明确拒绝请求。第三方必须支持这些协议字段，拒绝可选参数时可清空 Instructions，不自动重试不同参数或服务。Base URL 填写完整 API 前缀（含 `/v1` 或服务自定义前缀），末尾斜杠会规范化，不额外添加 `/v1`。远程地址必须 HTTPS，明确填写 `localhost`、`127.0.0.1` 或 `[::1]` 可使用 HTTP。禁止用户名、查询串、片段和 HTTP 重定向。
+
+两项 API Key 分别存入 Windows Credential Manager，支持更新和清除，不写入 JSON、日志或错误提示。兼容服务 Key 按规范化完整 Base URL（包括路径和端口）独立保存；修改地址不会复用旧地址 Key，需为新地址保存凭据。已有地址的凭据保留，可切回该地址管理或清除。
+
+**手动在线朗读会上传选中文字，可能产生 API 费用。** MiMo 和兼容服务的自动上传授权分别默认关闭，Azure/Edge 授权不会授予新 Provider 权限。兼容服务授权绑定到已保存地址；编辑成不同地址立即撤销旧许可、取消待播放的自动合成，必须先保存新地址，再明确开启新地址许可。编辑失败或取消编辑也不会自动恢复许可。关闭许可不会停止已经开始的音频，可按 Stop 停止。未授权自动触发不修改当前会话，不取消旧播放，不发送网络请求。失败不转发到其他在线服务。
+
+两个新 Provider 完整合成后复用原多设备 WASAPI 和会话取消机制。按句子/段落优先在 Unicode 文本元素边界分段，逐段验证完整、非空 PCM/IEEE Float WAVE，再按顺序写入同一个 WAVE 容器。兼容服务若返回 RIFF/data 长度均为 `0xFFFFFFFF` 的未知长度头，仅在 HTTP 响应成功完整读完后按实际 PCM 长度补全；普通声明长度与实际不符仍拒绝。格式不一致明确失败，不拼接独立 WAV 头，不返回部分结果。OpenAI 每段最多 4096 UTF-16 单元；MiMo 根据官方 8K 上下文保守限制每段 3000 UTF-8 字节、风格 1000 UTF-16 单元（最多约 3000 UTF-8 字节），保留协议开销空间。极长单个 Unicode 组合明确拒绝；不截断文本。单任务最多 32768 UTF-16 单元（现有 UIA 入口仍有原 10000 字符限制）、响应体每段 48 MiB、合并 WAVE 64 MiB，每段 90 秒、总计 10 分钟，超限请分次朗读。段之间可能出现短暂停顿。
+
+协议参考：[MiMo 官方合成指南](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)、[MiMo 官方模型与上下文](https://mimo.mi.com/docs/zh-CN/quick-start/summary/model)、[OpenAI Speech API](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create)。实际验证与未验证项见 [PR5 验证记录](verification/PR5.md)。
 
 ## 构建与运行
 
@@ -104,3 +120,22 @@ Remove-Item Env:SELEVOX_EDGE_TESTS, Env:SELEVOX_AUDIO_TESTS
 ```
 
 测试输出只记录格式、时长、数量和脱敏错误类别，不记录请求 URI、Cookie、请求令牌、原文或音频。实际执行结果及未验证项见 [PR4 验证记录](verification/PR4.md)。Azure 真实服务需要用户凭据，不由 Edge 测试替代。
+
+### PR5 HTTP TTS 验证
+
+默认测试使用模拟 HTTP、固定音频和本机回环服务器，不调用真实收费服务。Windows 凭据测试使用独立随机测试地址并清除测试凭据。真实服务测试默认跳过；先在设置中为相应地址保存有效 Key，然后明确启用（会发送固定中英文测试句，可能产生费用）：
+
+```powershell
+$env:SELEVOX_HTTP_TTS_TESTS = '1'
+# 可选：配置兼容服务；须已为相同地址保存 Key
+# $env:SELEVOX_MIMO_MODEL = 'mimo-v2.5-tts'
+# $env:SELEVOX_OPENAI_BASE_URL = 'http://localhost:8000/v1'
+# $env:SELEVOX_OPENAI_MODEL = 'your-model'
+# $env:SELEVOX_OPENAI_VOICE = 'your-voice'
+# 可选：播放真实合成结果到默认设备
+# $env:SELEVOX_AUDIO_TESTS = '1'
+dotnet test SeleVox.slnx -c Release --filter 'Category=HttpSpeechService'
+Remove-Item Env:SELEVOX_HTTP_TTS_TESTS
+```
+
+可分别用 `FullyQualifiedName~RealMiMoChineseAndEnglish` 或 `FullyQualifiedName~RealOpenAiChineseAndEnglish` 运行一个服务。`Category=WindowsAudio` 额外覆盖两个新协议模拟响应经真实默认/单/双 WASAPI 输出的暂停、继续、停止；此项不会调用 MiMo/OpenAI，不能代替真实服务合成验证。

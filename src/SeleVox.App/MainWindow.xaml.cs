@@ -41,6 +41,12 @@ public partial class MainWindow : Window
         }
         AutomaticCloud.IsChecked = settings.AllowAutomaticCloud;
         AutomaticEdge.IsChecked = settings.AllowAutomaticEdge;
+        MiMoVoice.ItemsSource = Settings.MiMoVoices; MiMoVoice.SelectedItem = settings.MiMoVoice; MiMoModel.Text = settings.MiMoModel;
+        MiMoStyle.Text = settings.MiMoStyle; AutomaticMiMo.IsChecked = settings.AllowAutomaticMiMo;
+        OpenAiBaseUrl.Text = settings.OpenAiBaseUrl; OpenAiModel.Text = settings.OpenAiModel;
+        OpenAiVoice.Text = settings.OpenAiVoice; OpenAiInstructions.Text = settings.OpenAiInstructions;
+        AutomaticOpenAi.IsChecked = settings.AllowAutomaticOpenAi && settings.OpenAiAuthorizedBaseUrl == Settings.NormalizeServiceUrl(settings.OpenAiBaseUrl);
+        UpdateHttpCredentialStatus();
         edgeSelection = settings.EdgeVoice;
         EdgePitch.Value = settings.EdgePitchHz;
         EdgeLocale.Text = settings.EdgeLocaleFilter;
@@ -55,6 +61,8 @@ public partial class MainWindow : Window
     public void SetAutomaticSettings(Settings settings)
     {
         savedSettings = settings; AutoSpeak.IsChecked = settings.AutoSpeak;
+        AutomaticMiMo.IsChecked = settings.AllowAutomaticMiMo;
+        AutomaticOpenAi.IsChecked = settings.AllowAutomaticOpenAi && settings.OpenAiAuthorizedBaseUrl == Settings.NormalizeServiceUrl(settings.OpenAiBaseUrl);
         Rules.ItemsSource = settings.Applications ?? [];
         UpdateProviderSaveHint();
     }
@@ -73,12 +81,27 @@ public partial class MainWindow : Window
         if (provider == TtsProvider.Edge && string.IsNullOrWhiteSpace(edgeSelection))
         { SetNotice("请查询并选择 Edge 在线语音。"); return; }
         if (refreshingOutputs) { SetNotice("正在刷新设备，请稍后保存。"); return; }
+        var address = Settings.NormalizeServiceUrl(OpenAiBaseUrl.Text);
+        if (provider == TtsProvider.MiMo && string.IsNullOrWhiteSpace(MiMoModel.Text)) { SetNotice("请填写 MiMo 模型名称。"); return; }
+        if (provider == TtsProvider.OpenAiCompatible && (address is null || string.IsNullOrWhiteSpace(OpenAiModel.Text) || string.IsNullOrWhiteSpace(OpenAiVoice.Text)))
+        { SetNotice("请填写合法的服务 Base URL、Model 和 Voice。"); return; }
+        if (provider == TtsProvider.OpenAiCompatible && OpenAiModel.Text.Trim() is "tts-1" or "tts-1-hd" && !string.IsNullOrWhiteSpace(OpenAiInstructions.Text))
+        { SetNotice("tts-1 / tts-1-hd 不支持 Instructions，请清空或选择支持的模型。"); return; }
         var error = save(savedSettings with { VoiceId = Voice.SelectedValue as string, Rate = Rate.Value, Volume = (float)Volume.Value,
             Provider = provider, AzureRegion = provider == TtsProvider.Azure ? Region.Text.Trim() : savedSettings.AzureRegion,
             AzureVoice = provider == TtsProvider.Azure ? CloudVoice.SelectedValue as string : savedSettings.AzureVoice,
             AllowAutomaticCloud = AutomaticCloud.IsChecked == true,
             EdgeVoice = edgeSelection, EdgePitchHz = (int)EdgePitch.Value, EdgeLocaleFilter = EdgeLocale.Text.Trim(),
             AllowAutomaticEdge = AutomaticEdge.IsChecked == true,
+            MiMoVoice = provider == TtsProvider.MiMo ? MiMoVoice.SelectedItem as string ?? "冰糖" : savedSettings.MiMoVoice,
+            MiMoStyle = provider == TtsProvider.MiMo ? MiMoStyle.Text : savedSettings.MiMoStyle,
+            MiMoModel = provider == TtsProvider.MiMo ? MiMoModel.Text.Trim() : savedSettings.MiMoModel,
+            OpenAiBaseUrl = provider == TtsProvider.OpenAiCompatible ? address! : savedSettings.OpenAiBaseUrl,
+            OpenAiModel = provider == TtsProvider.OpenAiCompatible ? OpenAiModel.Text.Trim() : savedSettings.OpenAiModel,
+            OpenAiVoice = provider == TtsProvider.OpenAiCompatible ? OpenAiVoice.Text.Trim() : savedSettings.OpenAiVoice,
+            OpenAiInstructions = provider == TtsProvider.OpenAiCompatible ? OpenAiInstructions.Text : savedSettings.OpenAiInstructions,
+            AllowAutomaticOpenAi = savedSettings.AllowAutomaticOpenAi && (provider != TtsProvider.OpenAiCompatible || address == Settings.NormalizeServiceUrl(savedSettings.OpenAiBaseUrl)),
+            OpenAiAuthorizedBaseUrl = provider != TtsProvider.OpenAiCompatible || address == Settings.NormalizeServiceUrl(savedSettings.OpenAiBaseUrl) ? savedSettings.OpenAiAuthorizedBaseUrl : null,
             OutputDeviceIds = Outputs.SelectedItems.Cast<OutputChoice>().Select(d => d.Id).ToArray(),
             StartWithWindows = AutoStart.IsChecked == true });
         SetNotice(error ?? "设置已保存，下次朗读生效。");
@@ -95,11 +118,13 @@ public partial class MainWindow : Window
     }
     private void Provider_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        if (LocalPanel is null || AzurePanel is null || EdgePanel is null) return;
+        if (LocalPanel is null || AzurePanel is null || EdgePanel is null || MiMoPanel is null || OpenAiPanel is null) return;
         voiceQuery?.Cancel(); cancelAutomatic?.Invoke();
         LocalPanel.Visibility = Provider.SelectedIndex == 0 ? Visibility.Visible : Visibility.Collapsed;
         AzurePanel.Visibility = Provider.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
         EdgePanel.Visibility = Provider.SelectedIndex == 2 ? Visibility.Visible : Visibility.Collapsed;
+        MiMoPanel.Visibility = Provider.SelectedIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
+        OpenAiPanel.Visibility = Provider.SelectedIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
         UpdateProviderSaveHint();
     }
     private void UpdateProviderSaveHint()
@@ -109,12 +134,16 @@ public partial class MainWindow : Window
         {
             TtsProvider.Edge => "Edge 在线语音",
             TtsProvider.Azure => "Azure Speech",
+            TtsProvider.MiMo => "MiMo TTS",
+            TtsProvider.OpenAiCompatible => "OpenAI-Compatible TTS",
             _ => "Windows 本地 TTS"
         };
         ProviderSaveHint.Text = $"当前朗读使用：{active}。" +
             (Provider.SelectedIndex >= 0 && Provider.SelectedIndex != (int)savedSettings.Provider
                 ? " Provider 切换尚未保存；请选择语音，然后点击“保存设置”生效。"
-                : " 语音、语速、音调和设备修改后请保存，下次朗读生效。");
+                : " 语音、语速、音调和设备修改后请保存，下次朗读生效。") +
+            (OpenAiBaseUrl is not null && Settings.NormalizeServiceUrl(OpenAiBaseUrl.Text) != Settings.NormalizeServiceUrl(savedSettings.OpenAiBaseUrl)
+                ? " 兼容服务地址尚未保存，仍使用已保存地址；请保存后重新授权。" : "");
     }
     private void AzureRegion_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
@@ -135,6 +164,57 @@ public partial class MainWindow : Window
     {
         try { voiceQuery?.Cancel(); credentials.Clear(); AzureKey.Clear(); UpdateCredentialStatus(); SetNotice("Azure Key 已清除，本地朗读不受影响。"); }
         catch (UserFeedbackException ex) { SetNotice(ex.Message); }
+    }
+    private void UpdateHttpCredentialStatus()
+    {
+        if (MiMoCredentialStatus is null || OpenAiCredentialStatus is null) return;
+        try { MiMoCredentialStatus.Text = AzureCredentials.MiMo().Read() is null ? "尚未保存 MiMo Key" : "已保存 MiMo Key（不显示内容）"; }
+        catch (UserFeedbackException ex) { MiMoCredentialStatus.Text = ex.Message; }
+        try { OpenAiCredentialStatus.Text = AzureCredentials.OpenAi(OpenAiBaseUrl.Text).Read() is null ? "此地址尚未保存 Key" : "此地址已保存 Key（不显示内容）"; }
+        catch (UserFeedbackException ex) { OpenAiCredentialStatus.Text = ex.Message; }
+    }
+    private void SaveHttpKey_Click(object sender, RoutedEventArgs e) => ChangeHttpKey(sender, false);
+    private void ClearHttpKey_Click(object sender, RoutedEventArgs e) => ChangeHttpKey(sender, true);
+    private void MiMoApiKey_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://platform.xiaomimimo.com/console/api-keys") { UseShellExecute = true }); }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+        { SetNotice("无法打开默认浏览器，请手动访问小米 MiMo 控制台获取 API Key。"); }
+        e.Handled = true;
+    }
+    private void ChangeHttpKey(object sender, bool clear)
+    {
+        var mimo = (sender as System.Windows.Controls.Button)?.Tag as string == "MiMo";
+        var box = mimo ? MiMoKey : OpenAiKey;
+        try
+        {
+            var store = mimo ? AzureCredentials.MiMo() : AzureCredentials.OpenAi(OpenAiBaseUrl.Text);
+            if (clear) { cancelAutomatic(); store.Clear(); } else store.Write(box.Password.Trim());
+            box.Clear(); UpdateHttpCredentialStatus(); SetNotice(clear ? "此服务 Key 已清除。" : "此服务 Key 已安全保存；服务配置请点击底部保存设置。");
+        }
+        catch (UserFeedbackException ex) { SetNotice(ex.Message); }
+    }
+    private void OpenAiAddress_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        if (savedSettings is null || AutomaticOpenAi is null) return;
+        var address = Settings.NormalizeServiceUrl(OpenAiBaseUrl.Text);
+        if (address != Settings.NormalizeServiceUrl(savedSettings.OpenAiBaseUrl))
+        {
+            OpenAiKey.Clear(); AutomaticOpenAi.IsChecked = false;
+            cancelAutomatic();
+            if (savedSettings.AllowAutomaticOpenAi) SaveAutomatic(savedSettings with { AllowAutomaticOpenAi = false, OpenAiAuthorizedBaseUrl = null });
+        }
+        UpdateHttpCredentialStatus(); UpdateProviderSaveHint();
+    }
+    private void AutomaticHttp_Click(object sender, RoutedEventArgs e)
+    {
+        if (ReferenceEquals(sender, AutomaticMiMo))
+        { SaveAutomatic(savedSettings with { AllowAutomaticMiMo = AutomaticMiMo.IsChecked == true }); return; }
+        var address = Settings.NormalizeServiceUrl(OpenAiBaseUrl.Text);
+        if (address is null || address != Settings.NormalizeServiceUrl(savedSettings.OpenAiBaseUrl))
+        { AutomaticOpenAi.IsChecked = false; SetNotice("服务地址尚未保存，请先保存设置，再明确开启该地址的自动授权。"); return; }
+        SaveAutomatic(savedSettings with { AllowAutomaticOpenAi = AutomaticOpenAi.IsChecked == true,
+            OpenAiAuthorizedBaseUrl = AutomaticOpenAi.IsChecked == true ? address : null });
     }
     private async void QueryVoices_Click(object sender, RoutedEventArgs e)
     {

@@ -14,6 +14,8 @@
             <ComboBox x:Name="Provider" Height="32" SelectionChanged="Provider_Changed">
                 <ComboBoxItem Content="Windows 本地 TTS（离线）"/><ComboBoxItem Content="Azure Speech TTS（发送选区到云端）"/>
                 <ComboBoxItem Content="Edge 在线自然语音（实验性，需要联网）"/>
+                <ComboBoxItem Content="MiMo TTS（发送选区到小米）"/>
+                <ComboBoxItem Content="OpenAI-Compatible TTS（发送选区到配置服务）"/>
             </ComboBox>
             <StackPanel x:Name="LocalPanel">
             <TextBlock Text="Windows 本地语音" Margin="0,12,0,6"/>
@@ -44,7 +46,46 @@
                 <CheckBox x:Name="AutomaticEdge" Content="允许 Auto Speak 将白名单选区发送到 Edge（立即保存）" Click="AutomaticEdge_Click" Margin="0,10,0,0"/>
                 <TextBlock Text="非官方在线接入，无需 Azure Key。手动朗读会将选中文字发送到微软在线服务；自动发送需要独立授权。接口可能变化而失效。这不是 Windows 已安装的离线 Natural Voices。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
             </StackPanel>
-            <TextBlock Text="语速（0.5–2 倍）" Margin="0,18,0,4"/>
+            <StackPanel x:Name="MiMoPanel" Visibility="Collapsed">
+                <TextBlock Text="MiMo API Key（Windows 凭据管理器）" Margin="0,12,0,4"/>
+                <PasswordBox x:Name="MiMoKey" Height="28"/>
+                <DockPanel Margin="0,8,0,0">
+                    <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0">
+                        <Hyperlink x:Name="MiMoApiKeyLink" NavigateUri="https://platform.xiaomimimo.com/console/api-keys" RequestNavigate="MiMoApiKey_RequestNavigate">获取 API Key</Hyperlink>
+                    </TextBlock>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="保存 / 更新 Key" Tag="MiMo" Click="SaveHttpKey_Click" Padding="8,4" Margin="0,0,8,0"/>
+                        <Button Content="清除 Key" Tag="MiMo" Click="ClearHttpKey_Click" Padding="8,4"/>
+                    </StackPanel>
+                </DockPanel>
+                <TextBlock x:Name="MiMoCredentialStatus" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                <TextBlock Text="Model（默认 mimo-v2.5-tts，可填写其他兼容模型名称）" Margin="0,10,0,4"/>
+                <TextBox x:Name="MiMoModel" Height="28" MaxLength="200"/>
+                <TextBlock Text="预置音色（默认冰糖）" Margin="0,10,0,4"/>
+                <ComboBox x:Name="MiMoVoice" Height="32"/>
+                <TextBlock Text="可选自然语言风格说明（最多 1000 字符）" Margin="0,10,0,4"/>
+                <TextBox x:Name="MiMoStyle" AcceptsReturn="True" TextWrapping="Wrap" Height="65" MaxLength="1000"/>
+                <CheckBox x:Name="AutomaticMiMo" Content="允许自动发送白名单选区到 MiMo（立即保存）" Click="AutomaticHttp_Click" Margin="0,10,0,0"/>
+                <TextBlock Text="手动朗读会发送选中文字到小米，可能产生 API 费用。语速滑块转换为自然语言快慢指导，是近似控制，不保证精确倍速。原文保持不变。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="OpenAiPanel" Visibility="Collapsed">
+                <TextBlock Text="Base URL（含 API 前缀，例如 https://api.openai.com/v1）" Margin="0,12,0,4"/>
+                <TextBox x:Name="OpenAiBaseUrl" Height="28" TextChanged="OpenAiAddress_Changed"/>
+                <TextBlock Text="API Key（按服务地址存入 Windows 凭据管理器）" Margin="0,10,0,4"/>
+                <PasswordBox x:Name="OpenAiKey" Height="28"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button Content="保存 / 更新 Key" Tag="OpenAi" Click="SaveHttpKey_Click" Padding="8,4" Margin="0,0,8,0"/>
+                    <Button Content="清除 Key" Tag="OpenAi" Click="ClearHttpKey_Click" Padding="8,4"/>
+                </StackPanel>
+                <TextBlock x:Name="OpenAiCredentialStatus" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                <TextBlock Text="Model" Margin="0,10,0,4"/><TextBox x:Name="OpenAiModel" Height="28" MaxLength="200"/>
+                <TextBlock Text="Voice（可手工填写）" Margin="0,10,0,4"/><TextBox x:Name="OpenAiVoice" Height="28" MaxLength="200"/>
+                <TextBlock Text="可选 Instructions（tts-1 / tts-1-hd 不支持，请留空）" Margin="0,10,0,4"/>
+                <TextBox x:Name="OpenAiInstructions" AcceptsReturn="True" TextWrapping="Wrap" Height="65" MaxLength="4096"/>
+                <CheckBox x:Name="AutomaticOpenAi" Content="允许自动发送到已保存地址（立即保存；先保存地址）" Click="AutomaticHttp_Click" Margin="0,10,0,0"/>
+                <TextBlock Text="手动朗读会发送选中文字到配置的服务，可能产生 API 费用。远程地址须使用 HTTPS；本机回环可用 HTTP。修改地址会撤销自动授权，凭据按地址独立保存，须重新配置。第三方需支持 WAV 和 speed；不支持 Instructions 时请清空。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
+            </StackPanel>
+            <TextBlock Text="语速（0.5–2 倍；MiMo 为近似指导）" Margin="0,18,0,4"/>
             <DockPanel><TextBlock DockPanel.Dock="Right" Width="46" Text="{Binding ElementName=Rate, Path=Value, StringFormat=F2}"/><Slider x:Name="Rate" Minimum="0.5" Maximum="2" TickFrequency="0.05" IsSnapToTickEnabled="True"/></DockPanel>
             <TextBlock Text="音量（0–1）" Margin="0,18,0,4"/>
             <DockPanel><TextBlock DockPanel.Dock="Right" Width="46" Text="{Binding ElementName=Volume, Path=Value, StringFormat=F2}"/><Slider x:Name="Volume" Minimum="0" Maximum="1" TickFrequency="0.05" IsSnapToTickEnabled="True"/></DockPanel>

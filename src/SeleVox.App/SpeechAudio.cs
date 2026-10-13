@@ -15,6 +15,10 @@ internal sealed class SpeechAudio : ISpeechSynthesis, IAudioPlaybackFactory
 
     public async Task<Stream> SynthesizeAsync(string text, Settings settings, CancellationToken cancellation)
     {
+        if (settings.Provider == TtsProvider.MiMo)
+            return await new MiMoSpeech().SynthesizeAsync(text, settings, cancellation).ConfigureAwait(false);
+        if (settings.Provider == TtsProvider.OpenAiCompatible)
+            return await new OpenAiSpeech().SynthesizeAsync(text, settings, cancellation).ConfigureAwait(false);
         if (settings.Provider == TtsProvider.Edge)
             return await new EdgeSpeech().SynthesizeAsync(text, settings, cancellation).ConfigureAwait(false);
         if (settings.Provider == TtsProvider.Azure)

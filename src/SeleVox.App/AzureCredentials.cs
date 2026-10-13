@@ -4,15 +4,22 @@ using SeleVox.Core;
 
 namespace SeleVox.App;
 
-internal sealed class AzureCredentials(string target = "SeleVox/AzureSpeech")
+internal sealed class AzureCredentials(string target = "SeleVox/AzureSpeech", string label = "Azure")
 {
+    internal static AzureCredentials MiMo() => new("SeleVox/MiMoSpeech", "MiMo");
+    internal static AzureCredentials OpenAi(string baseUrl)
+    {
+        var address = Settings.NormalizeServiceUrl(baseUrl) ?? throw new UserFeedbackException("服务地址无效：远程服务需要 HTTPS，本机服务可使用回环 HTTP 地址。");
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(address)));
+        return new("SeleVox/OpenAiSpeech/" + hash, "OpenAI-Compatible");
+    }
     private const int Generic = 1, NotFound = 1168;
     public string? Read()
     {
         if (!CredRead(target, Generic, 0, out var pointer))
         {
             if (Marshal.GetLastWin32Error() == NotFound) return null;
-            throw new UserFeedbackException("无法读取 Windows 凭据管理器中的 Azure Key。");
+            throw new UserFeedbackException($"无法读取 Windows 凭据管理器中的 {label} Key。");
         }
         try
         {
@@ -24,20 +31,20 @@ internal sealed class AzureCredentials(string target = "SeleVox/AzureSpeech")
     public void Write(string key)
     {
         if (string.IsNullOrWhiteSpace(key) || Encoding.Unicode.GetByteCount(key) > 2560)
-            throw new UserFeedbackException("Azure Key 为空或过长。");
+            throw new UserFeedbackException($"{label} Key 为空或过长。");
         var blob = Marshal.StringToCoTaskMemUni(key);
         try
         {
             var credential = new Credential { Type = Generic, TargetName = target, BlobSize = (uint)Encoding.Unicode.GetByteCount(key),
                 Blob = blob, Persist = 2, UserName = "AzureSpeech" };
-            if (!CredWrite(ref credential, 0)) throw new UserFeedbackException("无法保存 Azure Key 到 Windows 凭据管理器。");
+            if (!CredWrite(ref credential, 0)) throw new UserFeedbackException($"无法保存 {label} Key 到 Windows 凭据管理器。");
         }
         finally { Marshal.ZeroFreeCoTaskMemUnicode(blob); }
     }
     public void Clear()
     {
         if (!CredDelete(target, Generic, 0) && Marshal.GetLastWin32Error() != NotFound)
-            throw new UserFeedbackException("无法清除 Windows 凭据管理器中的 Azure Key。");
+            throw new UserFeedbackException($"无法清除 Windows 凭据管理器中的 {label} Key。");
     }
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct Credential
