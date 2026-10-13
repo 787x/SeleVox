@@ -41,8 +41,7 @@ public partial class AudioWorkbenchWindow : Window
         if (s.AzureVoice is { } azure) { AzureVoice.ItemsSource = new[] { new VoiceChoice(azure, azure) }; AzureVoice.SelectedValue = azure; }
         edgeSelection = s.EdgeVoice; Locale.Text = s.EdgeLocaleFilter; FilterEdge(); Pitch.Value = s.EdgePitchHz;
         MiMoModel.Text = s.MiMoModel; MiMoVoice.ItemsSource = Settings.MiMoVoices; MiMoVoice.SelectedItem = s.MiMoVoice; MiMoStyle.Text = s.MiMoStyle;
-        StylePreset.ItemsSource = MiMoStylePresets.Search("").SelectMany(c => c.Styles).Distinct().ToArray();
-        RefreshStyles(); OpenAiModel.Text = s.OpenAiModel; OpenAiVoice.Text = s.OpenAiVoice; Instructions.Text = s.OpenAiInstructions;
+        RefreshMiMoStyles(); OpenAiModel.Text = s.OpenAiModel; OpenAiVoice.Text = s.OpenAiVoice; Instructions.Text = s.OpenAiInstructions;
         Rate.Value = s.Rate; Provider.SelectedItem = s.Provider;
         Width = Math.Clamp(preferences.Width, 620, 1600); Height = Math.Clamp(preferences.Height, 620, 1400);
         if (double.IsFinite(preferences.Left) && double.IsFinite(preferences.Top))
@@ -99,13 +98,72 @@ public partial class AudioWorkbenchWindow : Window
         }
         catch (UserFeedbackException ex) { CredentialStatus.Text = ex.Message; }
     }
-    private void RefreshStyles() => StyleSummary.Text = MiMoStyleTags.GetPrefix(styles.Selected) is { Length: > 0 } prefix ? prefix : "无标签";
-    private void AddStyle_Click(object sender, RoutedEventArgs e)
+    private void RefreshMiMoStyles()
     {
-        try { styles.Add(CustomStyle.Text.Length > 0 ? CustomStyle.Text : StylePreset.SelectedItem as string ?? ""); CustomStyle.Clear(); RefreshStyles(); }
-        catch (UserFeedbackException ex) { GenerationStatus.Text = ex.Message; }
+        RefreshMiMoSelection(); RefreshMiMoPresets();
     }
-    private void ClearStyles_Click(object sender, RoutedEventArgs e) { styles.Clear(); RefreshStyles(); }
+    private void RefreshMiMoSelection()
+    {
+        if (MiMoSelectedStyles is null || MiMoPresetGroups is null) return;
+        MiMoSelectedStyles.ItemsSource = styles.Selected.ToArray();
+        var prefix = MiMoStyleTags.GetPrefix(styles.Selected);
+        MiMoStylePrefix.Text = prefix.Length == 0 ? "实际前缀：无（保持原文）" : "实际前缀：" + prefix;
+        MiMoStyleHint.Text = styles.Selected.Any(MiMoStyleTags.IsSinging)
+            ? "唱歌为独立模式，适合中文歌词；普通文章未必能自然演唱。选择其他风格将退出唱歌模式。"
+            : "按选择顺序组合，最多 16 项。修改用于下一次生成；可保存为工作台默认参数。";
+    }
+    private void RefreshMiMoPresets()
+    {
+        if (MiMoPresetGroups is null || MiMoStyleSearch is null) return;
+        MiMoPresetGroups.Children.Clear();
+        foreach (var category in MiMoStylePresets.Search(MiMoStyleSearch.Text))
+        {
+            MiMoPresetGroups.Children.Add(new System.Windows.Controls.TextBlock
+            { Text = category.Name, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 4) });
+            var row = new System.Windows.Controls.WrapPanel();
+            foreach (var name in category.Styles)
+            {
+                var button = new System.Windows.Controls.Primitives.ToggleButton
+                { Content = name, Tag = name, IsChecked = styles.Selected.Contains(name),
+                    Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 6, 6) };
+                button.Click += ToggleMiMoStyle_Click; row.Children.Add(button);
+            }
+            MiMoPresetGroups.Children.Add(row);
+        }
+        if (MiMoPresetGroups.Children.Count == 0)
+            MiMoPresetGroups.Children.Add(new System.Windows.Controls.TextBlock { Text = "没有匹配的预设，可在下方添加自定义风格。" });
+    }
+    private void MiMoStyleSearch_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e) => RefreshMiMoPresets();
+    private void ToggleMiMoStyle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Primitives.ToggleButton { Tag: string name }) return;
+        try
+        {
+            if (styles.Selected.Contains(name)) styles.Remove(name); else styles.Add(name);
+            MiMoStyleError.Text = "";
+            // Preserve the focused toggle for keyboard users while updating all selected states.
+            RefreshMiMoSelection();
+        }
+        catch (UserFeedbackException ex) { MiMoStyleError.Text = ex.Message; }
+        foreach (var row in MiMoPresetGroups.Children.OfType<System.Windows.Controls.WrapPanel>())
+            foreach (var item in row.Children.OfType<System.Windows.Controls.Primitives.ToggleButton>())
+                item.IsChecked = styles.Selected.Contains((string)item.Tag);
+    }
+    private void AddMiMoStyle_Click(object sender, RoutedEventArgs e)
+    {
+        try { styles.Add(MiMoCustomStyle.Text); MiMoCustomStyle.Clear(); MiMoStyleError.Text = ""; RefreshMiMoStyles(); }
+        catch (UserFeedbackException ex) { MiMoStyleError.Text = ex.Message; }
+    }
+    private void MiMoCustomStyle_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) { AddMiMoStyle_Click(sender, e); e.Handled = true; }
+    }
+    private void RemoveMiMoStyle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button { Tag: string name }) { styles.Remove(name); MiMoStyleError.Text = ""; RefreshMiMoStyles(); }
+    }
+    private void ClearMiMoStyles_Click(object sender, RoutedEventArgs e)
+    { styles.Clear(); MiMoStyleError.Text = ""; RefreshMiMoStyles(); }
     private void FilterEdge()
     {
         if (EdgeVoice is null) return;

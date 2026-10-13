@@ -23,8 +23,22 @@ public sealed class AudioWorkbenchWindowTests
             provider.SelectedItem = TtsProvider.MiMo;
             ((ComboBox)window.FindName("MiMoVoice")).SelectedItem = "Dean";
             ((TextBox)window.FindName("MiMoStyle")).Text = "calm";
-            ((TextBox)window.FindName("CustomStyle")).Text = "温柔";
-            Click(window, "添加风格");
+            ((TextBox)window.FindName("MiMoCustomStyle")).Text = "温柔";
+            Click(window, "添加");
+            var groups = (StackPanel)window.FindName("MiMoPresetGroups");
+            ToggleButton Preset(string name) => groups.Children.OfType<WrapPanel>().SelectMany(r => r.Children.OfType<ToggleButton>()).Single(b => Equals(b.Content, name));
+            void Toggle(string name) => Preset(name).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            Toggle("清亮"); Assert.Equal(new[] { "温柔", "清亮" }, window.Draft().MiMoOverallStyles);
+            Toggle("唱歌"); Assert.Equal(new[] { "唱歌" }, window.Draft().MiMoOverallStyles);
+            Toggle("温柔"); Assert.Equal(new[] { "温柔" }, window.Draft().MiMoOverallStyles);
+            var search = (TextBox)window.FindName("MiMoStyleSearch"); search.Text = "方言";
+            Assert.Equal(4, groups.Children.OfType<WrapPanel>().Single().Children.Count); search.Text = "";
+            ((TextBox)window.FindName("MiMoCustomStyle")).Text = "(畸形)"; Click(window, "添加");
+            Assert.NotEmpty(((TextBlock)window.FindName("MiMoStyleError")).Text); Assert.Equal(new[] { "温柔" }, window.Draft().MiMoOverallStyles);
+            Click(window, "清空整体风格"); Assert.Empty(window.Draft().MiMoOverallStyles!);
+            Toggle("温柔");
+            var expander = LogicalDescendants(window).OfType<Expander>().Single(e => Equals(e.Header, "浏览 / 搜索预设与添加自定义风格")); expander.IsExpanded = true;
+            window.UpdateLayout(); Render(window, "MiMo-expanded");
             await window.GenerateAsync(true); Assert.Equal(AudioWorkbenchWindow.SampleText, speech.Texts.Single()); Assert.Single(played);
             ((TextBox)window.FindName("InputText")).Text = "实际输入🙂"; await window.GenerateAsync(false); Assert.Equal("实际输入🙂", speech.Texts.Last()); Assert.Single(played);
             var summary = ((TextBox)window.FindName("ResultSummary")).Text;
@@ -83,6 +97,8 @@ public sealed class AudioWorkbenchWindowTests
         finally { window.Close(); File.Delete(path); }
     });
     private static void Click(Window window, string content) => Buttons(window).Single(b => Equals(b.Content, content)).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+    private static IEnumerable<DependencyObject> LogicalDescendants(DependencyObject parent)
+    { foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>()) { yield return child; foreach (var nested in LogicalDescendants(child)) yield return nested; } }
     private static void Render(Window window, string name)
     {
         var directory = Environment.GetEnvironmentVariable("SELEVOX_UI_RENDER_DIR"); if (string.IsNullOrWhiteSpace(directory)) return;
