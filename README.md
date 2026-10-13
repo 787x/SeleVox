@@ -1,4 +1,4 @@
-# SeleVox — PR9
+# SeleVox — PR11
 
 Windows 11 x64 的选区朗读工具，支持手动热键与可关闭的鼠标自动朗读，普通用户权限运行。WPF 设置窗口关闭后驻留托盘；托盘双击或“设置”重新打开，“退出”结束程序。重复启动会通知已有实例显示设置窗口。
 
@@ -250,3 +250,20 @@ Remove-Item Env:SELEVOX_HTTP_TTS_TESTS
 ```
 
 可分别用 `FullyQualifiedName~RealMiMoChineseAndEnglish` 或 `FullyQualifiedName~RealOpenAiChineseAndEnglish` 运行一个服务。`Category=WindowsAudio` 额外覆盖两个新协议模拟响应经真实默认/单/双 WASAPI 输出的暂停、继续、停止；此项不会调用 MiMo/OpenAI，不能代替真实服务合成验证。
+
+## PR11：独立音频生成工作台
+
+从主设置窗口的“音频生成”或托盘同名菜单打开。工作台与设置窗口独立，关闭设置窗口仍可继续生成；关闭工作台丢弃正文、结果及未完成任务，日常朗读设置保持不变。
+
+- **默认试音**：使用内置中英文短文本，生成后实际播放；无需填写正文。试音也成为最后一次成功结果。
+- **生成**：合成编辑框中的实际文本；正文最多 32768 UTF-16 字符，超过上限明确报错，不截断。
+- **试听 / 保存 WAV**：复用最后一次成功结果，不重复调用 TTS。底部显示该结果的 Provider、Voice、关键参数、格式和样本帧数；修改上方参数不改变旧结果。
+- 支持 Windows 本地语音；Azure Region 与语音查询；Edge 语音查询、地区筛选和音调；MiMo Model、预置音色、自然语言说明及整体风格标签；OpenAI-Compatible Model、Voice、Instructions。各 Provider 共用语速设置。
+- MiMo 文件生成使用已有完整 WAVE 路径；工作台不消费流式 PCM。日常朗读的流式开关、SSE、LLM 逐句朗读保持独立。
+- API Key 仅在主设置通过 Credential Manager 管理。OpenAI-Compatible 使用主设置已保存的服务地址。工作台提供凭据状态和前往设置入口，不显示或复制 Key。
+- 生成与保存不访问播放设备；试听替换当前朗读，使用主设置当前的输出设备、音量和起音补偿。暂停、继续和停止共用原有播放会话。纯生成或保存不打断朗读。
+- 原始 PCM/IEEE Float WAVE 验证成功后才接受结果，最多 256 MiB，Provider 自身较小的限制仍有效。Windows/Azure 长文本按 Unicode 安全边界分段，其他 Provider 沿用已有分段；只合并音频样本，不拼接独立 WAV 文件头。
+- 保存时显式确认覆盖，同目录临时文件写入完成后提交，失败或取消清理临时文件。PR10 的 0–250 ms 起音补偿只在播放层插入，不写入导出。
+- “保存工作台默认参数”只保存语音参数；窗口位置和大小在关闭时保存到 `%LOCALAPPDATA%\SeleVox\audio-workbench.json`，不保存待合成正文或生成音频，不改写 `settings.json` 和自动上传授权。风格说明和 Instructions 属于显式保存的工作台参数，请勿在其中填写秘密。
+
+本 PR 不实现 CLI/MCP、MP3 或批量任务。实际验证、复跑命令和待人工验收项见 [PR11 验证记录](verification/PR11.md)。

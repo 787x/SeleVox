@@ -1,0 +1,56 @@
+<Window x:Class="SeleVox.App.AudioWorkbenchWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="SeleVox · 音频生成" Width="780" Height="850" MinWidth="620" MinHeight="620">
+ <Grid Margin="20">
+  <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
+   <TextBlock Text="音频生成" FontSize="24" FontWeight="SemiBold"/>
+   <TextBlock Text="参数独立于日常朗读。正文与音频仅保留在内存，保存 WAV 后才写入文件。在线合成可能收费。" TextWrapping="Wrap" Margin="0,8"/>
+   <TextBlock Text="待合成文本（最多 32768 字符）"/>
+   <TextBox x:Name="InputText" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="150" Margin="0,6,0,12"/>
+   <TextBlock Text="Provider"/><ComboBox x:Name="Provider" SelectionChanged="Provider_Changed" Margin="0,6,0,12"/>
+   <StackPanel x:Name="WindowsPanel"><TextBlock Text="Windows 已安装语音"/><ComboBox x:Name="LocalVoice" DisplayMemberPath="Label" SelectedValuePath="Id" Margin="0,6,0,10"/></StackPanel>
+   <StackPanel x:Name="AzurePanel"><TextBlock Text="Azure Region"/><TextBox x:Name="Region" Margin="0,6"/>
+    <Button Content="查询 Azure 语音" Click="AzureQuery_Click" HorizontalAlignment="Left" Padding="10,5"/>
+    <ComboBox x:Name="AzureVoice" DisplayMemberPath="Label" SelectedValuePath="Id" Margin="0,6,0,10"/>
+   </StackPanel>
+   <StackPanel x:Name="EdgePanel"><TextBlock Text="Edge 地区筛选（如 zh-CN；留空为全部）"/><TextBox x:Name="Locale" TextChanged="Locale_Changed" Margin="0,6"/>
+    <Button Content="查询 Edge 语音" Click="EdgeQuery_Click" HorizontalAlignment="Left" Padding="10,5"/>
+    <ComboBox x:Name="EdgeVoice" DisplayMemberPath="Label" SelectedValuePath="Id" Margin="0,6"/>
+    <TextBlock Text="音调（−100 至 100 Hz）"/><Slider x:Name="Pitch" Minimum="-100" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True"/>
+    <TextBlock Text="{Binding ElementName=Pitch, Path=Value, StringFormat={}{0:0} Hz}"/>
+   </StackPanel>
+   <StackPanel x:Name="MiMoPanel"><TextBlock Text="MiMo Model"/><TextBox x:Name="MiMoModel" Margin="0,6"/>
+    <TextBlock Text="预置音色"/><ComboBox x:Name="MiMoVoice" Margin="0,6"/>
+    <TextBlock Text="自然语言风格说明"/><TextBox x:Name="MiMoStyle" AcceptsReturn="True" TextWrapping="Wrap" Height="65" Margin="0,6"/>
+    <TextBlock Text="整体风格标签（顺序保留；唱歌为独立模式）"/>
+    <TextBlock x:Name="StyleSummary" TextWrapping="Wrap" Margin="0,6"/>
+    <WrapPanel><ComboBox x:Name="StylePreset" Width="180"/><TextBox x:Name="CustomStyle" Width="180" Margin="6,0"/><Button Content="添加风格" Click="AddStyle_Click" Padding="8,4"/><Button Content="清空标签" Click="ClearStyles_Click" Padding="8,4" Margin="6,0"/></WrapPanel>
+    <TextBlock Text="工作台采用完整 WAVE 模式；不提前播放流式 PCM。主设置中的 MiMo 流式开关保持独立，实时朗读链路不变。MiMo 语速为自然语言指导。" TextWrapping="Wrap" Margin="0,8"/>
+   </StackPanel>
+   <StackPanel x:Name="OpenAiPanel"><TextBlock Text="已保存的 OpenAI-Compatible 地址（在主设置修改）"/><TextBlock x:Name="ServiceAddress" TextWrapping="Wrap" Margin="0,6"/>
+    <TextBlock Text="Model"/><TextBox x:Name="OpenAiModel" Margin="0,6"/><TextBlock Text="Voice"/><TextBox x:Name="OpenAiVoice" Margin="0,6"/>
+    <TextBlock Text="Instructions"/><TextBox x:Name="Instructions" AcceptsReturn="True" TextWrapping="Wrap" Height="65" Margin="0,6"/>
+   </StackPanel>
+   <TextBlock Text="语速（0.5–2）" Margin="0,10,0,0"/><Slider x:Name="Rate" Minimum="0.5" Maximum="2" Value="1"/>
+   <TextBlock Text="{Binding ElementName=Rate, Path=Value, StringFormat={}{0:0.##} 倍}"/>
+   <Button Content="前往主设置 / 管理凭据和输出设备" Click="Settings_Click" HorizontalAlignment="Left" Padding="10,5" Margin="0,10"/>
+   <TextBlock x:Name="CredentialStatus" TextWrapping="Wrap" Margin="0,0,0,10"/>
+   <Button Content="保存工作台默认参数" Click="Defaults_Click" HorizontalAlignment="Left" Padding="10,5"/>
+  </StackPanel></ScrollViewer>
+  <StackPanel Grid.Row="1" Margin="0,12,0,0">
+   <TextBlock Text="最后一次成功结果 · 修改参数不改变此音频" FontWeight="SemiBold" Margin="0,0,0,4"/>
+   <TextBox x:Name="ResultSummary" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Text="尚未生成" MaxHeight="110" VerticalScrollBarVisibility="Auto" Margin="0,0,0,8"/>
+   <TextBlock x:Name="GenerationStatus" Text="就绪" TextWrapping="Wrap" Foreground="#8A4D00" Margin="0,0,0,6"/>
+   <TextBlock x:Name="PlaybackStatus" TextWrapping="Wrap" Margin="0,0,0,6"/>
+   <WrapPanel>
+    <Button Content="默认试音" Click="Sample_Click" Padding="12,7" Margin="0,0,6,6"/>
+    <Button Content="生成" Click="Generate_Click" Padding="12,7" Margin="0,0,6,6"/>
+    <Button x:Name="Preview" Content="试听" Click="Preview_Click" IsEnabled="False" Padding="12,7" Margin="0,0,6,6"/>
+    <Button x:Name="SaveAudio" Content="保存 WAV" Click="Save_Click" IsEnabled="False" Padding="12,7" Margin="0,0,6,6"/>
+    <Button Content="取消生成" Click="Cancel_Click" Padding="12,7" Margin="0,0,6,6"/>
+    <Button Content="暂停 / 继续" Click="Pause_Click" Padding="12,7" Margin="0,0,6,6"/>
+    <Button Content="停止" Click="Stop_Click" Padding="12,7" Margin="0,0,6,6"/>
+   </WrapPanel>
+   <TextBlock Text="试听替换当前朗读；生成 / 保存不打断朗读。输出、音量及起音补偿复用主设置。" TextWrapping="Wrap" Foreground="#546575"/>
+  </StackPanel>
+ </Grid>
+</Window>

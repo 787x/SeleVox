@@ -12,6 +12,8 @@ public partial class MainWindow : Window
     private CancellationTokenSource? voiceQuery;
     private readonly Action cancelAutomatic;
     internal Action? LlmCredentialsChanged { get; set; }
+    internal Action? OpenAudioWorkbench { get; set; }
+    private void AudioWorkbench_Click(object sender, RoutedEventArgs e) => OpenAudioWorkbench?.Invoke();
     private readonly Func<CancellationToken, Task<IReadOnlyList<EdgeVoiceChoice>>> queryEdge;
     private IReadOnlyList<EdgeVoiceChoice> edgeVoices = [];
     private string? edgeSelection;
