@@ -55,3 +55,26 @@ Release：`dotnet build SeleVox.slnx -c Release`。
 桌面/真实音频测试分别显式设置 `SELEVOX_OCR_DESKTOP_TESTS=1` / `SELEVOX_AUDIO_TESTS=1`（会短时移动鼠标、展示隔离窗口或播放固定测试语音）。收费比较设置 `SELEVOX_LLM_SERVICE_TESTS=1`，需要当前保存的 LLM 与 MiMo 凭据，最多两次 LLM 问答及对应逐句 TTS 请求；不会修改用户配置。
 
 本地 TRX 在 tests/SeleVox.Tests/TestResults（忽略提交）；记录保留初次失败和最终执行文件。协议核对日期为 2026-10-13：[OpenAI](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)、[MiMo](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/text-generation/deep-thinking)。
+
+## 补充：长复杂问题实测（2026-10-13）
+
+按用户要求，使用同一个固定复杂工程问题，要求解释 Windows 流式语音问答的权限、代次隔离、队列背压、暂停取消、迟到回调、多设备故障、UI 状态及验证设计，并比较延迟/费用/完整性，要求 800–1000 字、10–14 个自然段。沿用保存的 LLM 与 MiMo 凭据，默认单设备、MiMo PCM Streaming，两种模式串行各请求一次，未改用户配置。新增 LongComplexQuestionComparesActualFirstAudioAndContinuity 收费测试，通过（pr9-long-paid.trx），总测试约 7 分 4 秒。正文未保存或输出。
+
+| 指标 | 完整模式 | 逐句模式 |
+| --- | ---: | ---: |
+| 回答字符数（含标点/空白） | 906 | 895 |
+| 首个最终正文 | 23.237 s | 21.379 s |
+| 首个完整可朗读句子 | 23.395 s | 21.537 s |
+| 首次 TTS 提交 | 25.530 s | 21.539 s |
+| 首次实际 PCM 音频消费 | 29.738 s | 22.681 s |
+| 读取到 LLM 正常结束 | 25.530 s | 101.195 s |
+| 最后音频结束 | 204.170 s | 220.148 s |
+| TTS 请求数 | 1 | 15 |
+
+本次逐句模式首个实际音频消费提前 **7.057 s（23.7%）**，首音频早于 LLM 正常结束。首个可读句子到音频消费的等待从 6.343 s 降到 1.144 s；另外两次服务首正文等待相差 1.858 s。两次生成的回答长度接近但内容并不保证完全相同，样本仅一对，因此可以确认这一次首声消费加速，不能将 23.7% 当作固定服务性能保证。
+
+逐句模式最后音频结束晚 **15.978 s（约 7.8%）**，并增加到 15 次 TTS 请求。测得 14 个段间等待（前段实际播放 Finished 至下一段首次源消费）为 1240、1066、1023、933、1038、2255、1275、1076、1075、1087、1195、2371、1713、1365 ms；合计 18.712 s，平均 1.337 s，范围 0.933–2.371 s。这是源消费时点间隙，并非声学静默测量；记录轮询分辨率约 10ms。
+
+逐句的 LLM 正常结束时点 101.195 s 包含 8 段队列背压等待：队列满时停止继续读取正文，随真实语音完成才推进。该值不能当作服务端模型纯生成耗时或说明模型变慢。没有预取下一句是当前段间等待的重要实现限制；本次结果支持“首声消费更快”，不支持“整段更快或连续性更好”。实际计费金额未从服务账单核对，15 次请求不能直接等同于 15 倍金额。
+
+重现：设置 SELEVOX_LLM_SERVICE_TESTS=1 后，执行 `dotnet test tests/SeleVox.Tests -c Release --filter FullyQualifiedName~LongComplexQuestion --logger "trx;LogFileName=pr9-long-paid.trx"`。会实际收费并播放长回答，两种模式各可等待最多 10 分钟；建议独立运行，避免与其他设备测试竞争。
