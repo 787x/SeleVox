@@ -71,7 +71,8 @@ public sealed class OcrDesktopTests(ITestOutputHelper output)
                         Assert.Equal(expected, actual);
                         using var crop = snapshot.Image.Clone(new Drawing.Rectangle(60, 60, 1100, 240), System.Drawing.Imaging.PixelFormat.Format32bppRgb);
                         var fresh = await new LocalOcr().RecognizeAsync(crop, OcrLanguage.English, token);
-                        Assert.Contains("Fresh screen capture", fresh.Text); Assert.DoesNotContain("OLD OCR RESULT", fresh.Text);
+                        Assert.Contains("Fresh screen capture", fresh.Text); Assert.Contains("Secondlinetext", fresh.Text.Replace(" ", ""));
+                        Assert.DoesNotContain("OLD OCR RESULT", fresh.Text);
                         using var selection = new ScreenSelection(snapshots, token); await Task.Delay(100);
                         selection.Cancel();
                         using var image = await selection.Result.WaitAsync(TimeSpan.FromSeconds(3));
