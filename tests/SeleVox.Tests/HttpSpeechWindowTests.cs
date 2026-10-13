@@ -10,6 +10,71 @@ namespace SeleVox.Tests;
 [Collection("WPF desktop")]
 public sealed class HttpSpeechWindowTests
 {
+    [Fact] public Task OverallStylesDraftSaveSearchSingingAndRestart() => RunSta(async () =>
+    {
+        var saved = new Settings(Provider: TtsProvider.MiMo, MiMoStyle: "(上海话)", MiMoOverallStyles: ["温柔"]);
+        MainWindow? window = null;
+        window = new MainWindow(saved, updated => { saved = updated; window!.SetAutomaticSettings(updated); return null; },
+            () => { }, () => { }, () => { }, () => Task.FromResult<string?>(null), () => { });
+        var selected = (ItemsControl)window.FindName("MiMoSelectedStyles");
+        var groups = (StackPanel)window.FindName("MiMoPresetGroups");
+        ToggleButton Preset(string name) => groups.Children.OfType<WrapPanel>().SelectMany(r => r.Children.OfType<ToggleButton>()).Single(b => b.Content as string == name);
+        void Click(ButtonBase button) => button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Assert.Equal(["温柔"], selected.Items.Cast<string>()); Assert.Equal("(上海话)", ((TextBox)window.FindName("MiMoStyle")).Text);
+        Click(Preset("清亮"));
+        var custom = (TextBox)window.FindName("MiMoCustomStyle"); custom.Text = "上海话";
+        Click(Buttons(window).Single(b => b.Content as string == "添加"));
+        Assert.Equal(["温柔", "清亮", "上海话"], selected.Items.Cast<string>());
+        Assert.Equal(["温柔"], saved.MiMoOverallStyles!);
+        Assert.Contains("(温柔 清亮 上海话)", ((TextBlock)window.FindName("MiMoStylePrefix")).Text);
+        ((ComboBox)window.FindName("Provider")).SelectedIndex = 4;
+        ((ComboBox)window.FindName("Provider")).SelectedIndex = 3;
+        Assert.Equal(["温柔", "清亮", "上海话"], selected.Items.Cast<string>());
+        await WaitForOutputs(window); Click(Buttons(window).Single(b => b.Content as string == "保存设置"));
+        Assert.Equal(["温柔", "清亮", "上海话"], saved.MiMoOverallStyles!); Assert.Equal("(上海话)", saved.MiMoStyle);
+        var search = (TextBox)window.FindName("MiMoStyleSearch"); search.Text = "方言";
+        Assert.Equal(4, groups.Children.OfType<WrapPanel>().Single().Children.Count);
+        search.Text = "不存在"; Assert.Empty(groups.Children.OfType<WrapPanel>()); search.Text = "";
+        Click(Preset("唱歌")); Assert.Equal(["唱歌"], selected.Items.Cast<string>());
+        Assert.Contains("歌词", ((TextBlock)window.FindName("MiMoStyleHint")).Text);
+        Click(Preset("温柔")); Click(Preset("清亮")); Click(Preset("温柔")); Assert.Equal(["清亮"], selected.Items.Cast<string>());
+        custom.Text = "(畸形)"; Click(Buttons(window).Single(b => b.Content as string == "添加"));
+        Assert.Equal(["清亮"], selected.Items.Cast<string>()); Assert.NotEmpty(((TextBlock)window.FindName("MiMoStyleError")).Text);
+        Click(Buttons(window).Single(b => b.Content as string == "清空整体风格")); Assert.Empty(selected.Items);
+        Click(Preset("温柔")); Click(Preset("清亮"));
+        custom.Text = "上海话"; Click(Buttons(window).Single(b => b.Content as string == "添加"));
+        window.Show(); window.UpdateLayout();
+        var remove = VisualDescendants(window).OfType<Button>().Single(b => b.Tag as string == "上海话");
+        Click(remove); Assert.Equal(["温柔", "清亮"], selected.Items.Cast<string>());
+        custom.Text = "上海话";
+        var enter = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,
+            PresentationSource.FromVisual(window), 0, System.Windows.Input.Key.Enter)
+            { RoutedEvent = System.Windows.Input.Keyboard.KeyDownEvent };
+        custom.RaiseEvent(enter); Assert.True(enter.Handled); Assert.Equal(["温柔", "清亮", "上海话"], selected.Items.Cast<string>());
+        LogicalDescendants(window).OfType<ScrollViewer>().First().ScrollToVerticalOffset(360);
+        RenderIfRequested(window, "mimo-styles-collapsed");
+        var expander = LogicalDescendants(window).OfType<Expander>().Single(); expander.IsExpanded = true;
+        window.Show(); window.UpdateLayout();
+        var footerSave = Buttons(window).Single(b => b.Content as string == "保存设置");
+        Assert.True(footerSave.IsVisible); Assert.Equal(2, Grid.GetRow((UIElement)LogicalTreeHelper.GetParent(LogicalTreeHelper.GetParent(footerSave))));
+        RenderIfRequested(window, "mimo-styles-expanded"); window.Close();
+        var restored = new MainWindow(saved, _ => null, () => { }, () => { }, () => { }, () => Task.FromResult<string?>(null), () => { });
+        Assert.Equal(saved.MiMoOverallStyles, ((ItemsControl)restored.FindName("MiMoSelectedStyles")).Items.Cast<string>());
+        restored.Close();
+    });
+    private static IEnumerable<DependencyObject> LogicalDescendants(DependencyObject parent)
+    {
+        foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+        { yield return child; foreach (var nested in LogicalDescendants(child)) yield return nested; }
+    }
+    private static IEnumerable<DependencyObject> VisualDescendants(DependencyObject parent)
+    {
+        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i); yield return child;
+            foreach (var nested in VisualDescendants(child)) yield return nested;
+        }
+    }
     [Fact] public Task StreamingOptionRestoresSavesAndExplainsUnsupportedModel() => RunSta(async () =>
     {
         var saved = new Settings(Provider: TtsProvider.MiMo, MiMoStreaming: false); MainWindow? window = null;

@@ -92,10 +92,11 @@ public sealed class MiMoStreamingTests
     }
     [Fact] public async Task EventSizeAndIdleReadsAreBoundedAndCustomModelIsRejected()
     {
-        using var oversized = new MemoryStream(Encoding.UTF8.GetBytes("data: " + new string('a', 2 * 1024 * 1024)));
+        using var oversized = new MemoryStream(Encoding.UTF8.GetBytes("data: " + new string('a', MiMoSpeech.MaxSseEventBytes)));
         await Assert.ThrowsAsync<UserFeedbackException>(async () => { await foreach (var _ in MiMoSpeech.ReadSseAudioAsync(oversized, default)) { } });
         using var blocked = new DelayedStream("", "");
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => { await foreach (var _ in MiMoSpeech.ReadSseAudioAsync(blocked, default, TimeSpan.FromMilliseconds(30))) { } });
+        var timeout = await Assert.ThrowsAsync<UserFeedbackException>(async () => { await foreach (var _ in MiMoSpeech.ReadSseAudioAsync(blocked, default, TimeSpan.FromMilliseconds(30))) { } });
+        Assert.Contains("首次音频接收", timeout.Message);
         using var never = new HttpClient(new Handler((_, _) => throw new Exception("must not send"))); using var buffer = new StreamingPcmBuffer();
         await Assert.ThrowsAsync<UserFeedbackException>(() => new MiMoSpeech(never, () => "fixture").SynthesizeStreamingAsync("fixture", new(MiMoModel: "future-model"), buffer, default));
     }

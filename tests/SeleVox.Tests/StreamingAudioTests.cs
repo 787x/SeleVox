@@ -8,6 +8,43 @@ namespace SeleVox.Tests;
 
 public sealed class StreamingAudioTests(ITestOutputHelper log)
 {
+    [WindowsAudioFact, Trait("Category", "WindowsAudio")]
+    public async Task LargeSseEventDrainsBothWasapiOutputsAndStopCancelsBackpressure()
+    {
+        var ids = AudioOutputs.GetDevices().Where(d => d.Id != Settings.DefaultOutput).Take(2).Select(d => d.Id).ToArray(); Assert.Equal(2, ids.Length);
+        var pcm = Tone(34000); // ~2.18 MiB SSE: exceeds the old 2 MiB event limit.
+        using var input = new MiMoStreamingTests.DelayedStream(MiMoLargeEventTests.Event(pcm), "data: [DONE]\n\n");
+        using var http = new HttpClient(new MiMoStreamingTests.Handler((_, _) => Task.FromResult(MiMoStreamingTests.Response(input))));
+        using var buffer = new StreamingPcmBuffer(); using var enumerator = new MMDeviceEnumerator();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var players = new List<StreamingWasapiPlayback>();
+        using var group = AudioOutputs.CreateStreamingPlayback(buffer, new(Volume: .025f, OutputDeviceIds: ids), (id, reader, volume) =>
+        { var player = new StreamingWasapiPlayback(reader, volume, enumerator.GetDevice(id)); players.Add(player); return player; });
+        var finished = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously); group.Finished += error => finished.TrySetResult(error);
+        var metrics = new MiMoStreamingMetrics();
+        var production = new MiMoSpeech(http, () => "fixture").SynthesizeStreamingAsync("fixture", new(), buffer, cancellation.Token, metrics);
+        try
+        {
+            await buffer.WaitForReadyAsync(cancellation.Token); Assert.False(production.IsCompleted); group.Play();
+            await Task.Delay(250, cancellation.Token); Assert.All(players, p => Assert.True(p.SourcePosition > 0));
+            group.Pause(); await Task.Delay(150, cancellation.Token); var positions = players.Select(p => p.SourcePosition).ToArray();
+            await Task.Delay(250, cancellation.Token); Assert.Equal(positions, players.Select(p => p.SourcePosition).ToArray());
+            group.Play(); input.Release.TrySetResult(); await production; buffer.Complete();
+            Assert.Null(await finished.Task.WaitAsync(cancellation.Token)); Assert.All(players, p => Assert.Equal(pcm.Length, p.SourcePosition));
+            Assert.True(metrics.MaxEventBytes > 2 * 1024 * 1024); Assert.InRange(buffer.PeakBufferedBytes, 1, buffer.Capacity);
+            log.WriteLine($"Large SSE={metrics.MaxEventBytes} bytes; every real WASAPI output drained PCM={pcm.Length} bytes; pause/resume and bounded ring passed.");
+        }
+        finally { cancellation.Cancel(); group.Stop(); try { await production; } catch (OperationCanceledException) { } }
+
+        using var stopInput = new MiMoStreamingTests.DelayedStream(MiMoLargeEventTests.Event(pcm), "data: [DONE]\n\n");
+        using var stopHttp = new HttpClient(new MiMoStreamingTests.Handler((_, _) => Task.FromResult(MiMoStreamingTests.Response(stopInput))));
+        var backend = new RealBackend(stopHttp); using var session = new ReadingSession(backend, backend);
+        var pending = session.ReadAsync(_ => Task.FromResult("fixture"), new(Provider: TtsProvider.MiMo, Volume: .025f, OutputDeviceIds: ids));
+        using var stopTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (session.Status.State != ReadingState.Playing) { Assert.NotEqual(ReadingState.Error, session.Status.State); await Task.Delay(10, stopTimeout.Token); }
+        session.Stop(); await pending.WaitAsync(stopTimeout.Token); Assert.True(stopInput.Disposed); Assert.Equal(ReadingState.Idle, session.Status.State);
+        var accepted = backend.Buffer!.ProducedBytes; stopInput.Release.TrySetResult(); await Task.Delay(100); Assert.Equal(accepted, backend.Buffer.ProducedBytes);
+        log.WriteLine("Large-event Stop released both real outputs and cancelled backpressure; no late PCM append.");
+    }
     internal static byte[] Tone(int milliseconds = 1000)
     {
         var bytes = new byte[48 * milliseconds];

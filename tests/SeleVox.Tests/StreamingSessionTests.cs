@@ -5,6 +5,14 @@ namespace SeleVox.Tests;
 
 public sealed class StreamingSessionTests
 {
+    [Fact] public async Task SingingBufferingExplainsFirstEventWaitAndRemainsCancellable()
+    {
+        var server = new MiMoStreamingTests.DelayedStream("", "");
+        using var backend = new Backend(_ => server); using var session = new ReadingSession(backend, backend);
+        var reading = session.ReadAsync(_ => Task.FromResult("fixture"), Settings() with { MiMoOverallStyles = ["唱歌"] });
+        await Wait(() => backend.Players.Count == 2 && session.Status.Message.Contains("首次生成可能较慢"));
+        session.Stop(); await reading.WaitAsync(TimeSpan.FromSeconds(3)); Assert.Equal(ReadingState.Idle, session.Status.State);
+    }
     private static Settings Settings(bool automatic = false) => new(Provider: TtsProvider.MiMo, AllowAutomaticMiMo: automatic, OutputDeviceIds: ["first", "second"]);
     private static readonly byte[] Pcm = Enumerable.Range(0, 9600).Select(i => (byte)i).ToArray();
     [Fact] public async Task StartsBeforeNetworkDoneAndCompletesOnlyAfterBothIndependentOutputsDrain()

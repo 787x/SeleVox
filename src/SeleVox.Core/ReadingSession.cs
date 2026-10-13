@@ -167,7 +167,8 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
                 playback = candidate; candidate = null; var owned = playback;
                 owned.Finished += error => _ = Task.Run(() => { Complete(id, owned, error); completed.TrySetResult(); });
                 if (owned is MultiOutputPlayback group) group.WarningChanged += () => _ = Task.Run(() => UpdateWarning(id, owned));
-                SetStatus(ReadingState.Synthesizing, WithWarning("MiMo 流式缓冲中…", owned));
+                SetStatus(ReadingState.Synthesizing, WithWarning((settings.MiMoOverallStyles ?? []).Any(MiMoStyleTags.IsSinging)
+                    ? "MiMo 唱歌：等待首段完整音频，首次生成可能较慢…" : "MiMo 流式缓冲中…", owned));
             }
             production = Task.Run(async () =>
             {

@@ -14,11 +14,18 @@ internal sealed partial class MiMoSpeech(HttpClient? client = null, Func<string?
     public async Task<Stream> SynthesizeAsync(string text, Settings settings, CancellationToken cancellation)
     {
         var style = GetStyle(settings);
+        var prefix = MiMoStyleTags.GetPrefix(settings.MiMoOverallStyles);
         // 8K context: conservatively bound UTF-8 bytes (including up to 3K style bytes),
         // leaving room for message framing. No approximate tokenizer or source rewriting.
         return await HttpSpeech.SynthesizeAsync(client, readKey ?? AzureCredentials.MiMo().Read,
-            new Uri("https://api.xiaomimimo.com/v1/chat/completions"), text, 3000, true,
-            part => CreateRequest(part, settings.MiMoVoice, style, settings.MiMoModel), Decode, "MiMo", cancellation).ConfigureAwait(false);
+            new Uri("https://api.xiaomimimo.com/v1/chat/completions"), text, GetTextBudget(prefix), true,
+            part => CreateRequest(prefix + part, settings.MiMoVoice, style, settings.MiMoModel), Decode, "MiMo", cancellation).ConfigureAwait(false);
+    }
+    internal static int GetTextBudget(string prefix)
+    {
+        var budget = 3000 - Encoding.UTF8.GetByteCount(prefix);
+        if (budget <= 0) throw new UserFeedbackException("整体风格前缀占满单段 UTF-8 字节预算，请减少风格。");
+        return budget;
     }
     private static string GetStyle(Settings settings)
     {
@@ -59,14 +66,9 @@ internal sealed partial class MiMoSpeech(HttpClient? client = null, Func<string?
 
     internal static byte[] DecodeBase64(string data, CancellationToken cancellation)
     {
-        using var output = new MemoryStream();
-        var chars = new char[65536]; var decoded = new byte[49152]; var count = 0; var padding = 0;
-        void Flush()
-        {
-            cancellation.ThrowIfCancellationRequested();
-            if (!Convert.TryFromBase64Chars(chars.AsSpan(0, count), decoded, out var written)) throw new FormatException();
-            output.Write(decoded, 0, written); count = 0;
-        }
+        // Count first, then decode cancellable blocks directly into one exact-size PCM allocation.
+        // Avoid MemoryStream growth plus ToArray duplicating a large SSE audio payload.
+        var meaningful = 0; var padding = 0;
         for (var i = 0; i < data.Length; ++i)
         {
             if ((i & 16383) == 0) cancellation.ThrowIfCancellationRequested();
@@ -74,12 +76,28 @@ internal sealed partial class MiMoSpeech(HttpClient? client = null, Func<string?
             if (ch is ' ' or '\t' or '\r' or '\n') continue;
             if (ch == '=') { if (++padding > 2) throw new FormatException(); }
             else if (padding > 0) throw new FormatException();
+            ++meaningful;
+        }
+        if (meaningful % 4 != 0) throw new FormatException();
+        var output = new byte[meaningful / 4 * 3 - padding];
+        var chars = new char[65536]; var count = 0; var offset = 0;
+        void Flush()
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (!Convert.TryFromBase64Chars(chars.AsSpan(0, count), output.AsSpan(offset), out var written)) throw new FormatException();
+            offset += written; count = 0;
+        }
+        for (var i = 0; i < data.Length; ++i)
+        {
+            if ((i & 16383) == 0) cancellation.ThrowIfCancellationRequested();
+            var ch = data[i];
+            if (ch is ' ' or '\t' or '\r' or '\n') continue;
             chars[count++] = ch;
             if (count == chars.Length) Flush();
         }
         if (count > 0) Flush();
         cancellation.ThrowIfCancellationRequested();
-        return output.ToArray();
+        return output;
     }
 }
 

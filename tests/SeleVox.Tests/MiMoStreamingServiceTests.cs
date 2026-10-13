@@ -15,7 +15,8 @@ public sealed class MiMoStreamingServiceTests(ITestOutputHelper log)
         var ids = AudioOutputs.GetDevices().Where(d => d.Id != Settings.DefaultOutput).Take(2).Select(d => d.Id).ToArray(); Assert.Equal(2, ids.Length);
         var backend = new StreamingAudioTests.RealBackend(); using var session = new ReadingSession(backend, backend);
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
-        var settings = new Settings(Provider: TtsProvider.MiMo, Volume: .1f, OutputDeviceIds: ids, AllowAutomaticMiMo: true);
+        var settings = new Settings(Provider: TtsProvider.MiMo, Volume: .1f, OutputDeviceIds: ids, AllowAutomaticMiMo: true,
+            MiMoOverallStyles: ["温柔", "清亮"]);
         var longText = string.Concat(Enumerable.Repeat("这是固定的取消与替换流式测试。", 70));
         async Task WaitForPlaying()
         {
