@@ -53,7 +53,7 @@ public sealed class HttpSpeechWindowTests
         custom.RaiseEvent(enter); Assert.True(enter.Handled); Assert.Equal(["温柔", "清亮", "上海话"], selected.Items.Cast<string>());
         LogicalDescendants(window).OfType<ScrollViewer>().First().ScrollToVerticalOffset(360);
         RenderIfRequested(window, "mimo-styles-collapsed");
-        var expander = LogicalDescendants(window).OfType<Expander>().Single(); expander.IsExpanded = true;
+        var expander = LogicalDescendants(window).OfType<Expander>().Single(e => e.Header as string == "浏览 / 搜索预设与添加自定义风格"); expander.IsExpanded = true;
         window.Show(); window.UpdateLayout();
         var footerSave = Buttons(window).Single(b => b.Content as string == "保存设置");
         Assert.True(footerSave.IsVisible); Assert.Equal(2, Grid.GetRow((UIElement)LogicalTreeHelper.GetParent(LogicalTreeHelper.GetParent(footerSave))));

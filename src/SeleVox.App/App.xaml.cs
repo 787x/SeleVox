@@ -21,6 +21,10 @@ public partial class App : System.Windows.Application
     private readonly LocalOcr ocr = new();
     private readonly SemaphoreSlim ocrGate = new(1, 1);
     private OcrResultWindow? ocrResult;
+    private QuestionSession? questionSession;
+    private AiAnswerWindow? aiAnswer;
+    private CancellationTokenSource? selectionAction;
+    private long selectionEpoch;
     internal bool IsExiting => exiting;
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -30,7 +34,11 @@ public partial class App : System.Windows.Application
         var loaded = store.Load(); settings = loaded.Settings;
         var speech = new SpeechAudio();
         reading = new ReadingSession(speech, speech);
+        var chat = new ChatCompletionClient();
+        questionSession = new QuestionSession(chat.GenerateAsync,
+            (text, options) => reading.ReadCapturedTextAsync(new(text, TextSource.Selection), options), reading.Stop);
         settingsWindow = new MainWindow(settings, SaveSettings, () => reading.TogglePause(), StopReading, ExitApplication, AddForegroundApplicationAsync, CancelAutomaticReading);
+        settingsWindow.LlmCredentialsChanged = () => { InvalidateSelectionAction(); questionSession.Cancel(); };
         MainWindow = settingsWindow;
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("设置", null, (_, _) => ShowSettings());
@@ -59,10 +67,11 @@ public partial class App : System.Windows.Application
         {
             switch (id)
             {
-                case 1: mouse?.CancelGesture(); automaticSelection.Invalidate(); ++mouseEpoch; _ = reading.ReadAsync(async token => (await capture.CaptureTextAsync(foreground, token)).Text, settings); break;
+                case 1: _ = CaptureActionAsync(foreground, false); break;
                 case 2: reading.TogglePause(); break;
                 case 3: StopReading(); break;
                 case 4: StartOcr(); break;
+                case 5: _ = CaptureActionAsync(foreground, true); break;
             }
         };
         instance.Listen(() => Dispatcher.BeginInvoke(ShowSettings));
@@ -96,6 +105,7 @@ public partial class App : System.Windows.Application
         try
         {
             StartupRegistration.Apply(updated.StartWithWindows); store.Save(updated); settings = updated;
+            InvalidateSelectionAction(); questionSession?.Cancel();
             CancelAutomaticReading();
             settingsWindow?.SetAutomaticSettings(settings);
             ocrResult?.RefreshProviderNotice();
@@ -148,17 +158,80 @@ public partial class App : System.Windows.Application
                 capture.CaptureSnapshotAsync(window, sampleToken, start, end, focus), token);
             return stable.Text;
         }, () => epoch == mouseEpoch && !exiting && settings.AllowsAutomatic(path) && Native.GetForegroundWindow() == window,
-            text => { settingsWindow?.SetAutomaticStatus("已获取有效选区"); _ = reading!.ReadTextAsync(text, settings); },
+            text =>
+            {
+                settingsWindow?.SetAutomaticStatus("已获取有效选区");
+                if (settings.AllowsAutomaticProvider) { InvalidateSelectionAction(); questionSession?.Cancel(); _ = reading!.ReadTextAsync(text, settings); }
+            },
             message => settingsWindow?.SetAutomaticStatus(message));
     }
     private void StopReading()
     {
         if (ocrOperation.IsActive) settingsWindow?.SetNotice("屏幕 OCR 已取消。");
+        InvalidateSelectionAction(); questionSession?.Cancel();
         ocrOperation.Cancel(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); reading?.Stop();
+    }
+    private void InvalidateSelectionAction()
+    { ++selectionEpoch; selectionAction?.Cancel(); selectionAction = null; }
+    private async Task CaptureActionAsync(nint foreground, bool ask)
+    {
+        InvalidateSelectionAction();
+        using var request = new CancellationTokenSource(); selectionAction = request; var epoch = selectionEpoch;
+        mouse?.CancelGesture(); automaticSelection.Invalidate(); ++mouseEpoch;
+        try
+        {
+            var text = await capture.CaptureTextAsync(foreground, request.Token);
+            if (exiting || epoch != selectionEpoch || request.IsCancellationRequested) return;
+            if (string.IsNullOrWhiteSpace(text.Text)) throw new UserFeedbackException("没有选中文字。");
+            if (ask) AskAi(text.Text);
+            else { questionSession?.Cancel(); _ = reading!.ReadCapturedTextAsync(text, settings); }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (!exiting && epoch == selectionEpoch)
+            {
+                var message = ex is UserFeedbackException ? ex.Message : "无法读取当前选区，请重试。";
+                settingsWindow?.SetNotice(message); Notify(message);
+            }
+        }
+        finally { if (ReferenceEquals(selectionAction, request)) selectionAction = null; }
+    }
+    private void AskAi(string text)
+    {
+        if (exiting) return;
+        var started = false;
+        try
+        {
+            if (ocrOperation.IsActive) throw new UserFeedbackException("请先完成或取消当前 OCR 框选，再问 AI。");
+            if (!settings.HasValidLlmConfiguration) throw new UserFeedbackException("请在设置的 AI 问答区域保存合法地址和模型。");
+            var key = AzureCredentials.Llm(settings.LlmBaseUrl).Read();
+            ChatCompletionClient.Validate(text, settings, key);
+            InvalidateSelectionAction(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
+            var task = questionSession!.AskAsync(text, settings, key!);
+            started = true;
+            if (aiAnswer is null)
+            {
+                var window = new AiAnswerWindow(questionSession, () => settings, () => reading!.Status.Message,
+                    () => { InvalidateSelectionAction(); questionSession.Cancel(); },
+                    () => { InvalidateSelectionAction(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); _ = questionSession.ReadAnswerAsync(settings); });
+                aiAnswer = window;
+                window.Closed += (_, _) => { InvalidateSelectionAction(); if (ReferenceEquals(aiAnswer, window)) aiAnswer = null; };
+            }
+            aiAnswer.ShowAnswer();
+            _ = task;
+        }
+        catch (Exception ex)
+        {
+            if (started) questionSession?.Cancel();
+            var message = ex is UserFeedbackException ? ex.Message : "无法开始 AI 问答，请检查凭据和配置。";
+            settingsWindow?.SetNotice(message); Notify(message);
+        }
     }
     private async void StartOcr()
     {
         if (exiting) return;
+        InvalidateSelectionAction();
         // Suppress overlay gestures and invalidate pending UIA capture without stopping current speech.
         mouse?.Dispose(); mouse = null; ++mouseEpoch; automaticSelection.Invalidate();
         var language = settings.OcrLanguage;
@@ -166,6 +239,7 @@ public partial class App : System.Windows.Application
         try
         {
             ocrResult?.HideForCapture();
+            aiAnswer?.HideForCapture();
             await ocrOperation.RunAsync(async token =>
             {
                 await ocrGate.WaitAsync(token);
@@ -196,12 +270,13 @@ public partial class App : System.Windows.Application
                     var window = new OcrResultWindow(text, () => settings, result =>
                     {
                         mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
+                        InvalidateSelectionAction(); questionSession?.Cancel();
                         return reading!.ReadCapturedTextAsync(result, settings);
-                    });
+                    }, AskAi);
                     ocrResult = window;
                     window.Closed += (_, _) => { if (ReferenceEquals(ocrResult, window)) ocrResult = null; };
                 }
-                ocrResult.ShowResult(text);
+                PresentOcrResult(ocrResult, aiAnswer, text);
                 settingsWindow?.SetNotice("OCR 已完成，复制或朗读请在结果窗口主动操作。");
             }, message => { if (!exiting) { settingsWindow?.SetNotice(message); Notify(message); } },
                 () => { if (!exiting) settingsWindow?.SetNotice("屏幕 OCR 已取消。"); });
@@ -212,11 +287,19 @@ public partial class App : System.Windows.Application
             {
                 // A superseded request leaves the prior result hidden for its successor.
                 // Restore before reinstalling Auto Speak so focus changes cannot form gestures.
+                aiAnswer?.RestoreAfterCapture();
                 ocrResult?.RestoreAfterCapture();
                 ++mouseEpoch; var error = ApplyAutomatic();
                 if (error is not null) Notify(error);
             }
         }
+    }
+    internal static void PresentOcrResult(OcrResultWindow result, AiAnswerWindow? answer, CapturedText text)
+    {
+        // ShowActivated=false preserves focus, but Show still raises a restored window in z-order.
+        // Restore the answer first so the new OCR result remains the last window shown/activated.
+        answer?.RestoreAfterCapture();
+        result.ShowResult(text);
     }
     private void CancelAutomaticReading()
     {
@@ -247,7 +330,7 @@ public partial class App : System.Windows.Application
     private void ExitApplication() { if (exiting) return; exiting = true; Shutdown(); }
     protected override void OnExit(ExitEventArgs e)
     {
-        exiting = true; ocrOperation.Dispose(); ocrResult?.Close(); mouse?.Dispose(); automaticSelection.Dispose(); hotkeys?.Dispose(); reading?.Dispose();
+        exiting = true; InvalidateSelectionAction(); questionSession?.Dispose(); aiAnswer?.Close(); ocrOperation.Dispose(); ocrResult?.Close(); mouse?.Dispose(); automaticSelection.Dispose(); hotkeys?.Dispose(); reading?.Dispose();
         if (tray is not null) { tray.Visible = false; tray.ContextMenuStrip?.Dispose(); tray.Dispose(); }
         instance?.Dispose(); base.OnExit(e);
     }

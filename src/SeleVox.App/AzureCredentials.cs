@@ -13,6 +13,12 @@ internal sealed class AzureCredentials(string target = "SeleVox/AzureSpeech", st
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(address)));
         return new("SeleVox/OpenAiSpeech/" + hash, "OpenAI-Compatible");
     }
+    internal static AzureCredentials Llm(string baseUrl)
+    {
+        var address = Settings.NormalizeServiceUrl(baseUrl) ?? throw new UserFeedbackException("AI 服务地址无效：远程服务需要 HTTPS，本机回环可用 HTTP。");
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(address)));
+        return new("SeleVox/Llm/" + hash, "AI 问答");
+    }
     private const int Generic = 1, NotFound = 1168;
     public string? Read()
     {

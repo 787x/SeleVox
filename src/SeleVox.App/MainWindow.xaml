@@ -120,6 +120,27 @@
                 <CheckBox x:Name="AutomaticOpenAi" Content="允许自动发送到已保存地址（立即保存；先保存地址）" Click="AutomaticHttp_Click" Margin="0,10,0,0"/>
                 <TextBlock Text="手动朗读会发送选中文字到配置的服务，可能产生 API 费用。远程地址须使用 HTTPS；本机回环可用 HTTP。修改地址会撤销自动授权，凭据按地址独立保存，须重新配置。第三方需支持 WAV 和 speed；不支持 Instructions 时请清空。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
             </StackPanel>
+            <Expander x:Name="LlmPanel" Header="AI 问答 · Ctrl+Alt+A（独立于 TTS）" Margin="0,18,0,0" IsExpanded="True">
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Text="主动按 Ctrl+Alt+A 或在 OCR 结果点击“问 AI”，会将问题和 System Prompt 发送至以下 LLM，可能产生费用。不会自动发送选区或 OCR。" TextWrapping="Wrap" Foreground="#8A4D00"/>
+                    <TextBlock Text="LLM Base URL（HTTPS；本机回环允许 HTTP）" Margin="0,8,0,4"/>
+                    <TextBox x:Name="LlmBaseUrl" MaxLength="2048" TextChanged="LlmAddress_Changed"/>
+                    <TextBlock Text="Model（手工填写服务支持的模型）" Margin="0,8,0,4"/>
+                    <TextBox x:Name="LlmModel" MaxLength="200"/>
+                    <TextBlock Text="LLM API Key（按地址隔离，与 TTS 凭据独立）" Margin="0,8,0,4"/>
+                    <PasswordBox x:Name="LlmKey"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                        <Button Content="保存 / 更新 LLM Key" Click="SaveLlmKey_Click" Padding="8,4" Margin="0,0,8,0"/>
+                        <Button Content="清除 LLM Key" Click="ClearLlmKey_Click" Padding="8,4"/>
+                    </StackPanel>
+                    <TextBlock x:Name="LlmCredentialStatus" TextWrapping="Wrap"/>
+                    <TextBlock Text="System Prompt（可完全编辑或清空；最多 8192 字符）" Margin="0,8,0,4"/>
+                    <TextBox x:Name="LlmSystemPrompt" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="100" MaxLength="8192"/>
+                    <CheckBox x:Name="LlmStreaming" Content="Streaming · 流式显示回答" Margin="0,8,0,0"/>
+                    <CheckBox x:Name="LlmAutoRead" Content="完整回答后自动朗读（使用当前保存的 TTS）" Margin="0,8,0,0"/>
+                    <TextBlock Text="在线 TTS 会将回答再次发送给所选 TTS 服务，可能另行收费。切换 LLM 地址须配置该地址的 Key。配置修改后点击底部“保存设置”；不兼容流式时可关闭 Streaming，主动重试，不自动重复请求。" TextWrapping="Wrap" Foreground="#546575" Margin="0,8,0,0"/>
+                </StackPanel>
+            </Expander>
             <TextBlock Text="语速（0.5–2 倍；MiMo 为近似指导）" Margin="0,18,0,4"/>
             <DockPanel><TextBlock DockPanel.Dock="Right" Width="46" Text="{Binding ElementName=Rate, Path=Value, StringFormat=F2}"/><Slider x:Name="Rate" Minimum="0.5" Maximum="2" TickFrequency="0.05" IsSnapToTickEnabled="True"/></DockPanel>
             <TextBlock Text="音量（0–1）" Margin="0,18,0,4"/>
