@@ -33,6 +33,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { VoiceWarning = $"无法枚举本地语音（{ex.GetType().Name}）。"; }
         Rate.Value = settings.Rate; Volume.Value = settings.Volume; AutoStart.IsChecked = settings.StartWithWindows;
+        OcrLanguageChoice.SelectedIndex = (int)settings.OcrLanguage;
         Region.Text = settings.AzureRegion;
         if (settings.AzureVoice is { } cloudVoice)
         {
@@ -105,7 +106,7 @@ public partial class MainWindow : Window
             AllowAutomaticOpenAi = savedSettings.AllowAutomaticOpenAi && (provider != TtsProvider.OpenAiCompatible || address == Settings.NormalizeServiceUrl(savedSettings.OpenAiBaseUrl)),
             OpenAiAuthorizedBaseUrl = provider != TtsProvider.OpenAiCompatible || address == Settings.NormalizeServiceUrl(savedSettings.OpenAiBaseUrl) ? savedSettings.OpenAiAuthorizedBaseUrl : null,
             OutputDeviceIds = Outputs.SelectedItems.Cast<OutputChoice>().Select(d => d.Id).ToArray(),
-            StartWithWindows = AutoStart.IsChecked == true });
+            StartWithWindows = AutoStart.IsChecked == true, OcrLanguage = (OcrLanguage)OcrLanguageChoice.SelectedIndex });
         SetNotice(error ?? "设置已保存，下次朗读生效。");
         if (error is null) OutputSaveHint.Text = "设备选择已保存，用于下一次朗读。";
     }

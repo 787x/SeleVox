@@ -10,6 +10,22 @@ namespace SeleVox.Tests;
 // an installed WinRT voice and a default render device. They emit fixture speech.
 public sealed class WindowsAudioTests(ITestOutputHelper log)
 {
+    [WindowsAudioFact, Trait("Category", "WindowsAudio")]
+    public async Task RealOcrResultUsesLocalSessionMultiOutputPauseResumeStop()
+    {
+        using var image = OcrTests.Fixture("English screen capture\nSecond line reading order", "Arial");
+        var result = await new LocalOcr().RecognizeAsync(image, OcrLanguage.English, CancellationToken.None);
+        var speech = new SpeechAudio();
+        using var session = new ReadingSession(speech, speech);
+        var outputs = AudioOutputs.GetDevices().Where(d => d.Id != Settings.DefaultOutput).Take(2).Select(d => d.Id).ToArray();
+        Assert.Equal(2, outputs.Length);
+        var settings = new Settings(VoiceId: SpeechAudio.GetVoices().First().Id, Rate: 1.1, Volume: 0.1f, OutputDeviceIds: outputs);
+        await session.ReadCapturedTextAsync(result, settings).WaitAsync(TimeSpan.FromSeconds(20));
+        Assert.Equal(ReadingState.Playing, session.Status.State);
+        session.TogglePause(); Assert.Equal(ReadingState.Paused, session.Status.State); await Task.Delay(100);
+        session.TogglePause(); Assert.Equal(ReadingState.Playing, session.Status.State); await Task.Delay(150);
+        session.Stop(); Assert.Equal(ReadingState.Idle, session.Status.State);
+    }
     [VoicemeeterAudioFact, Trait("Category", "WindowsAudio")]
     public async Task VoicemeeterInputReceivesNonSilentSpeechInEndpointLoopback()
     {

@@ -1,0 +1,101 @@
+# PR6 — Windows 屏幕框选 OCR、复制与朗读
+
+日期：2026-10-13（客户端日期）。基线 `main` / `origin/main`：`631afaa`（PR5 已合并，fetch 核对），分支 `codex/pr6-screen-ocr`。Windows x64，.NET SDK 10.0.401。没有退出用户原有 SeleVox 实例，没有修改用户 settings.json、Key、默认音频设备或安装驱动/运行库。
+
+## 实际实现
+
+- Ctrl+Alt+O 与托盘 OCR 入口；原 R/P/X 保留，冲突沿用现有提示。一个独立 OCR 代次/取消源和串行工作门，重复触发废弃旧结果；Stop/退出取消，Esc/切换前台应用释放遮罩。原生计算不能立即中断，但不堆积并行工作，旧结果与错误不会覆盖新结果。OCR 期间移除 Auto Speak 鼠标 Hook 并废弃旧 UIA 捕获，结束恢复已保存开关；不停止已有 ReadingSession。
+- 后台取得所有显示器快照，DwmFlush 等待先前遮罩离开桌面，之后才创建每屏独立 WPF 遮罩。PerMonitorV2 manifest；显示器 bounds、GetPhysicalCursorPos、裁剪均为物理像素，仅可见矩形映射到本遮罩 DIP。Win32 按物理 bounds 放置窗口，处理反向拖动与负坐标；跨屏明确拒绝，边界可裁到显示器右/下缘，任一边小于 8 像素拒绝。桌面总截图 3200 万像素、所选区域 800 万像素；屏幕位图/WPF 展示副本有额外内存开销，限制不是整进程峰值内存承诺。
+- Tesseract NuGet 5.2.0（.NET Standard 2.0 封装，native Tesseract 5.2.0 / Leptonica 1.82.0），LSTM-only + Auto page segmentation，内存 PNG 传入，默认 chi_sim+eng，可保存英文选项。保持引擎的基本行顺序与换行，只规范化 CRLF、清除首尾空白，不翻译或总结。模型缺失、空文字、引擎/原生依赖错误有脱敏说明。debug 输出重定向 NUL；截图/原文不写生产日志、临时文件或配置，不上传截图。
+- 结果窗口允许编辑，只在主动点击复制时写当前文字。主动朗读用最小 CapturedText（Selection/ScreenOcr）与 ReadingSession 手动入口；空白在进入会话之前拒绝，五个 Provider 不受 Auto Speak 自动授权错误阻断。在线 Provider 提示已保存目的地，设置改变后刷新提醒；仍使用原凭据/服务校验、TTS、MiMo 流式及多输出播放。复制、关闭与识别失败不调用 Stop；新有效朗读可替换旧播放。
+- 原 PR1～PR5 设置兼容，默认 Provider 不变。Release build/publish 带 OcrData 语言模型/许可、x64 native DLL、app-local Visual C++ runtime 与许可。无需 MSIX、Copilot+、管理员或运行时联网；self-contained 目录式 publish 另包含 .NET 运行时。没有 LLM、自动 OCR、持续监控、截图历史或配置平台。
+
+## 真实执行的验证
+
+```powershell
+dotnet restore SeleVox.slnx --artifacts-path artifacts/pr6
+dotnet build SeleVox.slnx -c Release --no-restore --artifacts-path artifacts/pr6
+dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr6-final --filter 'Category!=WindowsAudio&Category!=WindowsOcr&Category!=EdgeService&Category!=MiMoStreamingService&FullyQualifiedName!~GlobalHotkeyConflicts' --logger 'trx;LogFileName=PR6-offline-final.trx'
+
+$env:SELEVOX_OCR_DESKTOP_TESTS='1'
+$env:SELEVOX_UI_RENDER_DIR='D:\Projects\SeleVox\artifacts\pr6-ui'
+dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr6-final --filter 'Category=WindowsOcr|FullyQualifiedName~OcrWindowTests' --logger 'trx;LogFileName=PR6-desktop-final.trx'
+
+$env:SELEVOX_AUDIO_TESTS='1'
+dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr6 --filter 'Category=WindowsAudio' --logger 'trx;LogFileName=PR6-audio.trx'
+dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr6-final --filter 'FullyQualifiedName~RealOcrResultUsesLocalSession' --logger 'trx;LogFileName=PR6-ocr-audio-final.trx'
+
+dotnet publish src/SeleVox.App/SeleVox.App.csproj -c Release -r win-x64 --self-contained false --artifacts-path artifacts/pr6 -o artifacts/pr6-publish
+dotnet publish src/SeleVox.App/SeleVox.App.csproj -c Release -r win-x64 --self-contained true --artifacts-path artifacts/pr6-final -o artifacts/pr6-portable
+git diff --check
+```
+
+- 还原、Release 构建成功，**0 警告 / 0 错误**。目录式 framework-dependent 与 self-contained publish 成功；逐项检查输出模型、校验值、两项 x64 native、三项 CRT、许可文件与 EXE。解析 native PE import 表：非系统依赖为 Leptonica、MSVCP140、VCRUNTIME140、VCRUNTIME140_1，均随目录部署；剩余为 Windows 11 系统 DLL/UCRT。三项 CRT 的微软签名均 Valid，版本 14.51.36247.0。没有在干净、未安装 VC/.NET 的另一台机器上实测。
+- 最终离线 **224 项通过、2 项收费服务测试按原默认跳过**。包括原 PR1～PR5 的设置、凭据隔离、自动白名单/授权、五种 Provider 可控协议、取消/迟到播放、MiMo SSE/环形缓冲/多输出回归。未启用真实付费 API、EdgeService 或 MiMoStreamingService，不重复长时间收费服务测试。
+- PR6 定向测试直接调用真实 Tesseract：固定非敏感中文、英文、混排两行 1100×240 图像，Arial/微软雅黑 30px，核对关键文字、中文、行顺序与换行，仅忽略空格。另验证空图失败、取消后重试、模型缺失提示；不使用 Mock OCR 替代识别。早期混排样本的小写 screen 被识别为 Screen，固定验收样本采用首字母大写并匹配大小写；该大小写识别误差列入已知限制，不宣称字符级全对。
+- 坐标测试覆盖主屏/副屏、左侧/上方负坐标、100%/125%/150%/200% 的本屏 DIP 映射、反向拖动、零/过小区域、跨屏越界拒绝、右/下边界裁剪及像素上限。代次测试覆盖不合作的迟到成功/错误、替换、取消与 dispose 后不发布。五个 Provider 的手动 OCR 入口均用受控 backend 验证，空白不停止旧音频、有效编辑文字替换、Pause/Resume/Stop 保留。
+- Windows 桌面组 **3 项通过**，外加设置窗口语言恢复/保存 **1 项通过**（设置窗口这项也包含在 224 项中）。环境实际只有 **一台 2560×1600 显示器、DPI 144 / 150%**。在固定非敏感 WPF 桌面测试窗口上真实 CopyFromScreen；检查遮罩 HWND 物理矩形，使用实际 Win32 鼠标消息反向拖动，核对裁剪像素与遮罩前快照一致，真实识别中英文。实际 Esc、新 Ctrl+Alt+O WM_HOTKEY 收发/注销、工作线程取消、前台切换与多次取消重试均通过，所有遮罩集合清空。没有将真实桌面快照写文件。
+- 结果窗口测试使用实际 WPF 控件/路由按钮事件与 Windows Clipboard：展示结果不写剪贴板，读操作不写剪贴板，编辑后的文字只在点击复制时写入；空白、关闭保持剪贴板，原剪贴板测试后恢复。核对 MiMo 与配置服务地址提醒、关闭清空编辑内容。不是人工点击整应用的端到端验收。
+- 已实际渲染并查看 `artifacts/pr6-ui/ocr-result.png` 与 `ocr-settings.png`：中英文原文可见，三个操作按钮、在线发送提醒、OCR 语言设置和固定保存按钮可见。文件只含固定测试窗口内容，不含用户屏幕截图。
+- Windows 音频原回归 **7 项通过、1 项专用 Voicemeeter loopback 未启用**；另新增 OCR→真实 Windows TTS→ReadingSession→双 WASAPI 输出→暂停/继续/Stop **1 项通过**。共 8 个不同音频测试通过。未修改用户设置或发起在线 TTS；这些结果不代表用户逐字听音验收，也不代表新的 OCR 文字已对四种在线服务实测。
+- 回归初轮暴露两个既有 WPF 测试类在多个 STA 同时读取资源包时的 PackagePart 竞争（4 项失败）；增加 WPF 串行 collection 后复测全部通过。运行中的用户旧实例占用 R/P/X，原“全部热键可注册”测试被明确过滤；新 O 热键单独在实际桌面通过。
+
+TRX 位于本地 `tests/SeleVox.Tests/TestResults`，不提交。可运行 self-contained 程序：`artifacts/pr6-portable/SeleVox.App.exe`。实际运行前需用户自行退出原实例，避免单实例机制转而唤醒旧程序。本轮没有退出用户实例，所以**新的 Release EXE 整应用托盘/热键/OCR/Auto Speak/保存重启全流程仍未人工验收**。
+
+## 数据与部署来源
+
+- [charlesw/tesseract](https://github.com/charlesw/tesseract)、NuGet Tesseract 5.2.0；实际 .NET 10 x64 兼容经过上述运行测试，封装上游未承诺单独的 .NET 10 支持周期。
+- [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast/tree/87416418657359cb625c412a48b6e1d6d41c29bd)，固定 revision `87416418657359cb625c412a48b6e1d6d41c29bd`，chi_sim / eng 均原样提交。大小、SHA256、版权和 Apache-2.0/MIT/BSD-style 文件见 [OcrData/NOTICE](../src/SeleVox.App/OcrData/NOTICE.md)。离线识别没有模型下载/网络请求。
+- app-local CRT 取自微软 Redistributable 的 x64 release cabinet，签名与版本检查通过。再分发遵循开发者 Visual Studio Distributable Code 条款，保留微软许可，见 [OcrRuntime/NOTICE](../src/SeleVox.App/OcrRuntime/NOTICE.md)。使用目录式部署，保留全部文件；不要求执行系统安装器。Windows 11 提供 UCRT。
+- 未使用 [Windows.Media.Ocr](https://learn.microsoft.com/en-us/uwp/api/windows.media.ocr)，未引入包身份或 Windows App SDK OCR。
+
+## 未验证及已知限制
+
+- **混合 DPI 双屏、负坐标真实屏幕、100%/125% 实际桌面、跨屏拖动、热插拔/远程桌面、安全桌面及受保护视频均未实测**。数学转换/拒绝规则通过不等于这些硬件场景已验收。框选按静态快照进行，不跟随实时屏幕更新；单次不支持跨显示器。
+- 受保护内容可能由系统返回黑色/空白；应用无法保证判断空白的来源，反馈“无文字/可能受保护”，不声称成功识别也不绕过保护。
+- 小字、低对比度、复杂多栏/表格/竖排、艺术字体可能出现文字、大小写、标点或顺序错误。没有复杂预处理、版面分析或超分辨率。清晰截图也应校对编辑。
+- 原生计算取消后仍可能短暂占用 CPU，新请求等待其实际结束；不会弹出过期结果。未制造 3200 万/800 万像素级真实内存压力或无限阻塞的引擎故障。
+- 缺少模型提示已实测；删除原生 DLL/CRT 的独立干净机器故障注入、已安装运行库遮蔽 app-local DLL 的情形、完全离线新机器启动未实测。PE import/输出检查不等同于干净机器部署验收。
+- 新 EXE 的完整退出时托盘/Auto Speak/旧热键恢复，实际其他程序 UIA 与 OCR 交替、正在播放时框选/失败/取消的人工听音行为，仍按以下清单验收。没有重测收费云端 TTS 或声学录音。
+
+## 用户人工验收反馈与结果窗口体验修正
+
+用户确认下方清单 **1、2、3、4、5、7 项验证通过**，覆盖整应用热键/托盘、框选编辑复制、已有播放不受取消/失败影响、朗读控制/输出、Auto Speak 隔离及重复取消/退出/设置恢复。这是用户人工反馈，覆盖前文相应人工未验证项，不表述为本轮工具新增的实测；未收集具体在线 Provider、音色、显示器布局等细节。**第 6 项混合 DPI 双屏、第 8 项干净机器部署仍未报告通过。**
+
+按用户反馈修正重复 OCR 的窗口体验：已有结果窗口时更新原窗口文字并激活，保留位置与尺寸；最小化时恢复原位置后置前。窗口已关闭时才重新创建并居中，失败或取消不覆盖已有结果。
+
+本次实际执行 `Category=WindowsOcr|FullyQualifiedName~OcrWindowTests`：窗口复用、框选、结果动作、设置窗口共 **4 项通过**；新热键测试因用户当前运行的 PR6 已占用 Ctrl+Alt+O 而失败（错误 1409），没有退出用户实例。排除 `ActualOcrHotkey` 后复测 **4 项全部通过**。新增真实 WPF 测试移动并调整窗口，连续更新结果时 HWND、位置、尺寸保持，窗口置前；最小化后更新恢复同一位置；更新本身不写 Clipboard、不触发朗读。Release 目录式 self-contained 更新版输出至 `artifacts/pr6-window-reuse-portable`，避免覆盖正在运行的 `pr6-portable`。新版本的重复 OCR 整应用体验待用户再次验收。
+
+## 重复 OCR 截图排除旧结果窗口修复
+
+当前 PR6 跟进：启动 OCR 时先停用 Auto Speak Hook 并作废旧 UIA 捕获，再临时 Hide 已有结果窗口，保留编辑文字、选择范围、位置、正常尺寸和窗口状态。截图等待 WPF dispatcher 的可见性/布局/渲染更新，再在后台 DwmFlush 等待桌面合成展示完成后 CopyFromScreen。旧结果在整个任务期间保持隐藏；新任务继承该隐藏状态，旧任务的 finally 不得提前显示窗口。最新任务成功仍复用原 HWND 更新结果并置前；取消/失败则不激活地恢复旧窗口与内容，在恢复完成后才重新安装 Auto Speak。取消时原最小化状态保留，成功时沿用最小化恢复行为。关闭/退出不再恢复已关闭窗口。
+
+真实桌面测试发现仅 Hide 后立即 DwmFlush 仍可能截到旧画面，已加 WPF dispatcher 渲染等待；隐藏最小化窗口也可能导致 WPF 使用最小化 HWND 尺寸，已显式缓存和恢复正常边界。最终截图像素对照通过。输入/前台激活测试初轮曾超时或未激活；为窗口恢复测试增加与实际框选相同的真实标题栏鼠标输入以取得前台权限，原拖动/Esc 测试单独复测及最终组合复测通过。没有关闭用户运行中的旧版实例或改系统前台权限策略。
+
+本轮实际执行：
+
+```powershell
+$env:SELEVOX_OCR_DESKTOP_TESTS='1'
+dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr6-hide-result --filter '(Category=WindowsOcr|FullyQualifiedName~OcrTests|FullyQualifiedName~OcrWindowTests)&FullyQualifiedName!~ActualOcrHotkey' --logger 'trx;LogFileName=PR6-hide-result-directed-final.trx'
+dotnet test SeleVox.slnx -c Release --no-build --artifacts-path artifacts/pr6-hide-result --filter 'FullyQualifiedName~ReadingSessionTests|FullyQualifiedName~AutomaticSelectionTests|FullyQualifiedName~StreamingSessionTests' --logger 'trx;LogFileName=PR6-hide-result-regression.trx'
+dotnet build SeleVox.slnx -c Release --no-restore --artifacts-path artifacts/pr6-hide-result
+dotnet publish src/SeleVox.App/SeleVox.App.csproj -c Release -r win-x64 --self-contained true --artifacts-path artifacts/pr6-hide-result -o artifacts/pr6-hide-result-portable
+git diff --check
+```
+
+- 还原及 Release 构建成功，0 警告、0 错误；PR6 定向 **22 项通过**（16 项真实 OCR/坐标/取消测试、5 项桌面测试、1 项设置窗口测试），相关会话/Auto Speak/流式回归 **45 项通过**。
+- 新增实际桌面截图测试：固定非敏感背景窗口上覆盖真实旧结果窗口，先确认其可见像素与背景不同；隐藏后不加固定延时，直接通过生产 CaptureAsync 截图，采样点恢复为准确背景颜色（`FF1A5C84`），真实 OCR 得到背景的 Fresh screen capture / Second line text，而非旧结果。截图全程只在内存，不写桌面图文件。框选取消后同一 HWND 恢复，原编辑文字、文字选择、位置和尺寸均保留，Clipboard 未变、手动朗读回调与真实 Mouse Hook 的选区回调均为 0。
+- 新增替换/失败测试：不合作的旧任务迟到结果不能更新文字或提前显示隐藏窗口；最新任务失败后恢复原内容且不抢前台；最小化取消保持最小化。窗口复用原测试加入 Hide 后成功恢复，正常和最小化状态的原位置、尺寸与置前均通过。
+- 原真实拖动/截图裁剪、Esc、结果编辑/主动复制、模型识别和语言保存测试一起通过。当前用户实例已占用 O，明确排除其注册测试；本轮不重复收费 TTS、音频压力或干净机器部署。45 项回归验证会话取消、自动授权与流式行为，未新增真实播放时隐藏/恢复的人工听音验收。
+- 环境仍为单屏 2560×1600、150%；混合 DPI 双屏未新增实测。本轮验证是生产窗口/截图/任务代次组件组成的桌面测试，整应用新版本 Ctrl+Alt+O 重复框选仍待用户验收。新增 portable 输出使用独立目录 `artifacts/pr6-hide-result-portable`，保留正在运行的 `pr6-window-reuse-portable`。
+
+## 人工验收清单（1、2、3、4、5、7 已通过；6、8 待验证）
+
+1. 退出旧 SeleVox，普通权限启动 portable 目录 EXE；托盘正常，Ctrl+Alt+R/P/X/O 均生效。让其他程序占用 O 时确认冲突提示；退出后 O 可再次注册。
+2. 在记事本/浏览器/PDF 的固定非敏感中英文段落上正向、反向框选，核对区域/行顺序；结果编辑后复制，确认原剪贴板只在主动复制时改变。
+3. 播放已有语音时启动框选、Esc、切换其他应用、空选区或空白截图、复制、关闭；确认已有声音继续且不发云请求。Ctrl+Alt+X 应同时停止音频、废弃 OCR。
+4. 默认/指定单/双输出下，用本地 TTS 朗读编辑后的 OCR；验证 Pause/Resume/Stop。已有 Key 的在线 Provider 由用户明确点击朗读时验收目的地提醒与手动语义，自动上传开关保持关闭仍应能手动朗读。
+5. 打开 Auto Speak，白名单 UIA 选区仍可自动朗读；OCR 遮罩的拖动不应触发 UIA/云请求，取消/完成后自动选区恢复。禁用 Auto Speak 后 OCR 不应重新启用它。
+6. 双屏分别采用 100%/125%/150%，安排副屏在主屏左侧/上方，逐屏正反向框选并核对实际像素位置。跨屏松开必须有“同一显示器内”反馈。确认所有遮罩关闭后可正常操作鼠标。
+7. 连续 O→Esc→O、识别中重复 O、Stop、退出；迟到结果不得弹出，遮罩/热键/托盘不得遗留。保存 OCR 英文语言后重启恢复，旧 Provider/音量/输出不变。
+8. 将完整 portable 目录放到无开发环境的 Windows 11 x64，断网、普通用户直接运行 EXE，识别固定中英文图；验证无需 .NET/VC 安装器、MSIX、管理员或 Copilot+。

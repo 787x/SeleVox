@@ -10,6 +10,10 @@
             <TextBlock Text="选择文字，按 Ctrl+Alt+R 朗读。" Margin="0,8,0,22" FontSize="15"/>
         </StackPanel>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"><StackPanel>
+            <TextBlock Text="屏幕框选 OCR · Ctrl+Alt+O（离线，不自动复制或朗读）" TextWrapping="Wrap" Margin="0,0,0,6"/>
+            <ComboBox x:Name="OcrLanguageChoice" Height="32" Margin="0,0,0,16">
+                <ComboBoxItem Content="简体中文 + 英文"/><ComboBoxItem Content="英文"/>
+            </ComboBox>
             <TextBlock Text="TTS Provider" Margin="0,0,0,6"/>
             <ComboBox x:Name="Provider" Height="32" SelectionChanged="Provider_Changed">
                 <ComboBoxItem Content="Windows 本地 TTS（离线）"/><ComboBoxItem Content="Azure Speech TTS（发送选区到云端）"/>
