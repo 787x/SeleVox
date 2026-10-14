@@ -3,6 +3,7 @@ using System.Text.Json;
 namespace SeleVox.Core;
 
 public sealed record ApplicationRule(string ExecutablePath, bool AutoSpeak = true, bool AutoAsk = false);
+public sealed record VirtualMicrophoneRoute(string RenderId, string CaptureId, string DriverInstanceId, bool RecordingVerified = false);
 public enum TtsProvider { Windows = 0, Azure = 1, Edge = 2, MiMo = 3, OpenAiCompatible = 4 }
 
 public sealed record Settings(string? VoiceId = null, double Rate = 1, float Volume = 0.8f, bool StartWithWindows = false,
@@ -22,8 +23,16 @@ public sealed record Settings(string? VoiceId = null, double Rate = 1, float Vol
     PromptPreset[]? CustomPrompts = null, string? SelectedPromptId = null,
     int StartupSilenceMilliseconds = 100)
 {
+    public bool VirtualMicrophoneEnabled { get; init; }
+    public VirtualMicrophoneRoute? VirtualMicrophone { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string[] UnavailableOutputIds { get; init; } = [];
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string[] NoFallbackOutputIds { get; init; } = [];
     [System.Text.Json.Serialization.JsonIgnore]
     public bool StrictOutputDevices { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool ExplicitOutputDevices { get; init; }
     // Workbench-only additions; defaults preserve the existing 3000-byte MiMo budget.
     public bool MiMoAutoSegment { get; init; } = true;
     public int MiMoSegmentCharacters { get; init; } = 3000;
@@ -49,6 +58,9 @@ public sealed record Settings(string? VoiceId = null, double Rate = 1, float Vol
                            !string.IsNullOrWhiteSpace(OpenAiVoice) && OpenAiVoice.Length <= 200 && OpenAiInstructions is { Length: <= 4096 } &&
                            (AzureRegion.Length == 0 || IsRegionValid(AzureRegion)) &&
                            (OutputDeviceIds is null || OutputDeviceIds.All(id => !string.IsNullOrWhiteSpace(id))) &&
+                           (VirtualMicrophone is null || (!string.IsNullOrWhiteSpace(VirtualMicrophone.RenderId) &&
+                               VirtualMicrophone.RenderId != DefaultOutput && !string.IsNullOrWhiteSpace(VirtualMicrophone.CaptureId) &&
+                               !string.IsNullOrWhiteSpace(VirtualMicrophone.DriverInstanceId))) &&
                            (Applications is null || Applications.All(r => r is not null &&
                                !string.IsNullOrWhiteSpace(r.ExecutablePath) && Path.IsPathFullyQualified(r.ExecutablePath)));
 

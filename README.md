@@ -1,6 +1,18 @@
-# SeleVox — PR16
+# SeleVox — PR17
 
 Windows 11 x64 的选区朗读工具，支持手动热键与可关闭的鼠标自动朗读，普通用户权限运行。WPF 设置窗口关闭后驻留托盘；托盘双击或“设置”重新打开，“退出”结束程序。重复启动会通知已有实例显示设置窗口。
+
+## PR17：虚拟麦克风
+
+主设置的“虚拟麦克风 · VB-Audio VB-CABLE”区域可将朗读同时输出到原有耳机 / 扬声器和真实 Windows 虚拟录音端点，无需启动 Voicemeeter。开关默认关闭，旧配置兼容，不改变 Windows 默认播放 / 录音设备。
+
+1. 已安装普通 VB-CABLE 时点击扫描。未安装时点击“首次安装引导”，从 [VB-Audio 官方页面](https://vb-audio.com/Cable/index.htm) 下载 Windows x64 包，检查数字签名，按厂商说明明确执行管理员安装并重启。**本版本不捆绑或自动安装驱动。** VB-CABLE 为 donationware，欢迎 [捐赠 / 支付许可](https://vb-audio.com/Services/licensing.htm)；企业分发另须遵守厂商条件。
+2. 选择虚拟播放 Render 和录音 Capture。应用验证共同的 VB-CABLE PnP 驱动身份，不靠显示名称配对。多个 pin 不自动猜测，点击“播放测试音并录音验证”，固定 3 秒 PCM 从选定 Capture 录音检查波形关联，录音仅在内存中。验证通过后勾选启用并保存。
+3. 普通输出继续选择自己的物理设备。在 Discord / OBS / Zoom 中自行选择界面显示的虚拟 Capture，例如 `CABLE Output`；播放端名称可能已被重命名。共享虚拟线也可能接收其他应用音频，不提供来源隔离，不新增物理麦克风或桌面混音。
+
+普通朗读、LLM 逐句语音、MiMo 流式和工作台试听复用相同多设备 WASAPI；重复 Render 去重，虚拟故障跳过且保留其他有效输出，虚拟唯一目标失效则失败，不转向扬声器。关闭或更换已启用路由并保存会停止当前朗读；后续普通朗读排除此已选虚拟端点，普通物理输出设置保留。CLI / MCP 未指定 `devices` 时继承有效配置；默认值 / 预设 / 单次请求显式指定 `devices`（包括 `[]` / `null`）时严格覆盖，独立于虚拟开关，不额外追加。合成文件、导出及服务检测不播放。
+
+真实 Capture、FFmpeg 第三方录音、签名审计、复跑命令及未验证项见 [PR17 验证记录](verification/PR17.md)。当前仅识别普通 VB-CABLE；首次安装 / 升级、真实硬件断开 / 睡眠唤醒、耳机及 Discord / OBS UI 仍需人工验收。
 
 ## PR9：Auto Ask、逐句朗读、Prompt 与 Thinking
 

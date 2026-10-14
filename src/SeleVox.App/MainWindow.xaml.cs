@@ -71,13 +71,15 @@ public partial class MainWindow : Window
         Provider.SelectedIndex = (int)settings.Provider;
         UpdateCredentialStatus();
         _ = RefreshOutputsAsync(settings.OutputDeviceIds ?? [Settings.DefaultOutput]);
+        InitializeVirtualMicrophone(settings);
     }
     public void SetNotice(string message) => Notice.Text = message;
-    public void SetStatus(Status status) => StatusText.Text = status.Message;
+    public void SetStatus(Status status) { StatusText.Text = status.Message; if (status.State != ReadingState.Idle) virtualTest?.Cancel(); }
     public void SetAutomaticStatus(string message) => AutomaticStatus.Text = message;
     public void SetAutomaticSettings(Settings settings)
     {
         savedSettings = settings; AutoSpeak.IsChecked = settings.AutoSpeak; AutoAsk.IsChecked = settings.AutoAsk;
+        if (virtualTimer is not null) UpdateVirtualStatus();
         diagnosticsWindow?.Refresh();
         AutomaticLlm.IsChecked = settings.AllowsAutomaticLlm;
         AutomaticLlmStatus.Text = $"自动上传：{(settings.AllowsAutomaticLlm ? "已授权" : "未授权")} · {Settings.NormalizeServiceUrl(settings.LlmBaseUrl)}（可能产生费用）";
@@ -89,12 +91,15 @@ public partial class MainWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         voiceQuery?.Cancel();
+        virtualTest?.Cancel();
         diagnosticsWindow?.Close();
         if (System.Windows.Application.Current is App { IsExiting: false }) { e.Cancel = true; Hide(); }
         base.OnClosing(e);
     }
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        if (VirtualMicEnabled.IsChecked == true && virtualRoute is not { RecordingVerified: true })
+        { SetNotice("请先选择同一 VB-CABLE 的端点并通过录音验证，再启用。"); return; }
         var provider = (TtsProvider)Provider.SelectedIndex;
         if (provider == TtsProvider.Windows && Voice.SelectedValue is not string) { SetNotice("请先选择可用的本地语音。"); return; }
         if (provider == TtsProvider.Azure && (!Settings.IsRegionValid(Region.Text.Trim()) || CloudVoice.SelectedValue is not string))
@@ -129,6 +134,7 @@ public partial class MainWindow : Window
             AllowAutomaticOpenAi = savedSettings.AllowAutomaticOpenAi && (provider != TtsProvider.OpenAiCompatible || address == Settings.NormalizeServiceUrl(savedSettings.OpenAiBaseUrl)),
             OpenAiAuthorizedBaseUrl = provider != TtsProvider.OpenAiCompatible || address == Settings.NormalizeServiceUrl(savedSettings.OpenAiBaseUrl) ? savedSettings.OpenAiAuthorizedBaseUrl : null,
             OutputDeviceIds = Outputs.SelectedItems.Cast<OutputChoice>().Select(d => d.Id).ToArray(),
+            VirtualMicrophoneEnabled = VirtualMicEnabled.IsChecked == true, VirtualMicrophone = virtualRoute,
             StartWithWindows = AutoStart.IsChecked == true, OcrLanguage = (OcrLanguage)OcrLanguageChoice.SelectedIndex,
             LlmBaseUrl = llmAddress, LlmModel = LlmModel.Text.Trim(), LlmSystemPrompt = LlmSystemPrompt.Text,
             LlmReadingStrategy = (AnswerReadingStrategy)LlmReadingStrategy.SelectedIndex,
@@ -515,6 +521,6 @@ public partial class MainWindow : Window
         finally { AddApplication.IsEnabled = true; }
     }
     private void Pause_Click(object sender, RoutedEventArgs e) => pause();
-    private void Stop_Click(object sender, RoutedEventArgs e) => stop();
+    private void Stop_Click(object sender, RoutedEventArgs e) { virtualTest?.Cancel(); stop(); }
     private void Exit_Click(object sender, RoutedEventArgs e) => exit();
 }
