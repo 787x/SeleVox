@@ -4,7 +4,7 @@ using System.Threading.Channels;
 namespace SeleVox.Core;
 
 public enum QuestionState { Idle, Generating, Speaking, Completed, Cancelled, Error }
-public sealed record QuestionStatus(string Question, string Service, string Model, string Answer, QuestionState State, string Message, bool AnswerComplete = false);
+public sealed record QuestionStatus(string Question, string Service, string Model, string Answer, QuestionState State, string Message, bool AnswerComplete = false, long RequestId = 0);
 
 // One foreground question. UI polls Snapshot at a bounded rate, rather than dispatching every token.
 public sealed class QuestionSession(
@@ -15,12 +15,13 @@ public sealed class QuestionSession(
     private readonly object sync = new();
     private CancellationTokenSource? current;
     private long generation;
+    private long requestId;
     private bool disposed, ownsSpeech, automatic, answerComplete;
     private readonly StringBuilder answer = new();
     private string question = "", service = "", model = "", message = "";
     private QuestionState state;
     public QuestionStatus Snapshot
-    { get { lock (sync) return new(question, service, model, answer.ToString(), state, message, answerComplete); } }
+    { get { lock (sync) return new(question, service, model, answer.ToString(), state, message, answerComplete, requestId); } }
 
     public async Task AskAsync(string text, Settings settings, string key, bool isAutomatic = false)
     {
@@ -32,6 +33,7 @@ public sealed class QuestionSession(
             if (disposed) return;
             CancelCore(); stopSpeech(); ownsSpeech = false;
             request = current = new(); id = ++generation;
+            ++requestId;
             automatic = isAutomatic;
             question = text; service = Settings.NormalizeServiceUrl(settings.LlmBaseUrl)!; model = settings.LlmModel;
             answer.Clear(); answerComplete = false; state = QuestionState.Generating; message = "思考中 / 等待最终正文…";
