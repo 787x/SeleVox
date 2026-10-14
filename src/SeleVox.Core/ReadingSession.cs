@@ -49,6 +49,10 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
     public Status Status { get; private set; } = new(ReadingState.Idle, "就绪");
     public event Action<Status>? Changed;
 
+    public Task ReadGeneratedAsync(Func<CancellationToken, Task<Stream>> generate, Settings settings, CancellationToken cancellation) =>
+        ReadCoreAsync(_ => Task.FromResult("agent audio"), settings, waitForPlayback: true, cancellation: cancellation,
+            synthesizeAudio: (_, _, token) => Task.Run(() => generate(token), token));
+
     public Task ReadTextAsync(string text, Settings settings) => ReadAsync(_ => Task.FromResult(text), settings, true);
 
     // Cached audio enters the same ownership/cancellation path without invoking a provider.
@@ -96,6 +100,7 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
         {
             if (disposed) return;
             // Reject before changing ownership, generation, status or cancellation of the existing session.
+            cancellation.ThrowIfCancellationRequested();
             if (isAutomatic && !settings.AllowsAutomaticProvider) return;
             automatic = isAutomatic;
             var cleanupError = CancelAndRelease();

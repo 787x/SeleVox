@@ -26,15 +26,23 @@ public partial class App : System.Windows.Application
     private AiAnswerWindow? aiAnswer;
     private CancellationTokenSource? selectionAction;
     private long selectionEpoch;
+    private AgentExecution? agentExecution;
+    private AgentPipe? agentPipe;
     internal bool IsExiting => exiting;
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        instance = new SingleInstance();
+        instance = new SingleInstance(showExisting: !e.Args.Contains("--agent-background"));
         if (!instance.IsFirst) { Shutdown(); return; }
         var loaded = store.Load(); settings = loaded.Settings;
         var speech = new SpeechAudio();
         reading = new ReadingSession(speech, speech);
+        agentExecution = new(reading, speech, () => settings,
+            action => Dispatcher.InvokeAsync(action).Task.Unwrap(),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SeleVox"),
+            () => { InvalidateSelectionAction(); questionSession?.Cancel(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); });
+        agentPipe = new(agentExecution);
+        reading.Changed += agentExecution.PlaybackChanged;
         var chat = new ChatCompletionClient();
         questionSession = new QuestionSession(chat.GenerateAsync,
             (text, options) => reading.ReadSentenceAsync(text, options, CancellationToken.None), reading.Stop, reading.ReadSentenceAsync);
@@ -90,7 +98,7 @@ public partial class App : System.Windows.Application
         if (settingsWindow.VoiceWarning is not null) notices.Add(settingsWindow.VoiceWarning);
         try { StartupRegistration.Apply(settings.StartWithWindows); }
         catch (Exception ex) { notices.Add($"开机启动设置不可用（{ex.GetType().Name}）。"); }
-        if (!e.Args.Contains("--background")) ShowSettings();
+        if (!e.Args.Contains("--background") && !e.Args.Contains("--agent-background")) ShowSettings();
         if (notices.Count > 0) { var notice = string.Join(Environment.NewLine, notices); settingsWindow.SetNotice(notice); Notify(notice); }
     }
     private static string StateName(ReadingState state) => state switch
@@ -199,6 +207,7 @@ public partial class App : System.Windows.Application
     }
     private void StopReading()
     {
+        agentExecution?.CancelAll();
         audioWorkbench?.CancelGeneration();
         if (ocrOperation.IsActive) settingsWindow?.SetNotice("屏幕 OCR 已取消。");
         InvalidateSelectionAction(); questionSession?.Cancel();
@@ -374,6 +383,7 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         exiting = true;
+        agentPipe?.Dispose(); agentExecution?.Dispose();
         audioWorkbench?.Close();
         exiting = true; InvalidateSelectionAction(); questionSession?.Dispose(); aiAnswer?.Close(); ocrOperation.Dispose(); ocrResult?.Close(); mouse?.Dispose(); automaticSelection.Dispose(); hotkeys?.Dispose(); reading?.Dispose();
         if (tray is not null) { tray.Visible = false; tray.ContextMenuStrip?.Dispose(); tray.Dispose(); }

@@ -117,8 +117,13 @@ internal static partial class AudioOutputs
                 catch { stream.Dispose(); ++failed; }
             }
             foreach (var id in (settings.OutputDeviceIds is { Length: > 0 } ids ? ids : [Settings.DefaultOutput]).Distinct()) Open(id);
+            if (settings.StrictOutputDevices && failed > 0)
+            {
+                foreach (var player in players) { try { player.Dispose(); } catch { /* Release every remaining output too. */ } }
+                throw new UserFeedbackException("指定输出设备不可用，未回退播放。");
+            }
             string? warning = failed > 0 ? "部分所选输出不可用，已跳过" : null;
-            if (players.Count == 0)
+            if (players.Count == 0 && !settings.StrictOutputDevices)
             {
                 Open(Settings.DefaultOutput);
                 warning = "所选输出均不可用，已回退到系统默认输出";

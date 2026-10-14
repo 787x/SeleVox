@@ -297,3 +297,15 @@ MiMo“音频标签脚本”模式提供“AI 添加标签”：在完整原文�
 验证与未验证限制见 [PR13 验证记录](verification/PR13.md)。
 
 导演模式也提供标题右侧“AI 生成”：在角色、场景或指导任一栏填写需求，AI 根据当前三栏补全表演方案并分别填回三栏。三栏合并含标题 / 换行最多 1000 字符。格式无效或超限保留三栏；任一栏编辑会取消旧请求，“恢复 AI 替换前文本”同时恢复三栏。预置音色、VoiceDesign、VoiceClone 的导演模式均可使用。
+
+### PR14：CLI / MCP 与 Agent 语音预设
+
+发布目录新增 `SeleVox.Cli.exe`，支持命令行朗读、完整 WAV 导出、语音/设备/克隆样本查询、独立 Agent 默认值和命名预设、任务查询与取消，以及官方 C# SDK 的本地 MCP stdio。通过当前用户专属 IPC 复用桌面实例；未运行时后台启动，不弹出设置窗口。
+
+```powershell
+./scripts/Publish-Windows.ps1
+./artifacts/pr14-portable/SeleVox.Cli.exe speak --provider Windows --text '你好，SeleVox。' --wait
+./artifacts/pr14-portable/SeleVox.Cli.exe mcp
+```
+
+主界面配置好在线 TTS 服务及凭据后，CLI/MCP 可直接使用，无需额外 Agent 授权；Auto Speak、Auto Ask 的独立自动上传授权不变。服务地址和 Key 仍仅在主界面管理，Agent 不能覆盖地址或读取、导出凭据。MCP 默认不暴露修改持久默认值和删除预设，可由 CLI 单独开启。实际参数、MiMo 三模式、MCP 客户端配置、任务语义及文件权限边界见 [CLI / MCP 使用说明](docs/CLI-MCP.md)，构建、真实服务和未验证项见 [PR14 验证记录](verification/PR14.md)。

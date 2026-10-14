@@ -6,6 +6,13 @@ namespace SeleVox.Tests;
 
 public sealed class MultiOutputTests
 {
+    [Fact] public void StrictAgentDeviceFailureDisposesPartialOutputsWithoutFallback()
+    {
+        var opened = new List<string>(); Player? partial = null;
+        Assert.Throws<UserFeedbackException>(() => AudioOutputs.CreatePlayback(Fixture(), new(OutputDeviceIds: ["cable", "missing"]) { StrictOutputDevices = true },
+            (id, stream, volume) => { opened.Add(id); if (id == "missing") throw new IOException(); return partial = new Player(stream); }));
+        Assert.Equal(new[] { "cable", "missing" }, opened); Assert.True(partial!.Disposed); Assert.False(partial.Stream!.CanRead); Assert.Equal(0, partial.Plays);
+    }
     [Fact] public void ReadersHaveIndependentPositionsAndSelectedIdsOnly()
     {
         var audio = Fixture(); var opened = new List<(string Id, Player Player)>();

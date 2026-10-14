@@ -6,13 +6,14 @@ internal sealed class SingleInstance : IDisposable
     private readonly EventWaitHandle show;
     private RegisteredWaitHandle? listener;
     public bool IsFirst { get; }
-    public SingleInstance(string scope = "SeleVox")
+    public SingleInstance(string scope = "SeleVox", bool showExisting = true)
     {
-        var user = WindowsIdentity.GetCurrent().User!.Value;
+        using var identity = WindowsIdentity.GetCurrent();
+        var user = identity.User!.Value;
         mutex = new Mutex(true, $"Local\\{scope}-{user}", out var created);
         IsFirst = created;
         show = new EventWaitHandle(false, EventResetMode.AutoReset, $"Local\\{scope}-Show-{user}");
-        if (!IsFirst) show.Set();
+        if (!IsFirst && showExisting) show.Set();
     }
     public void Listen(Action callback) => listener = ThreadPool.RegisterWaitForSingleObject(show, (_, _) => callback(), null, Timeout.Infinite, false);
     public void Dispose()
