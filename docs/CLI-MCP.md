@@ -125,7 +125,7 @@ VoiceDesign 复用已有描述与导演指令，不发送预置 `voice`；VoiceC
 
 MiMo 创作参数沿用既有模型差异：整体风格前缀用于 Preset，设计与克隆模式保留既有规则；句内脚本原样交给现有分段器，不自动调用 LLM 改写。自然语言及导演控制保持原有规则，唱歌使用已有独占标签规则。使用 `--auto-segment false` 禁止自动分段；超限明确失败。Unicode 文本元素边界、UTF-8 字节预算及长标签限制沿用 PR12。
 
-所有 Agent 合成都使用非流式完整 WAV；没有重写 SSE、请求协议或播放引擎。模型能力参考 [MiMo 官方说明](https://mimo.xiaomi.com/mimo-v2-5-tts/index-zh)，实际行为及验证以 [PR14 记录](../verification/PR14.md) 为准。
+所有 Agent 合成都使用非流式完整 WAV；没有重写 SSE、请求协议或播放引擎。模型能力参考 [MiMo 官方说明](https://mimo.xiaomi.com/mimo-v2-5-tts/index-zh)、[MiMo API文档](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)，实际行为及验证以 [PR14 记录](../verification/PR14.md) 为准。
 
 ## MCP stdio
 
