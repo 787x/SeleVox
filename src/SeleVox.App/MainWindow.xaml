@@ -212,7 +212,7 @@
                         <Button Content="重新扫描 / 自动检测" Click="VirtualScan_Click" Padding="8,4" Margin="0,0,8,4"/>
                         <Button x:Name="VirtualTestButton" Content="播放测试音并录音验证" Click="VirtualTest_Click" Padding="8,4" Margin="0,0,8,4"/>
                     </WrapPanel>
-                    <TextBlock Text="首次选定须通过 3 秒固定音频录音验证；不录制物理麦克风。共享虚拟麦克风可能同时接收其他应用声音。关闭或更换已启用路由并保存会停止当前朗读；关闭后普通朗读排除此虚拟端点，不卸载驱动或更改默认麦克风。CLI / MCP 显式设备选择独立覆盖。" TextWrapping="Wrap" Foreground="#546575"/>
+                    <TextBlock Text="支持 VB-CABLE 等虚拟音频设备。首次选定须通过 3 秒固定音频录音验证；不录制物理麦克风。共享虚拟麦克风可能同时接收其他应用声音。关闭或更换已启用路由并保存会停止当前朗读；关闭后普通朗读排除此虚拟端点，不卸载驱动或更改默认麦克风。CLI / MCP 显式设备选择独立覆盖。" TextWrapping="Wrap" Foreground="#546575"/>
                 </StackPanel>
             </GroupBox>
             <CheckBox x:Name="AutoStart" Content="登录 Windows 时启动（驻留托盘）" Margin="0,20,0,16"/>
