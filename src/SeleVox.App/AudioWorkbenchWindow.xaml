@@ -20,7 +20,7 @@
     <TextBlock Text="MiMo 创作控制台" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,8"/>
     <TextBlock Text="模型模式"/><ComboBox x:Name="CreativeMode" SelectionChanged="CreativeMode_Changed" Margin="0,6"/>
     <StackPanel x:Name="DesignPanel" Visibility="Collapsed">
-     <TextBlock Text="音色描述（必填；最多 1000 字符）"/><TextBox x:Name="VoiceDescription" AcceptsReturn="True" TextWrapping="Wrap" Height="90" TextChanged="Creative_Changed" Margin="0,6"/>
+     <DockPanel><Button x:Name="AiVoice" DockPanel.Dock="Right" Content="AI 生成" Tag="VoiceDescription" Click="AiGenerate_Click" Padding="8,4" Margin="6,0,0,0"/><TextBlock Text="音色描述（必填；最多 1000 字符）" TextWrapping="Wrap" VerticalAlignment="Center"/></DockPanel><TextBox x:Name="VoiceDescription" AcceptsReturn="True" TextWrapping="Wrap" Height="90" TextChanged="Creative_Changed" Margin="0,6"/>
     </StackPanel>
     <StackPanel x:Name="ClonePanel" Visibility="Collapsed">
      <TextBlock Text="本地克隆样本库" FontWeight="SemiBold"/><ComboBox x:Name="CloneSamples" DisplayMemberPath="Label" SelectionChanged="CloneSelection_Changed" Margin="0,6"/>
@@ -70,12 +70,14 @@
                 <Button Content="清空整体风格" Click="ClearMiMoStyles_Click" HorizontalAlignment="Left" Padding="8,4" Margin="0,6,0,0"/>
     </StackPanel>
     <StackPanel x:Name="DirectorPanel" Visibility="Collapsed">
+     <DockPanel Margin="0,6"><Button x:Name="AiDirector" DockPanel.Dock="Right" Content="AI 生成" Tag="Director" Click="AiGenerate_Click" Padding="8,4" Margin="6,0,0,0"/><TextBlock Text="导演模式 · 角色 / 场景 / 指导" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center"/></DockPanel>
+     <TextBlock Text="在任一栏填写需求，AI 将补全并替换三栏；合并后最多 1000 字符。" TextWrapping="Wrap" Foreground="#546575"/>
      <TextBlock Text="角色"/><TextBox x:Name="DirectorRole" TextChanged="Creative_Changed" Margin="0,5"/>
      <TextBlock Text="场景"/><TextBox x:Name="DirectorScene" TextChanged="Creative_Changed" Margin="0,5"/>
      <TextBlock Text="指导"/><TextBox x:Name="DirectorDirection" AcceptsReturn="True" TextWrapping="Wrap" Height="65" TextChanged="Creative_Changed" Margin="0,5"/>
      <Button Content="填入电台导演示例" Click="DirectorExample_Click" HorizontalAlignment="Left" Padding="8,4"/>
     </StackPanel>
-    <StackPanel x:Name="NaturalPanel"><TextBlock Text="自然语言风格说明（最多 1000 字符）"/><TextBox x:Name="MiMoStyle" TextChanged="Creative_Changed" AcceptsReturn="True" TextWrapping="Wrap" Height="65" Margin="0,6"/>
+    <StackPanel x:Name="NaturalPanel"><DockPanel><Button x:Name="AiStyle" DockPanel.Dock="Right" Content="AI 生成" Tag="Style" Click="AiGenerate_Click" Padding="8,4" Margin="6,0,0,0"/><TextBlock Text="自然语言风格说明（最多 1000 字符）" TextWrapping="Wrap" VerticalAlignment="Center"/></DockPanel><TextBox x:Name="MiMoStyle" TextChanged="Creative_Changed" AcceptsReturn="True" TextWrapping="Wrap" Height="65" Margin="0,6"/>
     </StackPanel>
     <CheckBox x:Name="AutoSegment" Content="自动分段（按自然句边界；仍受 UTF-8 安全预算限制）" IsChecked="True" Checked="Segment_Changed" Unchecked="Segment_Changed" Margin="0,10,0,5"/>
     <TextBlock Text="单段字符上限（50–3000；默认 3000）"/><TextBox x:Name="SegmentCharacters" Text="3000" TextChanged="Creative_Changed" Margin="0,5"/>
@@ -87,11 +89,11 @@
    </StackPanel>
    <StackPanel x:Name="AudioTagPanel" Visibility="Collapsed" Margin="0,8">
     <TextBlock Text="句内标签脚本 · 点击插入光标处 / 选区前；可手动编辑" FontWeight="SemiBold"/>
-    <WrapPanel x:Name="AudioTagButtons" Margin="0,6"/>
+    <Button x:Name="AiTags" Content="AI 添加标签" Tag="AudioTags" Click="AiGenerate_Click" HorizontalAlignment="Left" Padding="8,4" Margin="0,6"/><WrapPanel x:Name="AudioTagButtons" Margin="0,6"/>
    </StackPanel>
-   <TextBlock Text="待合成文本（最多 32768 字符）"/>
+   <DockPanel><Button x:Name="AiScript" DockPanel.Dock="Right" Content="AI 生成" Tag="Script" Click="AiGenerate_Click" Padding="8,4" Margin="6,0,0,0"/><TextBlock Text="待合成文本（最多 32768 字符）" TextWrapping="Wrap" VerticalAlignment="Center"/></DockPanel>
    <TextBox x:Name="InputText" TextChanged="Creative_Changed" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="210" Margin="0,6,0,12"/>
-   <Expander x:Name="RequestPreviewPanel" Header="发送内容与分段预览（user / assistant）" Visibility="Collapsed" IsExpanded="True">
+   <TextBlock Text="点击 AI 按钮会把对应输入发送到主设置中已配置的 LLM，可能产生 API 费用。" TextWrapping="Wrap" Foreground="#546575"/><WrapPanel Margin="0,6"><Button x:Name="CancelAiButton" Content="取消 AI" Click="CancelAi_Click" IsEnabled="False" Padding="8,4" Margin="0,0,6,0"/><Button x:Name="RestoreAiButton" Content="恢复 AI 替换前文本" Click="RestoreAi_Click" IsEnabled="False" Padding="8,4"/></WrapPanel><TextBlock x:Name="AiStatus" TextWrapping="Wrap" Foreground="#8A4D00" Margin="0,0,0,6"/><Expander x:Name="RequestPreviewPanel" Header="发送内容与分段预览（user / assistant）" Visibility="Collapsed" IsExpanded="True">
     <TextBox x:Name="RequestPreview" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="170" VerticalScrollBarVisibility="Auto" Margin="0,6"/>
    </Expander>
    <TextBlock Text="语速（0.5–2）" Margin="0,10,0,0"/><Slider x:Name="Rate" Minimum="0.5" Maximum="2" Value="1"/>
