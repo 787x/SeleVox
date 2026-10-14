@@ -41,7 +41,6 @@ internal sealed class AgentExecution : IDisposable
             case "voices":
                 Only("provider"); var provider = Str("provider") ?? AgentParameters.Resolve(main, config, null, AgentJson.Empty).Settings.Provider.ToString();
                 if (!Enum.TryParse<TtsProvider>(provider, out var p) || !Enum.IsDefined(p)) throw new InvalidDataException();
-                if (p != TtsProvider.Windows && !config.AllowOnline && p != TtsProvider.MiMo && p != TtsProvider.OpenAiCompatible) throw new UnauthorizedAccessException();
                 return p switch { TtsProvider.Windows => SpeechAudio.GetVoices(), TtsProvider.MiMo => Settings.MiMoVoices,
                     TtsProvider.Edge => await new EdgeSpeech().GetVoicesAsync(connection), TtsProvider.Azure => await new AzureSpeech().GetVoicesAsync(main.AzureRegion, connection),
                     _ => new[] { main.OpenAiVoice } };
@@ -55,15 +54,13 @@ internal sealed class AgentExecution : IDisposable
                 store.Update(c => { if (!c.Presets.Remove(Str("name") ?? "")) throw new InvalidDataException(); return c; }); return new { deleted = true };
             case "config.show": Only(); return config;
             case "config.set":
-                Only("parameters", "allowOnline", "exportDirectory", "exposeDeletePreset", "exposeSetDefaults", "mcp");
+                Only("parameters", "exportDirectory", "exposeDeletePreset", "exposeSetDefaults", "mcp");
                 if (IsMcp(a))
                 {
                     if (!config.ExposeSetDefaults || a.EnumerateObject().Any(x => x.Name is not ("parameters" or "mcp"))) throw new UnauthorizedAccessException();
                 }
                 var updated = store.Update(c => c with {
                     Defaults = AgentParameters.Merge(c.Defaults, Fields()),
-                    AllowOnline = a.TryGetProperty("allowOnline", out var allow) ? allow.GetBoolean() : c.AllowOnline,
-                    AuthorizedOpenAiAddress = a.TryGetProperty("allowOnline", out _) ? Settings.NormalizeServiceUrl(main.OpenAiBaseUrl) : c.AuthorizedOpenAiAddress,
                     ExportDirectory = Str("exportDirectory") ?? c.ExportDirectory,
                     ExposeDeletePreset = a.TryGetProperty("exposeDeletePreset", out var del) ? del.GetBoolean() : c.ExposeDeletePreset,
                     ExposeSetDefaults = a.TryGetProperty("exposeSetDefaults", out var def) ? def.GetBoolean() : c.ExposeSetDefaults });
@@ -77,7 +74,6 @@ internal sealed class AgentExecution : IDisposable
                 Only("text", "parameters", "preset", "output", "overwrite", "mcp", "wait");
                 var text = Str("text"); if (string.IsNullOrWhiteSpace(text) || text.Length > HttpSpeech.MaxTextLength) throw new InvalidDataException();
                 var resolved = AgentParameters.Resolve(main, config, Str("preset"), Fields()); var settings = resolved.Settings;
-                if (settings.Provider != TtsProvider.Windows && (!config.AllowOnline || settings.Provider == TtsProvider.OpenAiCompatible && config.AuthorizedOpenAiAddress != Settings.NormalizeServiceUrl(main.OpenAiBaseUrl))) throw new UnauthorizedAccessException();
                 if (settings.Provider == TtsProvider.MiMo) { MiMoSpeech.GetStyle(settings); MiMoSpeech.SplitCreativeText(text, settings); }
                 var output = request.Command == "synthesize" ? AgentExport.Resolve(Str("output"), config.ExportDirectory, IsMcp(a)) : null;
                 var overwrite = a.TryGetProperty("overwrite", out var over) && over.GetBoolean();
@@ -139,8 +135,23 @@ internal sealed class AgentExecution : IDisposable
             token.ThrowIfCancellationRequested(); Set(id, "completed");
         }
         catch (OperationCanceledException) { Set(id, "cancelled"); }
-        catch (Exception error) { Set(id, "failed", "execution_failed:" + error.GetType().Name); }
+        catch (Exception error) { Set(id, "failed", SafeFailure(error)); }
         finally { lock (sync) { if (activeId == id) { active = null; activeId = null; } source.Dispose(); } }
+    }
+    private static string SafeFailure(Exception error)
+    {
+        // Match fixed provider messages; never return arbitrary exception text or HTTP bodies.
+        if (error is UserFeedbackException && error.Message is
+            "请先保存 MiMo API Key（兼容服务 Key 按服务地址独立保存）。" or
+            "请先保存 OpenAI-Compatible API Key（兼容服务 Key 按服务地址独立保存）。" or
+            "请先在设置中保存 Azure Speech Key。")
+            return "missing_credentials:请先在 SeleVox 主界面保存此服务的凭据。";
+        if (error is UserFeedbackException && error.Message is
+            "请查询并选择 Azure 区域可用的语音，再保存设置。" or
+            "请填写 Azure Speech Region 标识，例如 eastasia。" or
+            "tts-1 / tts-1-hd 不支持 Instructions，请清空后保存或选择支持的模型。")
+            return "invalid_configuration:请在 SeleVox 主界面检查此服务的区域、模型、音色和 Instructions 设置。";
+        return "execution_failed:" + error.GetType().Name;
     }
     internal void PlaybackChanged(Status status)
     { lock (sync) { if (activeId is { } id && jobs[id].State == "synthesizing" && status.State == ReadingState.Playing) jobs[id] = jobs[id] with { State = "playing" }; } }

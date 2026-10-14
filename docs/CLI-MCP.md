@@ -39,12 +39,12 @@ GUI 暂停/继续、Stop 与 Agent 使用同一个播放器；GUI 新朗读替�
 | --- | --- |
 | 0 | 请求成功提交，或等待的任务完成 |
 | 2 | 参数、预设或输入无效 |
-| 3 | Agent 在线上传或 MCP 操作权限不足 |
+| 3 | MCP 操作权限或导出目录权限不足 |
 | 4 | 合成、设备、文件、连接或启动失败 |
 | 5 | 已有 Agent 任务运行 |
 | 6 | 取消或等待超时 |
 
-`device_unavailable` 表示有效配置中的播放设备已不可用，请通过 `devices list` 重新选择；`input_file_unavailable` 表示输入文件不存在。`invalid_input` 表示参数/未知字段/配置校验失败；`permission_denied` 表示在线授权或导出边界/工具权限限制；`file_or_connection_failed` 包括禁止覆盖、写入冲突及文件不可写；`desktop_not_found` 表示发布目录缺少桌面 EXE；`desktop_unavailable_or_incompatible` 表示 15 秒内无法连接桌面 IPC。运行中的失败只返回安全错误代码及异常类型，不返回异常详情。可在桌面设置检查语音和设备配置。
+`device_unavailable` 表示有效配置中的播放设备已不可用，请通过 `devices list` 重新选择；`input_file_unavailable` 表示输入文件不存在。`invalid_input` 表示参数/未知字段/配置校验失败；`permission_denied` 表示导出边界/工具权限限制；`file_or_connection_failed` 包括禁止覆盖、写入冲突及文件不可写；`desktop_not_found` 表示发布目录缺少桌面 EXE；`desktop_unavailable_or_incompatible` 表示 15 秒内无法连接桌面 IPC。运行中的失败只返回安全错误代码及异常类型，不返回异常详情。可在桌面设置检查语音和设备配置。
 
 ## Agent 默认值和命名预设
 
@@ -92,17 +92,14 @@ GUI 暂停/继续、Stop 与 Agent 使用同一个播放器；GUI 新朗读替�
 
 切换 Provider 时忽略继承的其他 Provider 高级字段；显式传入当前 Provider 不支持的高级字段会拒绝。不能把 `pitch`、MiMo 创作能力等伪装成所有 Provider 的通用功能。Azure 语音列表需要主程序已有区域配置；OpenAI-Compatible 没有统一音色目录接口，列表仅返回当前已配置音色，用户可按自己服务的实际支持范围显式指定音色。
 
-## 在线授权与设备
+## 在线 TTS 与设备
 
-Agent 在线上传默认关闭，独立于主程序 Auto Speak / Auto Ask。先在主设置中保存现有服务参数和 Credential Manager 凭据，再主动执行：
+在主界面配置好相应 Provider、服务地址和 Credential Manager 凭据后，CLI/MCP 可直接使用在线 TTS，无需额外授权命令，调用可能产生服务费用。Auto Speak、Auto Ask 的独立自动上传授权不变，不会因 Agent 使用在线 TTS 而自动开启。
 
-```powershell
-& $cli config set --allow-online true
-# 撤销授权
-& $cli config set --allow-online false
-```
+服务地址及 Key 仍只由主界面管理。OpenAI-Compatible 的 Key 继续按当前主设置地址的 Credential Manager 命名空间读取；Agent 参数、预设和 `set_defaults` 不能修改服务地址、读取/导出或写入凭据。缺少必需凭据时任务返回 `missing_credentials` 提示前往主界面配置；配置无效仍明确失败；区域/音色等缺失会返回 `invalid_configuration`，不发送合成请求。
 
-开启后允许 Agent 使用已配置的在线 TTS，可能产生服务费用。OpenAI-Compatible 额外绑定授权时的主程序服务地址；该地址改变后需要用户通过 CLI 重新授权。MCP `set_defaults` 无法开启云端权限或改变服务地址、导出目录、工具暴露开关。没有任何 CLI/MCP Key 显示、导出或写入功能。
+旧 `agent.json` 中的 `AllowOnline` 和 `AuthorizedOpenAiAddress` 字段仅为兼容读取而忽略，不再阻断调用；下一次保存时移除这两个字段，其他默认值和预设保留。旧授权命令已移除。MCP `set_defaults` 仍不能改变导出目录或工具暴露开关。
+
 
 输出使用 `devices list` 的实际 ID，不修改系统默认设备。多个 ID 使用已有 WASAPI 多设备输出。任何显式/有效预设选中的设备失效都会失败，释放已经打开的输出，不静默跳过或回退。未指定设备时继续按配置层级继承；空数组使用系统默认端点。现有音量及前导静音只用于播放，WAV 保存不包含起音补偿。
 
@@ -181,4 +178,4 @@ CLI `synthesize --output` 允许用户显式指定的完整/相对路径。默�
 
 IPC 使用版本化、长度前缀 JSON，仅支持固定命令，最大消息 1 MiB，最多 4 个连接；请求读取超时 5 秒，任务/调用上限 20 分钟，完整音频最多 256 MiB。客户端与服务端使用 `CurrentUserOnly` 检查用户和 Windows 权限级别，服务端另核验本机客户端；不会接受远程机器的任务。相关 OS 身份行为见 [Microsoft PipeOptions 文档](https://learn.microsoft.com/en-us/dotnet/api/system.io.pipes.pipeoptions?view=net-10.0)。
 
-本地 MCP Server 是以当前 Windows 用户身份运行的程序。预设、云端开关、工具暴露和导出目录均是应用级约束，不能构成对同用户恶意进程的完整安全隔离；同用户有权限直接修改自己的配置文件或编写其他 IPC 客户端。本工具不提供系统命令执行、系统设备修改、任意文件读取/删除或 Key 访问能力。
+本地 MCP Server 是以当前 Windows 用户身份运行的程序。预设、工具暴露和导出目录均是应用级约束，不能构成对同用户恶意进程的完整安全隔离；同用户有权限直接修改自己的配置文件或编写其他 IPC 客户端。本工具不提供系统命令执行、系统设备修改、任意文件读取/删除或 Key 访问能力。

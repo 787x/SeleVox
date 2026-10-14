@@ -308,4 +308,4 @@ MiMo“音频标签脚本”模式提供“AI 添加标签”：在完整原文�
 ./artifacts/pr14-portable/SeleVox.Cli.exe mcp
 ```
 
-Agent 在线 TTS 默认关闭，独立于主程序自动朗读/问答授权；须用户通过 `config set --allow-online true` 开启。MCP 默认不暴露修改持久默认值和删除预设，可由 CLI 单独开启。实际参数、MiMo 三模式、MCP 客户端配置、任务语义及文件权限边界见 [CLI / MCP 使用说明](docs/CLI-MCP.md)，构建、真实服务和未验证项见 [PR14 验证记录](verification/PR14.md)。
+主界面配置好在线 TTS 服务及凭据后，CLI/MCP 可直接使用，无需额外 Agent 授权；Auto Speak、Auto Ask 的独立自动上传授权不变。服务地址和 Key 仍仅在主界面管理，Agent 不能覆盖地址或读取、导出凭据。MCP 默认不暴露修改持久默认值和删除预设，可由 CLI 单独开启。实际参数、MiMo 三模式、MCP 客户端配置、任务语义及文件权限边界见 [CLI / MCP 使用说明](docs/CLI-MCP.md)，构建、真实服务和未验证项见 [PR14 验证记录](verification/PR14.md)。

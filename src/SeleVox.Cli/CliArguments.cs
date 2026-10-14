@@ -9,7 +9,7 @@ SeleVox.Cli (Windows x64) — JSON results; credentials remain in the desktop ap
   synthesize [text input] --output FILE.wav [--overwrite] [--wait]
   providers list | devices list | voices list [--provider NAME]
   presets list | presets show NAME | presets save NAME [TTS options] | presets delete NAME
-  config show | config set [TTS options] [--allow-online true|false]
+  config show | config set [TTS options]
     [--export-directory PATH] [--expose-delete-preset true|false] [--expose-set-defaults true|false]
   jobs status ID | jobs stop ID | clones list | mcp
 TTS options (omitted fields inherit defaults; no API URL/key overrides):
@@ -67,7 +67,6 @@ Exit: 0 success/submitted, 2 input, 3 permission, 4 execution/connection, 5 busy
             {
                 case "text": text = value; break; case "file": file = value; break;
                 case "preset": case "output": a[name] = value; break;
-                case "allow-online": a["allowOnline"] = bool.Parse(value); break;
                 case "export-directory": a["exportDirectory"] = Path.GetFullPath(value); break;
                 case "expose-delete-preset": a["exposeDeletePreset"] = bool.Parse(value); break;
                 case "expose-set-defaults": a["exposeSetDefaults"] = bool.Parse(value); break;

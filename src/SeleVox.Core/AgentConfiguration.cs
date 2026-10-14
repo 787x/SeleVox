@@ -17,8 +17,6 @@ public sealed record AgentConfiguration
 {
     public JsonElement Defaults { get; init; } = AgentJson.Empty;
     public Dictionary<string, JsonElement> Presets { get; init; } = new(StringComparer.Ordinal);
-    public bool AllowOnline { get; init; }
-    public string? AuthorizedOpenAiAddress { get; init; }
     public bool ExposeDeletePreset { get; init; }
     public bool ExposeSetDefaults { get; init; }
     public string ExportDirectory { get; init; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SeleVox", "agent-exports");
@@ -29,7 +27,18 @@ public sealed class AgentStore(string path)
     {
         if (!File.Exists(path)) return new();
         if (new FileInfo(path).Length > 1024 * 1024) throw new InvalidDataException();
-        var config = JsonSerializer.Deserialize<AgentConfiguration>(File.ReadAllText(path), AgentJson.Options) ?? throw new InvalidDataException();
+        // Ignore only the two retired permission fields. Other unknown configuration fields remain errors.
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        if (document.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidDataException();
+        using var normalized = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(normalized))
+        {
+            writer.WriteStartObject();
+            foreach (var property in document.RootElement.EnumerateObject())
+                if (property.Name is not ("AllowOnline" or "AuthorizedOpenAiAddress")) property.WriteTo(writer);
+            writer.WriteEndObject();
+        }
+        var config = JsonSerializer.Deserialize<AgentConfiguration>(normalized.ToArray(), AgentJson.Options) ?? throw new InvalidDataException();
         Validate(config); return config;
     }
     public AgentConfiguration Update(Func<AgentConfiguration, AgentConfiguration> change)
@@ -50,7 +59,6 @@ public sealed class AgentStore(string path)
         AgentParameters.Validate(c.Defaults);
         if (c.Presets.Count > 100 || !Path.IsPathFullyQualified(c.ExportDirectory) || c.ExportDirectory.Length > 240) throw new InvalidDataException();
         foreach (var p in c.Presets) { ValidateName(p.Key); AgentParameters.Validate(p.Value); }
-        if (c.AuthorizedOpenAiAddress is not null && Settings.NormalizeServiceUrl(c.AuthorizedOpenAiAddress) != c.AuthorizedOpenAiAddress) throw new InvalidDataException();
     }
     public static void ValidateName(string name)
     {

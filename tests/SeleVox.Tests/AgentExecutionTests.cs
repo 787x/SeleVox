@@ -98,18 +98,18 @@ public sealed class AgentExecutionTests
         }
         finally { Directory.Delete(directory, true); }
     }
-    [Fact] public async Task OnlineDefaultsAndMcpExposureRequireSeparatePermission()
+    [Fact] public async Task OnlineSynthesisNeedsNoAgentPermissionAndMcpExposureRemainsRestricted()
     {
         var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()); Directory.CreateDirectory(directory);
         var speech = new Speech(_ => Task.FromResult(Wave())); using var reading = new ReadingSession(speech, new NoPlayback());
-        using var execution = new AgentExecution(reading, speech, () => new(Provider: TtsProvider.MiMo, AllowAutomaticMiMo: true), action => action(), directory);
+        using var execution = new AgentExecution(reading, speech, () => new(Provider: TtsProvider.MiMo), action => action(), directory);
         try
         {
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => execution.ExecuteAsync(R("synthesize", new { text = "fixture", output = Path.Combine(directory, "x.wav") }), default));
+            var online = (AgentJob)await execution.ExecuteAsync(R("synthesize", new { text = "fixture", output = Path.Combine(directory, "x.wav"), wait = true }), default); Assert.Equal("completed", online.State);
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() => execution.ExecuteAsync(R("config.set", new { parameters = new { rate = 1.1 }, mcp = true }), default));
             await execution.ExecuteAsync(R("config.set", new { exposeSetDefaults = true, exposeDeletePreset = true }), default);
             await execution.ExecuteAsync(R("config.set", new { parameters = new { rate = 1.1 }, mcp = true }), default);
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => execution.ExecuteAsync(R("config.set", new { allowOnline = true, mcp = true }), default));
+            await Assert.ThrowsAsync<InvalidDataException>(() => execution.ExecuteAsync(R("config.set", new { allowOnline = true, mcp = true }), default));
             await execution.ExecuteAsync(R("presets.save", new { name = "p", parameters = new { rate = 1.2 } }), default);
             await execution.ExecuteAsync(R("presets.delete", new { name = "p", mcp = true }), default);
         }

@@ -28,7 +28,6 @@ public sealed class AgentOnlineTests(ITestOutputHelper log)
         {
             // Replace test defaults temporarily, avoiding inherited incompatible per-provider advanced fields.
             new AgentStore(path).Update(c => c with { Defaults = AgentJson.Empty });
-            Assert.True((await cli.CallAsync("config.set", new { allowOnline = true })).Success);
             if (AzureCredentials.MiMo().Read() is not null)
             {
                 await Generate("mimo-preset", new { provider = "MiMo", mode = "Preset", voice = "冰糖", style = "自然平静", tags = Array.Empty<string>(), role = "播音员", direction = "温柔而清晰", autoSegment = true, segmentCharacters = 50 }, "你好，这是智能语音的短测试。[停顿]祝你今天一切顺利。为了验证长文本分段，我们继续朗读第二句话，检查生成文件是否完整，中文和表情符号也应正确处理。😀");

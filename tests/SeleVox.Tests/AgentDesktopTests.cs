@@ -51,7 +51,7 @@ public sealed class AgentDesktopTests
         using var cli = new AgentClient();
         try
         {
-            Assert.True((await cli.CallAsync("config.set", new { parameters = new { provider = "Windows", voice = (string?)null, devices = Array.Empty<string>() }, allowOnline = false, exportDirectory = directory, exposeDeletePreset = false, exposeSetDefaults = false })).Success);
+            Assert.True((await cli.CallAsync("config.set", new { parameters = new { provider = "Windows", voice = (string?)null, devices = Array.Empty<string>() }, exportDirectory = directory, exposeDeletePreset = false, exposeSetDefaults = false })).Success);
             await using (var client = await McpClient.CreateAsync(new StdioClientTransport(new() { Command = Executable, Arguments = ["mcp"], Name = "SeleVox" })))
             {
                 var tools = await client.ListToolsAsync(); Assert.Equal(12, tools.Count); Assert.DoesNotContain(tools, t => t.Name is "delete_preset" or "set_defaults");

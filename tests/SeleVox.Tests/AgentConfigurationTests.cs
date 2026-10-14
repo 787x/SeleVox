@@ -60,10 +60,10 @@ public sealed class AgentConfigurationTests
         try
         {
             store.Update(c => c with { Defaults = J("""{"provider":"MiMo","style":"","tags":[]}"""), Presets = new() { ["test"] = J("""{"voice":"Mia"}""") } });
-            Assert.False(store.Load().AllowOnline); Assert.False(store.Load().ExposeSetDefaults); Assert.False(store.Load().ExposeDeletePreset);
+            Assert.False(store.Load().ExposeSetDefaults); Assert.False(store.Load().ExposeDeletePreset);
             Assert.Equal("Mia", store.Load().Presets["test"].GetProperty("voice").GetString());
             using (var lease = new FileStream(path + ".lock", FileMode.Open, FileAccess.ReadWrite, FileShare.None)) Assert.Throws<IOException>(() => store.Update(c => c));
-            File.WriteAllText(path, "invalid"); Assert.Throws<JsonException>(() => store.Update(c => c)); Assert.Equal("invalid", File.ReadAllText(path));
+            File.WriteAllText(path, "invalid"); Assert.ThrowsAny<JsonException>(() => store.Update(c => c)); Assert.Equal("invalid", File.ReadAllText(path));
             Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
         }
         finally { Directory.Delete(directory, true); }
