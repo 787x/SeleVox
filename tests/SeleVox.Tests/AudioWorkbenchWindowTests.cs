@@ -195,7 +195,7 @@ public sealed class AudioWorkbenchWindowTests
         }
         finally { window.Close(); File.Delete(path); }
     });
-    private static void Click(Window window, string content) => Buttons(window).Single(b => Equals(b.Content, content)).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+    internal static void Click(Window window, string content) => Buttons(window).Single(b => Equals(b.Content, content)).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
     private static IEnumerable<DependencyObject> LogicalDescendants(DependencyObject parent)
     { foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>()) { yield return child; foreach (var nested in LogicalDescendants(child)) yield return nested; } }
     private static void Render(Window window, string name)

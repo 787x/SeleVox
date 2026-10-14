@@ -1,4 +1,4 @@
-# SeleVox — PR11
+# SeleVox — PR12
 
 Windows 11 x64 的选区朗读工具，支持手动热键与可关闭的鼠标自动朗读，普通用户权限运行。WPF 设置窗口关闭后驻留托盘；托盘双击或“设置”重新打开，“退出”结束程序。重复启动会通知已有实例显示设置窗口。
 
@@ -79,7 +79,7 @@ OCR 不保证小字体、花体、低对比度、复杂多栏/表格、竖排或
 
 默认仍为 Windows 本地 TTS。Provider 下拉框追加 **MiMo TTS** 和 **OpenAI-Compatible TTS**；选择、模型、音色、风格和设备均需点击固定底部“保存设置”才能用于下一次朗读。底部提示实际生效的 Provider，独立自动授权不会保存尚未保存的 Provider。
 
-**MiMo**：保存 API Key（不回填明文），按钮行右侧“获取 API Key”可用默认浏览器打开[小米 Key 控制台](https://platform.xiaomimimo.com/console/api-keys)。选择预置音色并填写可选自然语言风格。默认中文音色为 `冰糖`，还提供 `mimo_default`、`茉莉`、`苏打`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。模型名默认 `mimo-v2.5-tts`，可手工填写其他模型名称，但目前仅验证该预置音色模型；其他模型使用非流式路径且不保证协议兼容，保存后生效；使用 `https://api.xiaomimimo.com/v1/chat/completions`；待合成内容放在 assistant 消息，自然语言风格说明单独放在 user 消息，读取 JSON 中的 Base64 WAV。语速滑块转换为自然语言快慢指导，属于近似控制，不保证精确倍速，不发送数值 speed，不改写或翻译原文。只实现预置音色。
+**MiMo**：保存 API Key（不回填明文），按钮行右侧“获取 API Key”可用默认浏览器打开[小米 Key 控制台](https://platform.xiaomimimo.com/console/api-keys)。选择预置音色并填写可选自然语言风格。默认中文音色为 `冰糖`，还提供 `mimo_default`、`茉莉`、`苏打`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。模型名默认 `mimo-v2.5-tts`，可手工填写其他模型名称，但目前仅验证该预置音色模型；其他模型使用非流式路径且不保证协议兼容，保存后生效；使用 `https://api.xiaomimimo.com/v1/chat/completions`；待合成内容放在 assistant 消息，自然语言风格说明单独放在 user 消息，读取 JSON 中的 Base64 WAV。语速滑块转换为自然语言快慢指导，属于近似控制，不保证精确倍速，不发送数值 speed，不改写或翻译原文。日常选区朗读界面使用预置音色；PR12 的独立音频工作台另提供 VoiceDesign / VoiceClone。
 
 **开发者技术参考：** [MiMo TTS 协议、风格控制、流式音频与唱歌 SSE 技术指南](docs/MiMoTTS.md)。本文说明官方协议与项目实现的区别，并保留用户风格实验及后续维护约束。
 
@@ -257,7 +257,7 @@ Remove-Item Env:SELEVOX_HTTP_TTS_TESTS
 
 - **默认试音**：使用内置中英文短文本，生成后实际播放；无需填写正文。试音也成为最后一次成功结果。
 - **生成**：合成编辑框中的实际文本；正文最多 32768 UTF-16 字符，超过上限明确报错，不截断。
-- **试听 / 保存 WAV**：复用最后一次成功结果，不重复调用 TTS。底部显示该结果的 Provider、Voice、关键参数、格式和样本帧数；修改上方参数不改变旧结果。
+- **试听 / 保存 WAV**：复用最后一次成功结果，不重复调用 TTS。结果区显示该结果的 Provider、Voice、关键参数、格式和样本帧数；修改输入参数不改变旧结果。
 - 支持 Windows 本地语音；Azure Region 与语音查询；Edge 语音查询、地区筛选和音调；MiMo Model、预置音色、自然语言说明及整体风格标签；OpenAI-Compatible Model、Voice、Instructions。各 Provider 共用语速设置。
 - MiMo 文件生成使用已有完整 WAVE 路径；工作台不消费流式 PCM。日常朗读的流式开关、SSE、LLM 逐句朗读保持独立。
 - API Key 仅在主设置通过 Credential Manager 管理。OpenAI-Compatible 使用主设置已保存的服务地址。工作台提供凭据状态和前往设置入口，不显示或复制 Key。
@@ -267,3 +267,21 @@ Remove-Item Env:SELEVOX_HTTP_TTS_TESTS
 - “保存工作台默认参数”只保存语音参数；窗口位置和大小在关闭时保存到 `%LOCALAPPDATA%\SeleVox\audio-workbench.json`，不保存待合成正文或生成音频，不改写 `settings.json` 和自动上传授权。风格说明和 Instructions 属于显式保存的工作台参数，请勿在其中填写秘密。
 
 本 PR 不实现 CLI/MCP、MP3 或批量任务。实际验证、复跑命令和待人工验收项见 [PR11 验证记录](verification/PR11.md)。
+
+### PR12：MiMo 高级创作控制台
+
+工作台保持左侧输入 / 参数、右侧结果 / 试听 / 保存。选择 MiMo 后切换三种模式：
+
+- **预置音色**：保留音色列表和既有参数，选择自然语言、导演模式、风格标签、音频标签脚本或唱歌。自然语言模式仍可配合原有整体标签；唱歌沿用独占 `(唱歌)` 前缀规则。
+- **VoiceDesign**：填写音色描述和播报文本，可附加自然语言风格或导演指导。使用 `mimo-v2.5-tts-voicedesign`，不传预置 voice，不自动润色正文。成功后“保存此 VoiceDesign 结果为克隆源”直接保存缓存音频，可立即切换 VoiceClone 使用。
+- **VoiceClone**：从本地库选择样本，或上传 WAV / MP3、录制默认麦克风样本。使用 `mimo-v2.5-tts-voiceclone`，点击生成时才发送所选样本与播报文本；上传、录音、样本试听和删除不调用 MiMo。
+
+导演模式用角色 / 场景 / 指导拼接自然语言，可用电台模板填充；正文下方预览实际 `user` / 各段 `assistant` 内容。音频标签模式提供多行脚本与 11 个常用标签按钮，插入光标处或选区前，保留选中的正文，也可直接手写标签。
+
+自动分段默认开启，字符上限可设 50–3000（默认 3000）。原有自然句边界、Unicode 文本元素和单段 3000 UTF-8 字节预算继续生效；中文 / Emoji 可能先达到字节上限。关闭分段后超限会提示，不发送超限请求。组合音色 / 风格指令最多 3000 UTF-8 字节；总正文、HTTP 响应和合并音频仍受原有上限约束。此设置只用于 MiMo 工作台完整生成，其他 Provider 和日常流式路径保持原行为。
+
+本地样本库位于 `%LOCALAPPDATA%\SeleVox\clone-samples`，包含库内音频与 `samples.json`（名称、来源、路径、创建时间）。上传会复制文件，删除只删除库内副本；库不与云端同步。样本须可解码、5–30 秒；为满足官方 **Base64 ≤ 10 MiB**，原文件采用约 7.5 MiB 的更保守上限。录音最长 30 秒，保留录音中的静音，关闭窗口丢弃未完成录音；录制内容仅在明确发送生成时上传。
+
+结果始终保留生成时的参数。修改草稿不改变旧结果；失败 / 取消保留最后成功结果，迟到结果被废弃。试听、保存 WAV、保存设计结果为克隆源都复用音频。显式保存默认值会保存模型、音色描述、最终风格指令和分段设置；导演字段再次打开以合并后的自然语言显示，不保存正文、参考音频 Base64 或 Key。
+
+实际可控 HTTP、Windows 桌面与录音验证、真实服务未验证项见 [PR12 验证记录](verification/PR12.md)。
