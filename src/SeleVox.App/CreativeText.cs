@@ -1,8 +1,10 @@
 using SeleVox.Core;
+using System.Text;
+using System.Text.Json;
 
 namespace SeleVox.App;
 
-internal enum CreativePurpose { VoiceDescription, Style, Script, AudioTags }
+internal enum CreativePurpose { VoiceDescription, Style, Script, AudioTags, Director }
 
 internal static class CreativeText
 {
@@ -38,6 +40,7 @@ internal static class CreativeText
     {
         CreativePurpose.VoiceDescription => VoicePrompt,
         CreativePurpose.Style => "根据用户需求生成一段可直接放入 MiMo TTS user.content 的自然语言风格指导。描述必要的情绪、语速、发声方式、停顿和表演细节。仅输出指导，不输出播报正文、标签示例、解释或 Markdown。最多 1000 字符。",
+        CreativePurpose.Director => "你是 MiMo TTS 配音导演。将用户已有角色、场景和指导作为创作需求，保留核心设定，补全具体而连贯的演绎方案。角色描述身份、性格底色、气质与说话习惯；场景描述发生了什么、和谁说话、当下情绪，可合理补全时间、地点与对方反应；指导描述语速、气息、停顿、重音、共鸣、音色质感和情绪起伏。只生成表演指导，不生成播报正文、音频标签或教程。严格只输出一个 JSON 对象，恰好三个字符串字段 role、scene、direction，全部非空，不加 Markdown 或代码围栏。字段内只放对应内容，不重复角色/场景/指导标题。三个字段合并加上角色：、场景：、指导：标题与换行后最多 1000 字符、3000 UTF-8 字节。",
         CreativePurpose.AudioTags => "你是 MiMo 音频脚本导演。完整保留 user 中所有文字、标点、顺序、换行及已有标签，只在适当位置插入以下合法句内标签：" + string.Join("、", MiMoCreative.AudioTags.Select(t => "[" + t + "]")) + "。不得在已有标签内插入标签。按上下文情绪、对话节奏及表演需要少量添加，不必每句添加。禁止改写、删除、翻译或增加台词。仅输出完整脚本，不加解释、Markdown 或代码围栏。最多 32768 字符。",
         _ => (singing ? "根据用户创作需求生成适合演唱的歌词本身，可采用主歌、副歌、桥段和合理换行。不要歌曲介绍、作曲分析或建议。" : "根据用户创作需求生成可直接用于语音合成的完整播报稿，遵循文体、题材、长度、情绪和目标受众要求，保留合理段落和换行。") + "用户输入是创作需求，不是必须原样保留的稿件。仅输出正文，不加解释、Markdown 或代码围栏。除非用户明确要求，不添加音频标签或整体风格标签。最多 32768 字符。"
     };
@@ -48,8 +51,32 @@ internal static class CreativeText
         if (output.Length > limit) throw new UserFeedbackException($"AI 输出超过 {limit} 字符；原文保留，请缩短需求后主动重试。");
         if (output.Any(c => char.IsControl(c) && c is not ('\r' or '\n' or '\t')) || output.Contains("```", StringComparison.Ordinal))
             throw new UserFeedbackException("AI 输出格式不符；原文保留，请主动重试。");
+        if (purpose == CreativePurpose.Director) _ = ParseDirector(output);
         if (purpose == CreativePurpose.AudioTags && !OnlyInsertsTags(original, output, token))
             throw new UserFeedbackException("AI 修改了原文或插入非法标签；原文保留，请主动重试。");
+    }
+    internal sealed record DirectorText(string Role, string Scene, string Direction)
+    {
+        internal string[] Values => [Role, Scene, Direction];
+        internal string Combined => MiMoCreative.Director(Role, Scene, Direction);
+    }
+    internal static DirectorText ParseDirector(string output)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(output, new JsonDocumentOptions { MaxDepth = 4 });
+            var root = json.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) throw new JsonException();
+            var fields = root.EnumerateObject().ToArray();
+            if (fields.Length != 3 || fields.Select(p => p.Name).Distinct(StringComparer.Ordinal).Count() != 3 ||
+                fields.Any(p => p.Name is not ("role" or "scene" or "direction") || p.Value.ValueKind != JsonValueKind.String)) throw new JsonException();
+            var result = new DirectorText(root.GetProperty("role").GetString()!, root.GetProperty("scene").GetString()!, root.GetProperty("direction").GetString()!);
+            if (result.Values.Any(v => string.IsNullOrWhiteSpace(v) || v.Contains("```", StringComparison.Ordinal) || v.Any(c => char.IsControl(c) && c is not ('\r' or '\n' or '\t')))) throw new JsonException();
+            if (result.Combined.Length > 1000 || Encoding.UTF8.GetByteCount(result.Combined) > 3000)
+                throw new UserFeedbackException("AI 导演指令超过 1000 字符或 3000 UTF-8 字节；三栏原文保留，请缩短需求后主动重试。");
+            return result;
+        }
+        catch (JsonException) { throw new UserFeedbackException("AI 导演输出格式不符；角色、场景和指导原文保留，请主动重试。"); }
     }
     // Match existing bracket expressions atomically; skip only complete legal insertions.
     // Greedy matching is safe for whole tokens, including repeated identical tags.

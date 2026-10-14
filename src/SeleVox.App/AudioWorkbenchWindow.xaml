@@ -70,6 +70,8 @@
                 <Button Content="清空整体风格" Click="ClearMiMoStyles_Click" HorizontalAlignment="Left" Padding="8,4" Margin="0,6,0,0"/>
     </StackPanel>
     <StackPanel x:Name="DirectorPanel" Visibility="Collapsed">
+     <DockPanel Margin="0,6"><Button x:Name="AiDirector" DockPanel.Dock="Right" Content="AI 生成" Tag="Director" Click="AiGenerate_Click" Padding="8,4" Margin="6,0,0,0"/><TextBlock Text="导演模式 · 角色 / 场景 / 指导" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center"/></DockPanel>
+     <TextBlock Text="在任一栏填写需求，AI 将补全并替换三栏；合并后最多 1000 字符。" TextWrapping="Wrap" Foreground="#546575"/>
      <TextBlock Text="角色"/><TextBox x:Name="DirectorRole" TextChanged="Creative_Changed" Margin="0,5"/>
      <TextBlock Text="场景"/><TextBox x:Name="DirectorScene" TextChanged="Creative_Changed" Margin="0,5"/>
      <TextBlock Text="指导"/><TextBox x:Name="DirectorDirection" AcceptsReturn="True" TextWrapping="Wrap" Height="65" TextChanged="Creative_Changed" Margin="0,5"/>
