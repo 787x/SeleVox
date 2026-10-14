@@ -1,6 +1,7 @@
 using SeleVox.Core;
 using System.Text;
 using System.Text.Json;
+using System.Globalization;
 
 namespace SeleVox.App;
 
@@ -78,11 +79,18 @@ internal static class CreativeText
         }
         catch (JsonException) { throw new UserFeedbackException("AI 导演输出格式不符；角色、场景和指导原文保留，请主动重试。"); }
     }
-    // Match existing bracket expressions atomically; skip only complete legal insertions.
+    // Match original UTF-16 verbatim and bracket expressions atomically.
+    // Skip legal insertions only at original extended grapheme boundaries (including CRLF).
     // Greedy matching is safe for whole tokens, including repeated identical tags.
     internal static bool OnlyInsertsTags(string original, string output, CancellationToken token = default)
     {
         var tags = MiMoCreative.AudioTags.Select(t => "[" + t + "]").ToArray();
+        var boundaries = new bool[original.Length + 1];
+        foreach (var start in StringInfo.ParseCombiningCharacters(original)) boundaries[start] = true;
+        boundaries[original.Length] = true;
+        // Keep the Windows newline pair atomic, independently of grapheme segmentation.
+        for (var i = 1; i < original.Length; ++i)
+            if (original[i - 1] == '\r' && original[i] == '\n') boundaries[i] = false;
         int a = 0, b = 0;
         while (b < output.Length)
         {
@@ -92,11 +100,18 @@ internal static class CreativeText
             if (a < original.Length && original[a] == '[')
             {
                 var end = original.IndexOf(']', a);
-                if (end >= a) length = end - a + 1; else unclosed = true;
+                if (end >= a)
+                {
+                    length = end - a + 1;
+                    // A combining mark may attach to the closing bracket. Match it together
+                    // so repeated tags before the original expression remain unambiguous.
+                    while (a + length < original.Length && !boundaries[a + length]) ++length;
+                }
+                else unclosed = true;
             }
             if (!unclosed && a < original.Length && output.AsSpan(b).StartsWith(original.AsSpan(a, length), StringComparison.Ordinal))
             { a += length; b += length; continue; }
-            var insertion = output[b] == '[' ? tags.FirstOrDefault(t => output.AsSpan(b).StartsWith(t, StringComparison.Ordinal)) : null;
+            var insertion = boundaries[a] && output[b] == '[' ? tags.FirstOrDefault(t => output.AsSpan(b).StartsWith(t, StringComparison.Ordinal)) : null;
             if (insertion is not null) { b += insertion.Length; continue; }
             if (unclosed && output[b] == '[') { ++a; ++b; continue; }
             return false;

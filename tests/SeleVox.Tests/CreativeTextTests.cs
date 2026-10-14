@@ -21,6 +21,43 @@ public sealed class CreativeTextTests
     [InlineData("a[原有]b", "[停顿]a[原有][小声]b", true)]
     [InlineData("你好。", "", false)]
     public void OnlyLegalInsertionsPreserveOriginal(string source, string output, bool valid) => Assert.Equal(valid, CreativeText.OnlyInsertsTags(source, output));
+    [Fact] public void TagsOnlyInsertAtWholeTextElementAndBracketBoundaries()
+    {
+        (string Source, int[] Boundaries)[] cases =
+        [
+            ("\U0001F600", [0, 2]),                          // Surrogate pair.
+            ("a\u0301\u0327", [0, 3]),                     // Base plus combining marks.
+            ("a\r\nb", [0, 1, 3, 4]),                      // CRLF is one text element.
+            ("\U0001F469\u200D\U0001F4BB", [0, 5]),        // Joined emoji.
+            ("\U0001F44D\U0001F3FD", [0, 4]),              // Emoji plus skin tone.
+            ("\U0001F1E8\U0001F1F3", [0, 4]),              // Flag regional indicators.
+            ("你好。", [0, 1, 2, 3]),
+            ("[停顿]", [0, 4]),
+            ("[原有\U0001F600]a\u0301", [0, 6, 8]),
+            ("[原有]\u0301a", [0, 5, 6]),                  // Closing bracket plus mark.
+            ("[\u0301", [0, 2])                           // Unclosed bracket plus mark.
+        ];
+        foreach (var (source, boundaries) in cases)
+            foreach (var tag in MiMoCreative.AudioTags)
+                for (var position = 0; position <= source.Length; ++position)
+                {
+                    var output = source.Insert(position, "[" + tag + "][" + tag + "]");
+                    var valid = boundaries.Contains(position);
+                    Assert.Equal((source, position, valid), (source, position, CreativeText.OnlyInsertsTags(source, output)));
+                    if (valid) CreativeText.Validate(CreativePurpose.AudioTags, source, output);
+                    else Assert.Throws<UserFeedbackException>(() => CreativeText.Validate(CreativePurpose.AudioTags, source, output));
+                }
+    }
+    [Fact] public void UnicodeOriginalRemainsExactWithMultipleLegalInsertions()
+    {
+        const string source = "\U0001F600a\u0301\r\n[叹气]再见。";
+        const string output = "[小声]\U0001F600[停顿]a\u0301[吸气]\r\n[叹气][叹气]再见。[停顿]";
+        Assert.True(CreativeText.OnlyInsertsTags("[停顿]\u0301a", "[停顿][停顿][停顿]\u0301a"));
+        Assert.True(CreativeText.OnlyInsertsTags(source, source));
+        Assert.True(CreativeText.OnlyInsertsTags(source, output));
+        Assert.False(CreativeText.OnlyInsertsTags(source, output.Replace("a\u0301", "\u00E1", StringComparison.Ordinal)));
+        Assert.False(CreativeText.OnlyInsertsTags(source, output.Replace("\r\n", "\n", StringComparison.Ordinal)));
+    }
     [Theory] [InlineData(CreativePurpose.VoiceDescription, 1000)] [InlineData(CreativePurpose.Style, 1000)] [InlineData(CreativePurpose.Script, 32768)] [InlineData(CreativePurpose.AudioTags, 32768)]
     internal void Limits(CreativePurpose purpose, int limit)
     {
