@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Documents;
 using SeleVox.App;
 using SeleVox.Core;
 
@@ -67,7 +68,7 @@ public sealed class DiagnosticsWindowTests
             ((TextBox)w.FindName("OpenAiModel")).Text = "unsaved-model";
             Assert.True(w.HasUnsavedDiagnosticSettings(DiagnosticService.OpenAiTts));
             ((TextBox)w.FindName("LlmModel")).Text = "draft"; Assert.True(w.HasUnsavedDiagnosticSettings(DiagnosticService.Llm));
-            var entry = Children<Button>(w).Single(b => b.Content.ToString() == "服务检测 · TTS / LLM"); Click(entry);
+            var entry = Children<Button>(w).Single(b => b.Content.ToString() == "服务检测"); Click(entry);
             Assert.Equal(TtsProvider.Windows, s.Provider); Assert.Single(w.OwnedWindows.Cast<Window>());
             Assert.True(Text(w.OwnedWindows.Cast<Window>().Single(), "尚未保存"));
             w.Close(); Assert.Empty(w.OwnedWindows.Cast<Window>());
@@ -85,6 +86,56 @@ public sealed class DiagnosticsWindowTests
         var result = await new ProviderDiagnostics().RunAsync(DiagnosticSnapshot.Create(DiagnosticService.Windows, settings, null), default);
         Assert.Equal(DiagnosticState.Succeeded, result.State); Assert.Equal(ReadingState.Playing, reading.Status.State);
         reading.TogglePause(); Assert.Equal(ReadingState.Paused, reading.Status.State); reading.Stop();
+    }
+    [Fact] public Task InlineLinksShareDiagnosticsAndShowSuccessFailureAndExpiry() => OcrDesktopTests.RunSta(async () =>
+    {
+        var settings = ProviderDiagnosticsTests.Snapshot(DiagnosticService.Windows).Settings with { VoiceId = null };
+        var fail = false; var calls = 0;
+        var diagnostics = ProviderDiagnosticsTests.Fake((_, _, _) => {
+            ++calls; if (fail) throw new UserFeedbackException("受控服务失败。");
+            return Task.FromResult<Stream>(new MemoryStream(AudioGenerationTests.Wave()));
+        }, answer: (_, _) => { ++calls; if (fail) throw new UserFeedbackException("受控服务失败。"); return Task.FromResult("OK"); });
+        MainWindow? w = null;
+        w = new(settings, updated => { settings = updated; w!.SetAutomaticSettings(updated); return null; }, () => { }, () => { }, () => { }, () => Task.FromResult<string?>(null), () => { });
+        w.CreateDiagnosticsWindow = () => new(() => settings, w.HasUnsavedDiagnosticSettings, diagnostics, (_, _) => "fixture");
+        try
+        {
+            w.Show();
+            foreach (var name in new[] { "WindowsDiagnosticLink", "AzureDiagnosticLink", "EdgeDiagnosticLink", "MiMoDiagnosticLink", "OpenAiDiagnosticLink", "LlmDiagnosticLink" })
+            {
+                var link = (Hyperlink)w.FindName(name); fail = false;
+                link.RaiseEvent(new RoutedEventArgs(Hyperlink.ClickEvent));
+                await Wait(() => new TextRange(link.ContentStart, link.ContentEnd).Text == "检测成功");
+                Assert.Equal(Brushes.ForestGreen, link.Foreground);
+                Assert.False(w.OwnedWindows.Cast<Window>().Single().IsVisible);
+                fail = true; link.RaiseEvent(new RoutedEventArgs(Hyperlink.ClickEvent));
+                await Wait(() => new TextRange(link.ContentStart, link.ContentEnd).Text == "检测失败"); Assert.Equal(Brushes.Firebrick, link.Foreground);
+            }
+            Assert.Equal(12, calls);
+            foreach (var provider in Enum.GetValues<TtsProvider>())
+            {
+                ((ComboBox)w.FindName("Provider")).SelectedIndex = (int)provider;
+                await w.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Render);
+                await Task.Delay(80);
+                if (Environment.GetEnvironmentVariable("SELEVOX_UI_RENDER_DIR") is { } directory)
+                { RenderMain(w, Path.Combine(directory, "pr15-main-" + provider + ".png")); }
+            }
+            ((ComboBox)w.FindName("Provider")).SelectedIndex = 0; w.Width = 500;
+            await w.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Render);
+            if (Environment.GetEnvironmentVariable("SELEVOX_UI_RENDER_DIR") is { } minDirectory) RenderMain(w, Path.Combine(minDirectory, "pr15-main-minimum.png"));
+            var entry = Children<Button>(w).Single(b => b.Content.ToString() == "服务检测"); Click(entry);
+            Assert.True(w.OwnedWindows.Cast<Window>().Single().IsVisible); Assert.Equal(12, calls);
+            ((Slider)w.FindName("Rate")).Value = 1.1; ((DiagnosticsWindow)w.OwnedWindows.Cast<Window>().Single()).Refresh();
+            Assert.Equal(Brushes.Gray, ((Hyperlink)w.FindName("WindowsDiagnosticLink")).Foreground);
+        }
+        finally { w.Close(); }
+    });
+    private static void RenderMain(Window w, string path)
+    {
+        w.UpdateLayout(); Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var bitmap = new RenderTargetBitmap((int)w.ActualWidth, (int)w.ActualHeight, 96, 96, PixelFormats.Pbgra32); bitmap.Render(w);
+        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var file = File.Create(path); encoder.Save(file);
     }
     private static void Render(Window w)
     {

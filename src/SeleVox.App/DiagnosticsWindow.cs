@@ -19,6 +19,7 @@ internal sealed class DiagnosticsWindow : Window
         internal CancellationTokenSource? Cancellation;
         internal string? Identity;
         internal bool Expired;
+        internal DiagnosticState State;
     }
     private readonly Func<Settings> saved;
     private readonly Func<DiagnosticService, bool> dirty;
@@ -27,6 +28,19 @@ internal sealed class DiagnosticsWindow : Window
     private readonly List<Row> rows = [];
     private readonly DispatcherTimer monitor = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private bool closed, busy;
+    internal event Action<DiagnosticService, DiagnosticState, string, bool>? DiagnosticChanged;
+    internal Task RunServiceAsync(DiagnosticService service)
+    {
+        var row = rows.Single(r => r.Service == service);
+        if (row.Cancellation is not null) { row.Cancellation.Cancel(); return Task.CompletedTask; }
+        Refresh();
+        if (!busy && !row.Run.IsEnabled)
+        {
+            row.State = DiagnosticState.Failed; row.Result.Text = "未发起调用：" + row.Precheck.Text; Refresh();
+            return Task.CompletedTask;
+        }
+        return RunAsync(row);
+    }
     internal DiagnosticsWindow(Func<Settings> saved, Func<DiagnosticService, bool> dirty, ProviderDiagnostics? diagnostics = null,
         Func<DiagnosticService, Settings, string?>? readKey = null)
     {
@@ -74,12 +88,15 @@ internal sealed class DiagnosticsWindow : Window
                 row.Precheck.Text = ex is UserFeedbackException feedback ? feedback.Message : "配置或凭据读取失败。";
             }
             row.Run.IsEnabled = ready && !busy;
+            DiagnosticChanged?.Invoke(row.Service, row.State, row.Target.Text + "\n" + row.Precheck.Text + "\n" + row.Result.Text,
+                !busy || row.Cancellation is not null);
         }
     }
     private static void Expire(Row row)
     {
         if (row.Expired) return;
         row.Expired = true; row.Cancellation?.Cancel();
+        row.State = DiagnosticState.Expired;
         row.Result.Text = "结果过期：配置 / 凭据已改变或有未保存修改。\n" + row.Result.Text;
     }
     internal void CredentialsChanged()
@@ -96,12 +113,13 @@ internal sealed class DiagnosticsWindow : Window
         catch { row.Precheck.Text = "无法读取当前配置或凭据，请重新保存后检测。"; return; }
         busy = true; row.Expired = false; row.Identity = snapshot.Identity;
         using var cancellation = new CancellationTokenSource(); row.Cancellation = cancellation; row.Cancel.IsEnabled = true;
-        row.Result.Text = "检测中：真实功能调用（最长 90 秒）…"; Refresh();
+        row.State = DiagnosticState.Running; row.Result.Text = "检测中：真实功能调用（最长 90 秒）…"; Refresh();
         try
         {
             var result = await diagnostics.RunAsync(snapshot, cancellation.Token);
             if (closed) return;
             Refresh(); if (row.Expired) return;
+            row.State = result.State;
             var label = result.State switch { DiagnosticState.Succeeded => "成功", DiagnosticState.Canceled => "取消", _ => "失败" };
             row.Result.Text = $"{label} · {result.Elapsed.TotalSeconds:0.00} 秒 · 最近检测 {result.TestedAt.LocalDateTime:yyyy-MM-dd HH:mm:ss}\n" +
                 (result.Failure is { } failure ? $"分类：{FailureLabel(failure)}" + (result.HttpStatus is { } status ? $" · HTTP {status}" : "") + "\n" : "") + result.Message;
