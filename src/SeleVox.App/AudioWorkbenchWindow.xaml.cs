@@ -43,7 +43,8 @@ public partial class AudioWorkbenchWindow : Window
         MiMoModel.Text = s.MiMoModel; MiMoVoice.ItemsSource = Settings.MiMoVoices; MiMoVoice.SelectedItem = s.MiMoVoice; MiMoStyle.Text = s.MiMoStyle;
         RefreshMiMoStyles(); OpenAiModel.Text = s.OpenAiModel; OpenAiVoice.Text = s.OpenAiVoice; Instructions.Text = s.OpenAiInstructions;
         Rate.Value = s.Rate; Provider.SelectedItem = s.Provider;
-        Width = Math.Clamp(preferences.Width, 620, 1600); Height = Math.Clamp(preferences.Height, 620, 1400);
+        InitializeCreative(s);
+        Width = Math.Clamp(preferences.Width, 900, 1600); Height = Math.Clamp(preferences.Height, 620, 1400);
         if (double.IsFinite(preferences.Left) && double.IsFinite(preferences.Top))
         {
             var bounds = new Rect(preferences.Left, preferences.Top, Width, Height);
@@ -57,8 +58,10 @@ public partial class AudioWorkbenchWindow : Window
         Provider = Provider.SelectedItem is TtsProvider p ? p : TtsProvider.Windows,
         VoiceId = LocalVoice.SelectedValue as string, Rate = Rate.Value, AzureRegion = Region.Text.Trim(), AzureVoice = AzureVoice.SelectedValue as string,
         EdgeVoice = EdgeVoice.SelectedValue as string ?? edgeSelection, EdgeLocaleFilter = Locale.Text.Trim(), EdgePitchHz = (int)Math.Round(Pitch.Value),
-        MiMoModel = MiMoModel.Text.Trim(), MiMoVoice = MiMoVoice.SelectedItem as string ?? "冰糖", MiMoStyle = MiMoStyle.Text,
-        MiMoOverallStyles = styles.Selected.ToArray(), MiMoStreaming = false,
+        MiMoModel = MiMoModel.Text.Trim(), MiMoVoice = MiMoVoice.SelectedItem as string ?? "冰糖",
+        MiMoOverallStyles = CreativeStyles(), MiMoStreaming = false,
+        MiMoStyle = CreativeStyle(), MiMoVoiceDescription = VoiceDescription.Text,
+        MiMoAutoSegment = AutoSegment.IsChecked == true, MiMoSegmentCharacters = int.TryParse(SegmentCharacters.Text, out var chars) ? chars : -1,
         OpenAiModel = OpenAiModel.Text.Trim(), OpenAiVoice = OpenAiVoice.Text.Trim(), OpenAiInstructions = Instructions.Text };
     // An unfinished field in another provider's panel must not block the selected provider.
     private Settings EffectiveDraft(Settings? baseline = null)
@@ -68,7 +71,8 @@ public partial class AudioWorkbenchWindow : Window
             TtsProvider.Windows => s with { VoiceId = d.VoiceId },
             TtsProvider.Azure => s with { AzureRegion = d.AzureRegion, AzureVoice = d.AzureVoice },
             TtsProvider.Edge => s with { EdgeVoice = d.EdgeVoice, EdgeLocaleFilter = d.EdgeLocaleFilter, EdgePitchHz = d.EdgePitchHz },
-            TtsProvider.MiMo => s with { MiMoModel = d.MiMoModel, MiMoVoice = d.MiMoVoice, MiMoStyle = d.MiMoStyle, MiMoOverallStyles = d.MiMoOverallStyles, MiMoStreaming = false },
+            TtsProvider.MiMo => s with { MiMoModel = d.MiMoModel, MiMoVoice = d.MiMoVoice, MiMoStyle = d.MiMoStyle, MiMoOverallStyles = d.MiMoOverallStyles, MiMoStreaming = false,
+                MiMoVoiceDescription = d.MiMoVoiceDescription, MiMoAutoSegment = d.MiMoAutoSegment, MiMoSegmentCharacters = d.MiMoSegmentCharacters },
             _ => s with { OpenAiModel = d.OpenAiModel, OpenAiVoice = d.OpenAiVoice, OpenAiInstructions = d.OpenAiInstructions } };
     }
     private void Provider_Changed(object sender, SelectionChangedEventArgs e)
@@ -81,6 +85,7 @@ public partial class AudioWorkbenchWindow : Window
         MiMoPanel.Visibility = p == TtsProvider.MiMo ? Visibility.Visible : Visibility.Collapsed;
         OpenAiPanel.Visibility = p == TtsProvider.OpenAiCompatible ? Visibility.Visible : Visibility.Collapsed;
         RefreshServiceStatus();
+        RefreshCreativePreview();
     }
     private void RefreshServiceStatus()
     {
@@ -111,6 +116,7 @@ public partial class AudioWorkbenchWindow : Window
         MiMoStyleHint.Text = styles.Selected.Any(MiMoStyleTags.IsSinging)
             ? "唱歌为独立模式，适合中文歌词；普通文章未必能自然演唱。选择其他风格将退出唱歌模式。"
             : "按选择顺序组合，最多 16 项。修改用于下一次生成；可保存为工作台默认参数。";
+        RefreshCreativePreview(); MarkDraftChanged();
     }
     private void RefreshMiMoPresets()
     {
@@ -140,6 +146,7 @@ public partial class AudioWorkbenchWindow : Window
         try
         {
             if (styles.Selected.Contains(name)) styles.Remove(name); else styles.Add(name);
+            ExitSingingIfNeeded();
             MiMoStyleError.Text = "";
             // Preserve the focused toggle for keyboard users while updating all selected states.
             RefreshMiMoSelection();
@@ -151,7 +158,7 @@ public partial class AudioWorkbenchWindow : Window
     }
     private void AddMiMoStyle_Click(object sender, RoutedEventArgs e)
     {
-        try { styles.Add(MiMoCustomStyle.Text); MiMoCustomStyle.Clear(); MiMoStyleError.Text = ""; RefreshMiMoStyles(); }
+        try { styles.Add(MiMoCustomStyle.Text); ExitSingingIfNeeded(); MiMoCustomStyle.Clear(); MiMoStyleError.Text = ""; RefreshMiMoStyles(); }
         catch (UserFeedbackException ex) { MiMoStyleError.Text = ex.Message; }
     }
     private void MiMoCustomStyle_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -160,10 +167,12 @@ public partial class AudioWorkbenchWindow : Window
     }
     private void RemoveMiMoStyle_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is System.Windows.Controls.Button { Tag: string name }) { styles.Remove(name); MiMoStyleError.Text = ""; RefreshMiMoStyles(); }
+        if (sender is System.Windows.Controls.Button { Tag: string name }) { styles.Remove(name); ExitSingingIfNeeded(); MiMoStyleError.Text = ""; RefreshMiMoStyles(); }
     }
     private void ClearMiMoStyles_Click(object sender, RoutedEventArgs e)
-    { styles.Clear(); MiMoStyleError.Text = ""; RefreshMiMoStyles(); }
+    { styles.Clear(); ExitSingingIfNeeded(); MiMoStyleError.Text = ""; RefreshMiMoStyles(); }
+    private void ExitSingingIfNeeded()
+    { if (creativeReady && Control == MiMoControl.Singing && !styles.Selected.Any(MiMoStyleTags.IsSinging)) CreativeControl.SelectedValue = MiMoControl.StyleTags; }
     private void FilterEdge()
     {
         if (EdgeVoice is null) return;
@@ -205,14 +214,26 @@ public partial class AudioWorkbenchWindow : Window
         using var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); generation = request;
         var text = sample ? SampleText : InputText.Text;
         edgeSelection = EdgeVoice.SelectedValue as string ?? edgeSelection;
-        var settings = EffectiveDraft(); GenerationStatus.Text = "正在合成完整音频…可取消；完成前保留上一次成功结果。";
+        var settings = EffectiveDraft(); var clone = CloneSamples.SelectedItem as CloneSample;
+        GenerationStatus.Text = "正在合成完整音频…可取消；完成前保留上一次成功结果。";
         try
         {
+            if (settings.Provider == TtsProvider.MiMo && Mode == MiMoCreativeMode.PresetVoice && settings.MiMoModel is "mimo-v2.5-tts-voicedesign" or "mimo-v2.5-tts-voiceclone")
+                throw new UserFeedbackException("请通过模型模式选择 VoiceDesign / VoiceClone，而非修改预置模型名称。");
             if (settings.Provider == TtsProvider.Windows && LocalVoice.SelectedValue is not string)
                 throw new UserFeedbackException("请选择可用的 Windows 本地语音；缺失的语音请先在系统设置中安装。");
+            if (settings.Provider == TtsProvider.MiMo)
+            { _ = MiMoSpeech.GetStyle(settings); _ = MiMoSpeech.SplitCreativeText(text, settings, request.Token); }
+            if (settings.Provider == TtsProvider.MiMo && settings.MiMoModel == "mimo-v2.5-tts-voiceclone")
+            {
+                if (clone is null) throw new UserFeedbackException("请选择、上传或录制克隆样本。");
+                var reference = await Task.Run(() => CloneAudio.ReadAsync(clone.FilePath, request.Token));
+                settings = settings with { MiMoReferenceAudio = reference.DataUri };
+            }
             var audio = await Task.Run(() => generator.GenerateAsync(text, settings, request.Token));
             if (closed || id != epoch || request.IsCancellationRequested) return;
             result = audio; ResultSummary.Text = audio.Description; Preview.IsEnabled = SaveAudio.IsEnabled = true;
+            SaveCloneSource.IsEnabled = audio.Configuration.Provider == TtsProvider.MiMo && audio.Configuration.MiMoModel == "mimo-v2.5-tts-voicedesign";
             GenerationStatus.Text = sample ? "默认试音已生成；正在试听。" : "生成成功。试听和保存使用此结果，不重新合成。";
             if (sample) await PreviewAsync();
         }
@@ -253,11 +274,16 @@ public partial class AudioWorkbenchWindow : Window
             // Preserve the workbench's saved values, not daily settings or inactive drafts.
             var draft = EffectiveDraft(preferences.Tts);
             if (!draft.IsValid) throw new UserFeedbackException($"{draft.Provider} 参数无效，未保存默认值。");
+            if (draft.Provider == TtsProvider.MiMo)
+            {
+                _ = MiMoSpeech.GetStyle(draft);
+                if (draft.MiMoSegmentCharacters is < 50 or > 3000) throw new UserFeedbackException("单段上限请设置为 50–3000 字符，未保存默认值。");
+            }
             var error = draft.Provider switch {
                 TtsProvider.Windows when LocalVoice.SelectedValue is not string => "请选择可用的 Windows 本地语音。",
                 TtsProvider.Azure when !Settings.IsRegionValid(draft.AzureRegion) || string.IsNullOrWhiteSpace(draft.AzureVoice) => "请填写 Azure Region 并选择语音。",
                 TtsProvider.Edge when string.IsNullOrWhiteSpace(draft.EdgeVoice) => "请查询并选择 Edge 语音。",
-                TtsProvider.MiMo when MiMoVoice.SelectedItem is not string => "请选择 MiMo 预置音色。",
+                TtsProvider.MiMo when Mode == MiMoCreativeMode.PresetVoice && MiMoVoice.SelectedItem is not string => "请选择 MiMo 预置音色。",
                 TtsProvider.OpenAiCompatible when draft.OpenAiModel is "tts-1" or "tts-1-hd" && !string.IsNullOrWhiteSpace(draft.OpenAiInstructions) => "tts-1 / tts-1-hd 不支持 Instructions，请清空或选择支持的模型。",
                 _ => null };
             if (error is not null) throw new UserFeedbackException(error + "未保存默认值。");
@@ -273,7 +299,7 @@ public partial class AudioWorkbenchWindow : Window
     private void Feedback(Exception ex, string fallback) => GenerationStatus.Text = ex is UserFeedbackException ? ex.Message + "（凭据仅在主设置管理）" : fallback;
     private void CloseWorkbench()
     {
-        closed = true; ++epoch; generation?.Cancel(); query?.Cancel(); lifetime.Cancel(); preview?.Dispose(); result = null;
+        closed = true; ++epoch; generation?.Cancel(); query?.Cancel(); recording?.Cancel(); lifetime.Cancel(); preview?.Dispose(); result = null;
         try { SavePreferences(); } catch { /* No content or key is logged. */ }
         lifetime.Dispose();
     }

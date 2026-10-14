@@ -69,11 +69,14 @@ internal sealed class GeneratedAudio
         this.bytes = bytes; Configuration = settings;
         SampleFrames = wave.Length / wave.WaveFormat.BlockAlign;
         var voice = settings.Provider switch { TtsProvider.Windows => settings.VoiceId ?? "系统默认", TtsProvider.Azure => settings.AzureVoice,
-            TtsProvider.Edge => settings.EdgeVoice, TtsProvider.MiMo => settings.MiMoVoice, _ => settings.OpenAiVoice };
+            TtsProvider.Edge => settings.EdgeVoice, TtsProvider.MiMo => settings.MiMoModel switch {
+                "mimo-v2.5-tts-voicedesign" => "设计音色", "mimo-v2.5-tts-voiceclone" => "本地参考样本", _ => settings.MiMoVoice }, _ => settings.OpenAiVoice };
         var details = settings.Provider switch {
             TtsProvider.Azure => $"Region={settings.AzureRegion}",
             TtsProvider.Edge => $"Pitch={settings.EdgePitchHz} Hz",
-            TtsProvider.MiMo => $"Model={settings.MiMoModel} · 完整 WAVE · 风格={settings.MiMoStyle} · 标签={MiMoStyleTags.GetPrefix(settings.MiMoOverallStyles)}",
+            TtsProvider.MiMo => $"Model={settings.MiMoModel} · 完整 WAVE · " +
+                (settings.MiMoModel == "mimo-v2.5-tts-voicedesign" ? $"音色描述={settings.MiMoVoiceDescription} · " : "") +
+                $"风格={settings.MiMoStyle} · 标签={MiMoSpeech.CreativePrefix(settings)} · 自动分段={settings.MiMoAutoSegment} / {settings.MiMoSegmentCharacters} 字符",
             TtsProvider.OpenAiCompatible => $"{settings.OpenAiBaseUrl} · Model={settings.OpenAiModel} · Instructions={settings.OpenAiInstructions}", _ => "" };
         Description = $"{settings.Provider} · Voice={voice} · Rate={settings.Rate:0.##} · {details}\n{wave.WaveFormat} · {SampleFrames} 帧 · {wave.TotalTime.TotalSeconds:0.##} 秒 · {bytes.Length:N0} 字节";
     }
@@ -82,7 +85,7 @@ internal sealed class GeneratedAudio
         if (bytes.Length > AudioGeneration.MaxBytes) throw new UserFeedbackException("音频超过大小上限。");
         using var wave = HttpSpeech.ValidatedWave(bytes, cancellation);
         cancellation.ThrowIfCancellationRequested();
-        return new GeneratedAudio(bytes, settings, wave);
+        return new GeneratedAudio(bytes, settings with { MiMoReferenceAudio = null }, wave);
     }
     internal Stream Open() => new MemoryStream(bytes, writable: false);
     internal async Task SaveAsync(string path, bool overwriteConfirmed, CancellationToken cancellation)
@@ -101,13 +104,14 @@ internal sealed class GeneratedAudio
 }
 
 // Separate from settings.json; intentionally omits input text, results, keys and automatic permissions.
-internal sealed record WorkbenchPreferences(Settings Tts, double Left = double.NaN, double Top = double.NaN, double Width = 780, double Height = 850)
+internal sealed record WorkbenchPreferences(Settings Tts, double Left = double.NaN, double Top = double.NaN, double Width = 1100, double Height = 850)
 {
     internal static Settings OnlyTts(Settings s) => new(VoiceId: s.VoiceId, Provider: s.Provider, Rate: s.Rate,
         AzureRegion: s.AzureRegion, AzureVoice: s.AzureVoice, EdgeVoice: s.EdgeVoice, EdgePitchHz: s.EdgePitchHz,
         EdgeLocaleFilter: s.EdgeLocaleFilter, MiMoModel: s.MiMoModel, MiMoVoice: s.MiMoVoice, MiMoStyle: s.MiMoStyle,
         MiMoOverallStyles: s.MiMoOverallStyles?.ToArray(), MiMoStreaming: false,
-        OpenAiModel: s.OpenAiModel, OpenAiVoice: s.OpenAiVoice, OpenAiInstructions: s.OpenAiInstructions);
+        OpenAiModel: s.OpenAiModel, OpenAiVoice: s.OpenAiVoice, OpenAiInstructions: s.OpenAiInstructions) {
+            MiMoAutoSegment = s.MiMoAutoSegment, MiMoSegmentCharacters = s.MiMoSegmentCharacters, MiMoVoiceDescription = s.MiMoVoiceDescription };
     internal static WorkbenchPreferences Load(string path, Settings fallback)
     {
         try { var p = JsonSerializer.Deserialize<WorkbenchPreferences>(File.ReadAllText(path), new JsonSerializerOptions { NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals });
@@ -125,7 +129,7 @@ internal sealed record WorkbenchPreferences(Settings Tts, double Left = double.N
         var s = p.Tts;
         var persisted = new { Tts = new { s.VoiceId, s.Provider, s.Rate, s.AzureRegion, s.AzureVoice,
             s.EdgeVoice, s.EdgePitchHz, s.EdgeLocaleFilter, s.MiMoModel, s.MiMoVoice, s.MiMoStyle,
-            s.MiMoOverallStyles, s.MiMoStreaming, s.OpenAiModel, s.OpenAiVoice, s.OpenAiInstructions },
+            s.MiMoOverallStyles, s.MiMoStreaming, s.MiMoAutoSegment, s.MiMoSegmentCharacters, s.MiMoVoiceDescription, s.OpenAiModel, s.OpenAiVoice, s.OpenAiInstructions },
             p.Left, p.Top, p.Width, p.Height };
         try { File.WriteAllText(temp, JsonSerializer.Serialize(persisted, new JsonSerializerOptions { NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals })); File.Move(temp, path, true); }
         finally { if (File.Exists(temp)) File.Delete(temp); }

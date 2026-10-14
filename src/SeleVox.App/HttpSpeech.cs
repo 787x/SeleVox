@@ -14,12 +14,13 @@ internal sealed partial class MiMoSpeech(HttpClient? client = null, Func<string?
     public async Task<Stream> SynthesizeAsync(string text, Settings settings, CancellationToken cancellation)
     {
         var style = GetStyle(settings);
-        var prefix = MiMoStyleTags.GetPrefix(settings.MiMoOverallStyles);
+        var prefix = CreativePrefix(settings);
         // 8K context: conservatively bound UTF-8 bytes (including up to 3K style bytes),
         // leaving room for message framing. No approximate tokenizer or source rewriting.
         return await HttpSpeech.SynthesizeAsync(client, readKey ?? AzureCredentials.MiMo().Read,
             new Uri("https://api.xiaomimimo.com/v1/chat/completions"), text, GetTextBudget(prefix), true,
-            part => CreateRequest(prefix + part, settings.MiMoVoice, style, settings.MiMoModel), Decode, "MiMo", cancellation).ConfigureAwait(false);
+            part => CreateCreativeRequest(prefix + part, settings, style), Decode, "MiMo", cancellation,
+            SplitCreativeText(text, settings, cancellation)).ConfigureAwait(false);
     }
     internal static int GetTextBudget(string prefix)
     {
@@ -27,15 +28,22 @@ internal sealed partial class MiMoSpeech(HttpClient? client = null, Func<string?
         if (budget <= 0) throw new UserFeedbackException("整体风格前缀占满单段 UTF-8 字节预算，请减少风格。");
         return budget;
     }
-    private static string GetStyle(Settings settings)
+    internal static string GetStyle(Settings settings)
     {
         if (!double.IsFinite(settings.Rate) || settings.Rate is < .5 or > 2 || !Settings.MiMoVoices.Contains(settings.MiMoVoice) ||
             settings.MiMoStyle is not { Length: <= 1000 } || string.IsNullOrWhiteSpace(settings.MiMoModel) || settings.MiMoModel.Length > 200)
             throw new UserFeedbackException("请检查 MiMo 模型名称、预置音色和风格说明（最多 1000 字符）。");
         var style = settings.MiMoStyle;
+        if (settings.MiMoModel == "mimo-v2.5-tts-voicedesign")
+        {
+            if (string.IsNullOrWhiteSpace(settings.MiMoVoiceDescription) || settings.MiMoVoiceDescription.Length > 1000)
+                throw new UserFeedbackException("请填写音色描述（1–1000 字符）。");
+            style = settings.MiMoVoiceDescription + (style.Length > 0 ? "\n" + style : "");
+        }
         if (settings.Rate != 1) style += (style.Length > 0 ? "\n" : "") +
             (settings.Rate < 1 ? "请放慢朗读速度。" : "请加快朗读速度。") +
             $"目标约为正常语速的 {settings.Rate.ToString("0.##", CultureInfo.InvariantCulture)} 倍。";
+        if (Encoding.UTF8.GetByteCount(style) > 3000) throw new UserFeedbackException("组合后的音色描述 / 风格指令超过 3000 UTF-8 字节，请缩短描述。");
         return style;
     }
 
@@ -165,7 +173,7 @@ internal static class HttpSpeech
     internal const int MaxResponseBytes = 48 * 1024 * 1024, MaxAudioBytes = 64 * 1024 * 1024, MaxTextLength = 32768;
     private static readonly HttpClient SharedClient = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = Timeout.InfiniteTimeSpan };
 
-    internal static IEnumerable<string> SplitText(string text, int limit, bool utf8, CancellationToken cancellation = default)
+    internal static IEnumerable<string> SplitText(string text, int limit, bool utf8, CancellationToken cancellation = default, int characterLimit = int.MaxValue)
     {
         var boundaries = StringInfo.ParseCombiningCharacters(text);
         var start = 0; var count = 0; var preferred = -1; var index = 0;
@@ -174,8 +182,8 @@ internal static class HttpSpeech
             cancellation.ThrowIfCancellationRequested();
             var end = index + 1 < boundaries.Length ? boundaries[index + 1] : text.Length;
             var size = utf8 ? Encoding.UTF8.GetByteCount(text.AsSpan(boundaries[index], end - boundaries[index])) : end - boundaries[index];
-            if (size > limit) throw new UserFeedbackException("文本包含超过单次限制的 Unicode 字符组合，请缩短后重试。");
-            if (count + size > limit)
+            if (size > limit || end - boundaries[index] > characterLimit) throw new UserFeedbackException("文本包含超过单次限制的 Unicode 字符组合，请缩短后重试。");
+            if (count + size > limit || end - start > characterLimit)
             {
                 var cut = preferred > start ? preferred : boundaries[index];
                 yield return text[start..cut];
@@ -192,7 +200,7 @@ internal static class HttpSpeech
 
     internal static async Task<Stream> SynthesizeAsync(HttpClient? client, Func<string?> credential, Uri endpoint,
         string text, int limit, bool utf8, Func<string, object> payload, Func<byte[], CancellationToken, byte[]> decode,
-        string label, CancellationToken cancellation)
+        string label, CancellationToken cancellation, IEnumerable<string>? parts = null)
     {
         cancellation.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(text) || text.Length > MaxTextLength)
@@ -205,8 +213,9 @@ internal static class HttpSpeech
         {
             var key = credential();
             if (string.IsNullOrWhiteSpace(key)) throw new UserFeedbackException($"请先保存 {label} API Key（兼容服务 Key 按服务地址独立保存）。");
-            foreach (var part in SplitText(text, limit, utf8, session.Token))
+            foreach (var part in parts ?? SplitText(text, limit, utf8, session.Token))
             {
+                session.Token.ThrowIfCancellationRequested();
                 using var segment = CancellationTokenSource.CreateLinkedTokenSource(session.Token);
                 segment.CancelAfter(TimeSpan.FromSeconds(90));
                 using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);

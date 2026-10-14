@@ -22,6 +22,12 @@ public sealed record Settings(string? VoiceId = null, double Rate = 1, float Vol
     PromptPreset[]? CustomPrompts = null, string? SelectedPromptId = null,
     int StartupSilenceMilliseconds = 100)
 {
+    // Workbench-only additions; defaults preserve the existing 3000-byte MiMo budget.
+    public bool MiMoAutoSegment { get; init; } = true;
+    public int MiMoSegmentCharacters { get; init; } = 3000;
+    public string MiMoVoiceDescription { get; init; } = "";
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? MiMoReferenceAudio { get; init; }
     public const string DefaultLlmPrompt = "你是一个准确、简洁的问答助手。直接回答用户的问题，尽量使用自然、清晰、适合朗读的表达。对于不确定的事实明确说明，不编造信息。";
     public bool HasValidLlmConfiguration => NormalizeServiceUrl(LlmBaseUrl) is not null &&
         !string.IsNullOrWhiteSpace(LlmModel) && LlmModel.Length <= 200 && LlmSystemPrompt is { Length: <= 8192 };
