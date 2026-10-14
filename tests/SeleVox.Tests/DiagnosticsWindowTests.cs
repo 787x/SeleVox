@@ -133,7 +133,10 @@ public sealed class DiagnosticsWindowTests
     private static void RenderMain(Window w, string path)
     {
         w.UpdateLayout(); Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var bitmap = new RenderTargetBitmap((int)w.ActualWidth, (int)w.ActualHeight, 96, 96, PixelFormats.Pbgra32); bitmap.Render(w);
+        var bitmap = new RenderTargetBitmap((int)w.ActualWidth, (int)w.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+        var drawing = new DrawingVisual();
+        using (var context = drawing.RenderOpen()) context.DrawRectangle(new VisualBrush(w), null, new Rect(0, 0, w.ActualWidth, w.ActualHeight));
+        bitmap.Render(drawing);
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var file = File.Create(path); encoder.Save(file);
     }
