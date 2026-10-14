@@ -200,7 +200,7 @@
             <TextBlock x:Name="OutputSaveHint" Text="设备选择保存后用于下一次朗读。" TextWrapping="Wrap" Foreground="#8A4D00" Margin="0,6,0,0"/>
             <Button Content="刷新播放设备" Click="RefreshOutputs_Click" HorizontalAlignment="Left" Padding="8,4" Margin="0,6,0,0"/>
             <TextBlock Text="未选择时使用系统默认输出。部分设备不可用时跳过；全部不可用时回退默认输出并提示。" TextWrapping="Wrap" Foreground="#546575" Margin="0,6,0,0"/>
-            <GroupBox x:Name="VirtualMicGroup" Header="虚拟麦克风 · VB-Audio VB-CABLE" Margin="0,14,0,0">
+            <GroupBox x:Name="VirtualMicGroup" Header="虚拟麦克风" Margin="0,14,0,0">
                 <StackPanel Margin="10">
                     <CheckBox x:Name="VirtualMicEnabled" Content="向虚拟麦克风同时输出（默认关闭；保存后生效）" Click="VirtualMicEnabled_Click"/>
                     <TextBlock Text="播放端点（Render）" Margin="0,8,0,3"/>
@@ -211,9 +211,8 @@
                     <WrapPanel Margin="0,8,0,0">
                         <Button Content="重新扫描 / 自动检测" Click="VirtualScan_Click" Padding="8,4" Margin="0,0,8,4"/>
                         <Button x:Name="VirtualTestButton" Content="播放测试音并录音验证" Click="VirtualTest_Click" Padding="8,4" Margin="0,0,8,4"/>
-                        <Button Content="首次安装引导" Click="VirtualInstall_Click" Padding="8,4" Margin="0,0,0,4"/>
                     </WrapPanel>
-                    <TextBlock Text="首次选定须通过 3 秒固定音频录音验证；不录制物理麦克风。共享 VB-CABLE 可能同时接收其他应用声音。关闭或更换已启用路由并保存会停止当前朗读；关闭后普通朗读排除此虚拟端点，不卸载驱动或更改默认麦克风。CLI / MCP 显式设备选择独立覆盖。" TextWrapping="Wrap" Foreground="#546575"/>
+                    <TextBlock Text="首次选定须通过 3 秒固定音频录音验证；不录制物理麦克风。共享虚拟麦克风可能同时接收其他应用声音。关闭或更换已启用路由并保存会停止当前朗读；关闭后普通朗读排除此虚拟端点，不卸载驱动或更改默认麦克风。CLI / MCP 显式设备选择独立覆盖。" TextWrapping="Wrap" Foreground="#546575"/>
                 </StackPanel>
             </GroupBox>
             <CheckBox x:Name="AutoStart" Content="登录 Windows 时启动（驻留托盘）" Margin="0,20,0,16"/>

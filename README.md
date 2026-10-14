@@ -4,9 +4,9 @@ Windows 11 x64 的选区朗读工具，支持手动热键与可关闭的鼠标�
 
 ## PR17：虚拟麦克风
 
-主设置的“虚拟麦克风 · VB-Audio VB-CABLE”区域可将朗读同时输出到原有耳机 / 扬声器和真实 Windows 虚拟录音端点，无需启动 Voicemeeter。开关默认关闭，旧配置兼容，不改变 Windows 默认播放 / 录音设备。
+主设置的“虚拟麦克风”区域可将朗读同时输出到原有耳机 / 扬声器和真实 Windows 虚拟录音端点，无需启动 Voicemeeter。开关默认关闭，旧配置兼容，不改变 Windows 默认播放 / 录音设备。
 
-1. 已安装普通 VB-CABLE 时点击扫描。未安装时点击“首次安装引导”，从 [VB-Audio 官方页面](https://vb-audio.com/Cable/index.htm) 下载 Windows x64 包，检查数字签名，按厂商说明明确执行管理员安装并重启。**本版本不捆绑或自动安装驱动。** VB-CABLE 为 donationware，欢迎 [捐赠 / 支付许可](https://vb-audio.com/Services/licensing.htm)；企业分发另须遵守厂商条件。
+1. 已安装普通 VB-CABLE 时点击扫描。未安装时可从 [VB-Audio 官方页面](https://vb-audio.com/Cable/index.htm) 下载 Windows x64 包，检查数字签名，按厂商说明明确执行管理员安装并重启。**本版本不捆绑或自动安装驱动，界面不提供安装引导按钮。** VB-CABLE 为 donationware，欢迎 [捐赠 / 支付许可](https://vb-audio.com/Services/licensing.htm)；企业分发另须遵守厂商条件。
 2. 选择虚拟播放 Render 和录音 Capture。应用验证共同的 VB-CABLE PnP 驱动身份，不靠显示名称配对。多个 pin 不自动猜测，点击“播放测试音并录音验证”，固定 3 秒 PCM 从选定 Capture 录音检查波形关联，录音仅在内存中。验证通过后勾选启用并保存。
 3. 普通输出继续选择自己的物理设备。在 Discord / OBS / Zoom 中自行选择界面显示的虚拟 Capture，例如 `CABLE Output`；播放端名称可能已被重命名。共享虚拟线也可能接收其他应用音频，不提供来源隔离，不新增物理麦克风或桌面混音。
 

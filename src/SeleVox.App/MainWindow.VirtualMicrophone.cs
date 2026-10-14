@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -56,7 +55,7 @@ public partial class MainWindow
         var route = virtualRoute;
         var status = virtualEndpoints.Count == 0 ? virtualDriverPresent
             ? "设备不可用：驱动已存在但端点未就绪，请检查禁用状态或安装后的重启要求。"
-            : "未找到兼容 VB-CABLE 驱动 / 端点，请通过首次安装引导检查安装及重启。" :
+            : "未找到兼容的虚拟麦克风端点，请检查设备安装、启用状态及重启要求。" :
             route is null ? "配对不明确：请选择同一驱动的 Render / Capture，并执行录音验证。" :
             !VirtualMicrophones.IsPair(route, virtualEndpoints, true) ? "设备不可用：端点缺失、禁用、断开或需要重启。保留已选 ID，不改选其他设备。" :
             !route.RecordingVerified ? "端点可用，尚未通过录音验证。" : "就绪：已通过固定音频录音验证。";
@@ -99,12 +98,5 @@ public partial class MainWindow
             VirtualMicStatus.Text = "发生故障：" + (ex is UserFeedbackException ? ex.Message : "播放或录音失败，请检查设备与 Windows 录音权限。");
         }
         finally { virtualTest = null; VirtualTestButton.Content = "播放测试音并录音验证"; }
-    }
-    private void VirtualInstall_Click(object sender, RoutedEventArgs e)
-    {
-        var answer = MessageBox.Show(this, "VB-CABLE 来自 VB-Audio，采用 donationware 许可，欢迎捐赠 / 支付许可费用。SeleVox 不捆绑或自动安装驱动。\n\n从官方页面下载 Windows x64 包，检查安装器数字签名，按厂商说明以管理员权限安装并重启，再回到此处扫描并录音验证。已有正常驱动无需重新安装。无需启动 Voicemeeter。\n\n打开官方下载安装页面？", "VB-CABLE 首次安装引导", MessageBoxButton.YesNo, MessageBoxImage.Information);
-        if (answer != MessageBoxResult.Yes) return;
-        try { Process.Start(new ProcessStartInfo("https://vb-audio.com/Cable/index.htm") { UseShellExecute = true }); }
-        catch { SetNotice("无法打开浏览器，请访问 https://vb-audio.com/Cable/index.htm 。"); }
     }
 }
