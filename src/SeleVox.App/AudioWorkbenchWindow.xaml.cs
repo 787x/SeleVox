@@ -43,7 +43,7 @@ public partial class AudioWorkbenchWindow : Window
         MiMoModel.Text = s.MiMoModel; MiMoVoice.ItemsSource = Settings.MiMoVoices; MiMoVoice.SelectedItem = s.MiMoVoice; MiMoStyle.Text = s.MiMoStyle;
         RefreshMiMoStyles(); OpenAiModel.Text = s.OpenAiModel; OpenAiVoice.Text = s.OpenAiVoice; Instructions.Text = s.OpenAiInstructions;
         Rate.Value = s.Rate; Provider.SelectedItem = s.Provider;
-        InitializeCreative(s);
+        InitializeCreative(s); InitializeAi();
         Width = Math.Clamp(preferences.Width, 900, 1600); Height = Math.Clamp(preferences.Height, 620, 1400);
         if (double.IsFinite(preferences.Left) && double.IsFinite(preferences.Top))
         {
@@ -299,7 +299,7 @@ public partial class AudioWorkbenchWindow : Window
     private void Feedback(Exception ex, string fallback) => GenerationStatus.Text = ex is UserFeedbackException ? ex.Message + "（凭据仅在主设置管理）" : fallback;
     private void CloseWorkbench()
     {
-        closed = true; ++epoch; generation?.Cancel(); query?.Cancel(); recording?.Cancel(); lifetime.Cancel(); preview?.Dispose(); result = null;
+        closed = true; CancelAi(); aiUndo = null; ++epoch; generation?.Cancel(); query?.Cancel(); recording?.Cancel(); lifetime.Cancel(); preview?.Dispose(); result = null;
         try { SavePreferences(); } catch { /* No content or key is logged. */ }
         lifetime.Dispose();
     }
