@@ -7,9 +7,15 @@ namespace SeleVox.App;
 
 internal sealed class AiAnswerWindow : Window
 {
-    private readonly TextBox question = new() { IsReadOnly = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 110, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    private readonly TextBox question = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 60, MaxHeight = 110, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    private readonly TextBlock draftStatus = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) };
+    private readonly TextBlock notice = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly Button regenerateButton;
+    private readonly bool canRegenerate;
+    private long displayedRequestId = -1;
+    private long? lastRegenerate;
     private readonly TextBox answer = new() { IsReadOnly = true, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, FontSize = 16 };
-    private readonly TextBlock destination = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 8) };
+    private readonly TextBlock destination = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 8) };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 8) };
     private readonly TextBlock privacy = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 8) };
     private readonly Button readButton;
@@ -20,14 +26,20 @@ internal sealed class AiAnswerWindow : Window
     private readonly QuestionSession session;
     private readonly Func<Settings> settings;
     private readonly Func<string> readingStatus;
-    internal AiAnswerWindow(QuestionSession session, Func<Settings> settings, Func<string> readingStatus, Action stop, Action read)
+    internal AiAnswerWindow(QuestionSession session, Func<Settings> settings, Func<string> readingStatus, Action stop, Action read, Action<string>? ask = null)
     {
         this.session = session; this.settings = settings; this.readingStatus = readingStatus;
-        Title = "SeleVox · AI 回答"; Width = 720; Height = 600; MinWidth = 460; MinHeight = 380;
+        Title = "SeleVox · AI 回答"; Width = 720; Height = 600; MinWidth = 460; MinHeight = 480;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         var grid = new Grid { Margin = new Thickness(20) };
         grid.RowDefinitions.Add(new() { Height = GridLength.Auto }); grid.RowDefinitions.Add(new()); grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        var header = new StackPanel(); header.Children.Add(new TextBlock { Text = "当前问题", FontWeight = FontWeights.SemiBold }); header.Children.Add(question); header.Children.Add(destination); grid.Children.Add(header);
+        var header = new StackPanel(); header.Children.Add(new TextBlock { Text = "当前问题", FontWeight = FontWeights.SemiBold }); header.Children.Add(question); grid.Children.Add(header);
+        var questionActions = new WrapPanel();
+        regenerateButton = AddButton(questionActions, "重新生成", () => Regenerate(ask));
+        header.Children.Add(draftStatus); header.Children.Add(questionActions); header.Children.Add(destination); header.Children.Add(notice);
+        question.TextChanged += (_, _) => RefreshDraftStatus();
+        regenerateButton.IsEnabled = ask is not null;
+        canRegenerate = ask is not null;
         Grid.SetRow(answer, 1); grid.Children.Add(answer);
         var footer = new StackPanel(); footer.Children.Add(status); footer.Children.Add(privacy); Grid.SetRow(footer, 2); grid.Children.Add(footer);
         var actions = new WrapPanel(); footer.Children.Add(actions);
@@ -43,6 +55,22 @@ internal sealed class AiAnswerWindow : Window
         Closed += (_, _) => { timer.Stop(); session.Cancel(); question.Clear(); answer.Clear(); Content = null; };
         Refresh();
     }
+    private void Regenerate(Action<string>? ask)
+    {
+        // A short cooldown rejects queued double clicks but permits replacing an in-flight request.
+        if (ask is null || lastRegenerate is long last && System.Diagnostics.Stopwatch.GetElapsedTime(last) < TimeSpan.FromMilliseconds(600)) return;
+        lastRegenerate = System.Diagnostics.Stopwatch.GetTimestamp(); regenerateButton.IsEnabled = false;
+        notice.Text = "";
+        ask(question.Text);
+        Refresh();
+    }
+    internal void SetNotice(string message) => notice.Text = message;
+    private void RefreshDraftStatus()
+    {
+        draftStatus.Text = question.Text == session.Snapshot.Question
+            ? "下方回答对应已提交的问题。"
+            : "问题已修改，重新生成后生效；下方回答仍对应上次提交的问题。";
+    }
     internal void ShowAnswer(bool activate = true)
     {
         Refresh(); var saved = ShowActivated;
@@ -52,7 +80,15 @@ internal sealed class AiAnswerWindow : Window
     internal void Refresh()
     {
         var snapshot = session.Snapshot;
-        if (question.Text != snapshot.Question) question.Text = snapshot.Question;
+        // Cancellation, speech and token updates do not change RequestId. Only an accepted ask replaces a draft.
+        if (displayedRequestId != snapshot.RequestId)
+        {
+            displayedRequestId = snapshot.RequestId;
+            if (question.Text != snapshot.Question) question.Text = snapshot.Question;
+            notice.Text = "";
+            RefreshDraftStatus();
+        }
+        regenerateButton.IsEnabled = canRegenerate && (lastRegenerate is not long last || System.Diagnostics.Stopwatch.GetElapsedTime(last) >= TimeSpan.FromMilliseconds(600));
         destination.Text = $"LLM 服务：{snapshot.Service} · 模型：{snapshot.Model}";
         if (answer.Text != snapshot.Answer)
         {

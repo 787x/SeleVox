@@ -43,6 +43,8 @@ System Prompt 可完全编辑或清空并保存，重启保持；请求以独立
 
 协议依据：[OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。实际验证、收费测试的显式启用方法和未验收项见 [PR8 验证记录](verification/PR8.md)。
 
+AI 回答窗口支持直接编辑当前问题并点击“重新生成”，使用当前已保存的 AI/TTS 设置再次主动提问，可能产生在线调用费用。编辑仅修改草稿，下方回答仍对应上次提交的问题；成功启动新请求后才替换回答。无效问题或配置不打断旧会话。即使原问题来自 Auto Ask，重新生成也按手动提问处理。实际验证及未验证项见 [问题编辑与重新生成验证记录](verification/AiRegenerate.md)。
+
 ## PR7：MiMo 整体风格与唱歌流式修复
 
 MiMo 新增**独立整体风格标签选择器**：八类 48 项推荐风格，支持搜索、多选、自定义、移除和清空。选择 `温柔`、`清亮` 等风格后，程序在每个 MiMo 合成分段的 `assistant.content` 开头生成统一的 `(温柔 清亮)` 前缀，计入 UTF-8 字节预算；已有“自然语言风格说明”仍原样发送到 `user.content`，旧配置默认无整体标签。`唱歌` 作为独立模式，适合中文歌词。

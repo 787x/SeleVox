@@ -258,7 +258,8 @@ public partial class App : System.Windows.Application
             {
                 var window = new AiAnswerWindow(questionSession, () => settings, () => reading!.Status.Message,
                     () => { InvalidateSelectionAction(); questionSession.Cancel(); },
-                    () => { InvalidateSelectionAction(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); _ = questionSession.ReadAnswerAsync(settings); });
+                    () => { InvalidateSelectionAction(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); _ = questionSession.ReadAnswerAsync(settings); },
+                    text => AskAi(text));
                 aiAnswer = window;
                 window.Closed += (_, _) => { InvalidateSelectionAction(); if (ReferenceEquals(aiAnswer, window)) aiAnswer = null; };
             }
@@ -269,6 +270,7 @@ public partial class App : System.Windows.Application
         {
             if (started) questionSession?.Cancel();
             var message = ex is UserFeedbackException ? ex.Message : "无法开始 AI 问答，请检查凭据和配置。";
+            aiAnswer?.SetNotice(message);
             settingsWindow?.SetNotice(message); Notify(message);
         }
     }
