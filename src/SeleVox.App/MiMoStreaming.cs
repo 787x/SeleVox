@@ -40,18 +40,13 @@ internal sealed partial class MiMoSpeech
                 catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
                 {
                     if (metrics is not null) metrics.TimeoutStage = "响应头";
-                    throw new UserFeedbackException("MiMo 等待响应头超时，已停止，未重试已播放内容。");
+                    throw new UserFeedbackException("MiMo 等待响应头超时，已停止，未重试已播放内容。", ServiceFailure.Timeout);
                 }
                 using var response = received;
                 if (metrics is not null) metrics.ResponseHeadersMilliseconds ??= metrics.ElapsedMilliseconds;
                 headers.CancelAfter(Timeout.InfiniteTimeSpan);
-                if (!response.IsSuccessStatusCode) throw new UserFeedbackException(response.StatusCode switch
-                {
-                    HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "MiMo 认证失败，请检查 API Key 和权限。",
-                    HttpStatusCode.TooManyRequests => "MiMo 请求过多或额度不足，请稍后重试。",
-                    _ => $"MiMo 服务拒绝流式请求（HTTP {(int)response.StatusCode}），不会重试已朗读的文本。"
-                });
-                if (response.Content.Headers.ContentLength > HttpSpeech.MaxResponseBytes) throw new UserFeedbackException("MiMo 流式响应过大。");
+                if (!response.IsSuccessStatusCode) throw UserFeedbackException.Http((int)response.StatusCode);
+                if (response.Content.Headers.ContentLength > HttpSpeech.MaxResponseBytes) throw new UserFeedbackException("MiMo 流式响应过大。", ServiceFailure.ResponseTooLarge);
                 if (!string.Equals(response.Content.Headers.ContentType?.MediaType, "text/event-stream", StringComparison.OrdinalIgnoreCase)) throw new UserFeedbackException("MiMo 未返回 SSE 流式音频。");
                 using var input = await response.Content.ReadAsStreamAsync(cancellation).ConfigureAwait(false);
                 byte? carry = null; long segmentBytes = 0;
@@ -78,9 +73,9 @@ internal sealed partial class MiMoSpeech
             cancellation.ThrowIfCancellationRequested();
             if (metrics is not null) metrics.NetworkCompleteMilliseconds = metrics.ElapsedMilliseconds;
         }
-        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { throw new UserFeedbackException("MiMo 流式请求超时，已停止，未重试已播放内容。"); }
-        catch (HttpRequestException) { throw new UserFeedbackException("MiMo 流式连接失败，请检查网络。"); }
-        catch (IOException) { throw new UserFeedbackException("MiMo 流式连接中断，未重试已播放内容。"); }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { throw new UserFeedbackException("MiMo 流式请求超时，已停止，未重试已播放内容。", ServiceFailure.Timeout); }
+        catch (HttpRequestException) { throw new UserFeedbackException("MiMo 流式连接失败，请检查网络。", ServiceFailure.Connection); }
+        catch (IOException) { throw new UserFeedbackException("MiMo 流式连接中断，未重试已播放内容。", ServiceFailure.Connection); }
         catch (FormatException) { throw new UserFeedbackException("MiMo 流式音频或 API Key 格式无效。"); }
         catch (JsonException) { throw new UserFeedbackException("MiMo SSE 音频响应无效。"); }
         catch (InvalidOperationException) { throw new UserFeedbackException("MiMo SSE 音频结构无效。"); }
@@ -107,7 +102,7 @@ internal sealed partial class MiMoSpeech
             {
                 var stage = audioSeen ? "网络空闲" : "首次音频接收";
                 if (metrics is not null) metrics.TimeoutStage = stage;
-                throw new UserFeedbackException($"MiMo {stage}超时，已停止，未重试已播放内容。");
+                throw new UserFeedbackException($"MiMo {stage}超时，已停止，未重试已播放内容。", ServiceFailure.Timeout);
             }
             activeRead += clock.Elapsed;
             if (metrics is not null) metrics.NetworkReadMilliseconds += clock.Elapsed.TotalMilliseconds;
@@ -119,7 +114,7 @@ internal sealed partial class MiMoSpeech
             if (read == 0) throw new UserFeedbackException("MiMo SSE 未收到正常完成标记，流已中断。");
             if (metrics is not null) metrics.FirstBodyByteMilliseconds ??= metrics.ElapsedMilliseconds;
             received += read;
-            if (received > HttpSpeech.MaxResponseBytes) throw new UserFeedbackException("MiMo SSE 响应过大。");
+            if (received > HttpSpeech.MaxResponseBytes) throw new UserFeedbackException("MiMo SSE 响应过大。", ServiceFailure.ResponseTooLarge);
             for (var i = 0; i < read; ++i)
             {
                 cancellation.ThrowIfCancellationRequested(); var ch = block[i];

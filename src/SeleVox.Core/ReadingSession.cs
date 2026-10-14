@@ -2,7 +2,20 @@ namespace SeleVox.Core;
 
 public enum ReadingState { Idle, Synthesizing, Playing, Paused, Error }
 public sealed record Status(ReadingState State, string Message, bool Notify = true);
-public sealed class UserFeedbackException(string message) : Exception(message);
+public enum ServiceFailure { InvalidResponse, Configuration, MissingCredential, Authentication, RateLimited, Parameters, Server, Connection, Timeout, ResponseTooLarge }
+public sealed class UserFeedbackException(string message, ServiceFailure failure = ServiceFailure.InvalidResponse, int? httpStatus = null) : Exception(message)
+{
+    public ServiceFailure Failure { get; } = failure;
+    public int? HttpStatus { get; } = httpStatus;
+    public static UserFeedbackException Http(int status) => new($"HTTP {status}：" + (status switch {
+        401 or 403 => "认证失败，请检查 Key 和服务权限。",
+        429 => "请求受限，可能是频率或配额问题。",
+        400 or 404 or 422 => "服务拒绝请求，请检查地址、模型、音色或 Thinking / Instructions 参数。",
+        >= 500 => "服务端错误，请稍后主动重试。",
+        _ => "服务拒绝请求，未重试或切换服务。"
+    }), status switch { 401 or 403 => ServiceFailure.Authentication, 429 => ServiceFailure.RateLimited,
+        400 or 404 or 422 => ServiceFailure.Parameters, >= 500 => ServiceFailure.Server, _ => ServiceFailure.InvalidResponse }, status);
+}
 
 public interface IAudioPlayback : IDisposable
 {

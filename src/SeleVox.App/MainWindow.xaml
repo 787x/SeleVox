@@ -7,6 +7,7 @@
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <StackPanel>
             <TextBlock Text="SeleVox" FontSize="28" FontWeight="SemiBold" Foreground="#193B56"/>
+            <Button Content="服务检测 · TTS / LLM" Click="Diagnostics_Click" HorizontalAlignment="Left" Padding="10,5" Margin="0,8,0,0"/>
             <TextBlock Text="选择文字，按 Ctrl+Alt+R 朗读。" Margin="0,8,0,22" FontSize="15"/>
         </StackPanel>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"><StackPanel>

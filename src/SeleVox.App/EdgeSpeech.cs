@@ -60,7 +60,7 @@ internal sealed class EdgeSpeech(
             return voices.OrderBy(v => v.Locale).ThenBy(v => v.Label).ToArray();
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
-        catch (OperationCanceledException) { throw new UserFeedbackException("Edge 语音查询超时，请检查网络或稍后刷新。"); }
+        catch (OperationCanceledException) { throw new UserFeedbackException("Edge 语音查询超时，请检查网络或稍后刷新。", ServiceFailure.Timeout); }
         catch (Exception ex) { throw Feedback(ex); }
     }
 
@@ -127,7 +127,7 @@ internal sealed class EdgeSpeech(
             return await Task.Run(() => DecodeSegments(segments, timeout.Token), timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
-        catch (OperationCanceledException) { throw new UserFeedbackException("Edge 合成超时，请检查网络或缩短选区。"); }
+        catch (OperationCanceledException) { throw new UserFeedbackException("Edge 合成超时，请检查网络或缩短选区。", ServiceFailure.Timeout); }
         catch (Exception ex) { throw Feedback(ex); }
     }
 
@@ -180,8 +180,9 @@ internal sealed class EdgeSpeech(
         if (error is UserFeedbackException feedback) return feedback;
         for (Exception? e = error; e is not null; e = e.InnerException)
         {
-            if (e is HttpRequestException { StatusCode: HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized } http)
-                return Refused((int)http.StatusCode.Value);
+            if (e is HttpRequestException { StatusCode: not null } http)
+                return http.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized
+                    ? Refused((int)http.StatusCode.Value) : UserFeedbackException.Http((int)http.StatusCode.Value);
         }
         return new(error switch
         {
@@ -190,8 +191,9 @@ internal sealed class EdgeSpeech(
             HttpRequestException or System.Net.WebSockets.WebSocketException or EdgeTTS.DotNet.WebSocketException => "无法连接 Edge 在线语音，请检查网络或稍后重试。",
             ArgumentException => "Edge 语音或参数无效，请重新查询选择语音。",
             _ => "Edge 响应不完整或协议不兼容，请重试或切回 Windows 本地 TTS。"
-        });
+        }, error is HttpRequestException or System.Net.WebSockets.WebSocketException or EdgeTTS.DotNet.WebSocketException
+            ? ServiceFailure.Connection : error is ArgumentException ? ServiceFailure.Parameters : ServiceFailure.InvalidResponse);
     }
     private static UserFeedbackException Refused(int status) => new(
-        $"Edge 服务拒绝访问（HTTP {status}）。此实验性在线接入当前不可用，请切回 Windows 本地 TTS；未自动重试或转发文本。");
+        $"Edge 服务拒绝访问（HTTP {status}）。此实验性在线接入当前不可用，请切回 Windows 本地 TTS；未自动重试或转发文本。", ServiceFailure.Authentication, status);
 }

@@ -309,3 +309,18 @@ MiMo“音频标签脚本”模式提供“AI 添加标签”：在完整原文�
 ```
 
 主界面配置好在线 TTS 服务及凭据后，CLI/MCP 可直接使用，无需额外 Agent 授权；Auto Speak、Auto Ask 的独立自动上传授权不变。服务地址和 Key 仍仅在主界面管理，Agent 不能覆盖地址或读取、导出凭据。MCP 默认不暴露修改持久默认值和删除预设，可由 CLI 单独开启。实际参数、MiMo 三模式、MCP 客户端配置、任务语义及文件权限边界见 [CLI / MCP 使用说明](docs/CLI-MCP.md)，构建、真实服务和未验证项见 [PR14 验证记录](verification/PR14.md)。
+
+### PR15：TTS / LLM 服务检测
+
+主设置顶部的“服务检测 · TTS / LLM”可分别检查 Windows、Azure、Edge、MiMo、OpenAI-Compatible TTS 和 LLM，无需切换日常朗读 Provider。打开窗口只做本地配置 / 凭据预检查；“配置已就绪”不代表真实可用。主动点击对应检测按钮才发起一次真实功能调用，在线调用可能收费，没有批量探测、自动重试或失败转发。
+
+检测始终读取已保存 Settings 和对应 Credential Manager 命名空间；存在尚未保存的地址、模型、音色、Streaming、Thinking、风格 / Instructions 或 Key 时请先保存。每次请求保留启动快照；配置 / 凭据改变或出现未保存修改会取消检测并把旧结果标为过期。结果不保存为长期健康状态，显示本次成功 / 失败 / 取消、耗时、最近检测时间和安全的错误分类 / HTTP 状态。窗口每半秒检查本地状态，不发送探测网络请求；任一已保存设置变更会保守地使旧结果过期。
+
+- TTS 使用固定中英短句 `Hello. 你好，语音检测。`，不读取选区、OCR、工作台正文；只合成并校验完整非空音频，不播放。Windows 检查已安装语音；Azure 必须真实合成，语音列表不是成功依据；Edge 为实验性在线接口，拒绝 / 协议变化会如实失败，不绕过。
+- MiMo 只检测当前保存模型和实际模式：预置模型启用流式时复用 SSE、持续消费 PCM 并要求正常完成；非流式校验 Base64 / 完整 WAVE。VoiceDesign 使用固定合法音色描述，不宣称其他模型也可用。VoiceClone 此窗口报告条件未满足，不选择 / 上传任何样本；需要在工作台主动选择合法样本、确认上传再生成，工作台结果不计为诊断窗口成功。
+- OpenAI-Compatible TTS 使用已保存的地址、Model、Voice、Speed、Instructions，直接调用 `/audio/speech`；不要求 `/models` 或动态音色接口。
+- LLM 使用固定极短问题和固定非敏感 System Prompt，保留当前 Model、Thinking 协议 / 等级和 Streaming；只有对应模式正常完成且最终回答非空才成功，reasoning 或部分 Token 不算。不会修改问答历史、显示回答窗口或自动朗读，也不验证用户自定义 Prompt 的回答质量。
+
+一次只执行一项诊断，无排队请求，可取消；关闭诊断 / 主设置窗口会取消并丢弃迟到结果。总诊断预算 90 秒，Azure 保留自身 60 秒上限；响应沿用现有大小限制（TTS HTTP / SSE 48 MiB、PCM / 完整音频 64 MiB、LLM 4 MiB）。检测不接入 ReadingSession、音频设备或 Agent Job，不改工作台 / Agent 默认值和自动云端许可；错误不显示 Key、请求 / 响应正文或音频数据，服务 URL 路径隐藏。
+
+实际验证和未验证项见 [PR15 验证记录](verification/PR15.md)。
