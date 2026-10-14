@@ -9,6 +9,7 @@ public partial class App : System.Windows.Application
     private Forms.NotifyIcon? tray;
     private ReadingSession? reading;
     private MainWindow? settingsWindow;
+    private AudioWorkbenchWindow? audioWorkbench;
     private Settings settings = new();
     private readonly SelectionCapture capture = new();
     private readonly SettingsStore store = new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SeleVox", "settings.json"));
@@ -39,9 +40,11 @@ public partial class App : System.Windows.Application
             (text, options) => reading.ReadSentenceAsync(text, options, CancellationToken.None), reading.Stop, reading.ReadSentenceAsync);
         settingsWindow = new MainWindow(settings, SaveSettings, () => reading.TogglePause(), StopReading, ExitApplication, AddForegroundApplicationAsync, CancelAutomaticReading);
         settingsWindow.LlmCredentialsChanged = () => { InvalidateSelectionAction(); questionSession.Cancel(); };
+        settingsWindow.OpenAudioWorkbench = ShowAudioWorkbench;
         MainWindow = settingsWindow;
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("设置", null, (_, _) => ShowSettings());
+        menu.Items.Add("音频生成", null, (_, _) => ShowAudioWorkbench());
         menu.Items.Add("屏幕框选 OCR · Ctrl+Alt+O", null, (_, _) => StartOcr());
         autoMenu = new Forms.ToolStripMenuItem("Auto Speak · 自动选中朗读") { Checked = settings.AutoSpeak };
         autoMenu.Click += (_, _) =>
@@ -63,6 +66,7 @@ public partial class App : System.Windows.Application
         {
             if (exiting) return;
             settingsWindow.SetStatus(status); tray.Text = $"SeleVox · {StateName(status.State)}";
+            audioWorkbench?.SetPlaybackStatus(status);
             if (status.State == ReadingState.Error && status.Notify) Notify(status.Message);
         });
         hotkeys = new Hotkeys();
@@ -102,6 +106,23 @@ public partial class App : System.Windows.Application
     {
         if (exiting || settingsWindow is null) return;
         settingsWindow.Show(); settingsWindow.WindowState = WindowState.Normal; settingsWindow.Activate();
+    }
+    private void ShowAudioWorkbench()
+    {
+        if (exiting) return;
+        if (audioWorkbench is null)
+        {
+            var window = new AudioWorkbenchWindow(() => settings, ShowSettings, (audio, token) =>
+            {
+                InvalidateSelectionAction(); questionSession?.Cancel();
+                mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
+                return reading!.PlayAudioAsync(audio.Open, settings, token);
+            }, () => reading?.TogglePause(), StopReading,
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SeleVox", "audio-workbench.json"));
+            audioWorkbench = window;
+            window.Closed += (_, _) => { if (ReferenceEquals(audioWorkbench, window)) audioWorkbench = null; };
+        }
+        audioWorkbench.Show(); audioWorkbench.WindowState = WindowState.Normal; audioWorkbench.Activate();
     }
     private string? SaveSettings(Settings updated)
     {
@@ -178,6 +199,7 @@ public partial class App : System.Windows.Application
     }
     private void StopReading()
     {
+        audioWorkbench?.CancelGeneration();
         if (ocrOperation.IsActive) settingsWindow?.SetNotice("屏幕 OCR 已取消。");
         InvalidateSelectionAction(); questionSession?.Cancel();
         ocrOperation.Cancel(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); reading?.Stop();
@@ -351,6 +373,8 @@ public partial class App : System.Windows.Application
     private void ExitApplication() { if (exiting) return; exiting = true; Shutdown(); }
     protected override void OnExit(ExitEventArgs e)
     {
+        exiting = true;
+        audioWorkbench?.Close();
         exiting = true; InvalidateSelectionAction(); questionSession?.Dispose(); aiAnswer?.Close(); ocrOperation.Dispose(); ocrResult?.Close(); mouse?.Dispose(); automaticSelection.Dispose(); hotkeys?.Dispose(); reading?.Dispose();
         if (tray is not null) { tray.Visible = false; tray.ContextMenuStrip?.Dispose(); tray.Dispose(); }
         instance?.Dispose(); base.OnExit(e);

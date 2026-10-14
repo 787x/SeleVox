@@ -201,6 +201,7 @@
                 <Button Content="暂停 / 继续" Click="Pause_Click" Padding="12,7" Margin="0,0,8,0"/>
                 <Button Content="停止" Click="Stop_Click" Padding="12,7" Margin="0,0,8,0"/>
                 <Button Content="退出" Click="Exit_Click" Padding="12,7"/>
+                <Button Content="音频生成" Click="AudioWorkbench_Click" Padding="12,7" Margin="8,0,0,0"/>
                 </StackPanel>
                 <Button Grid.Column="1" Content="保存设置" Click="Save_Click" Padding="18,7" Margin="12,0,0,0"/>
             </Grid>

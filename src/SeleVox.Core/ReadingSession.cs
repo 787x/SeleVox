@@ -51,6 +51,11 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
 
     public Task ReadTextAsync(string text, Settings settings) => ReadAsync(_ => Task.FromResult(text), settings, true);
 
+    // Cached audio enters the same ownership/cancellation path without invoking a provider.
+    public Task PlayAudioAsync(Func<Stream> openAudio, Settings settings, CancellationToken cancellation = default) =>
+        ReadCoreAsync(_ => Task.FromResult("cached audio"), settings, waitForPlayback: true, cancellation: cancellation,
+            synthesizeAudio: (_, _, token) => { token.ThrowIfCancellationRequested(); return Task.FromResult(openAudio()); });
+
     public Task ReadCapturedTextAsync(CapturedText text, Settings settings) =>
         string.IsNullOrWhiteSpace(text.Text) ? Task.CompletedTask : ReadAsync(_ => Task.FromResult(text.Text), settings);
 
@@ -78,7 +83,11 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
         }
     }
 
-    public async Task ReadAsync(Func<CancellationToken, Task<string>> capture, Settings settings, bool isAutomatic = false, bool waitForPlayback = false, CancellationToken cancellation = default)
+    public Task ReadAsync(Func<CancellationToken, Task<string>> capture, Settings settings, bool isAutomatic = false, bool waitForPlayback = false, CancellationToken cancellation = default) =>
+        ReadCoreAsync(capture, settings, isAutomatic, waitForPlayback, cancellation);
+
+    private async Task ReadCoreAsync(Func<CancellationToken, Task<string>> capture, Settings settings, bool isAutomatic = false, bool waitForPlayback = false, CancellationToken cancellation = default,
+        Func<string, Settings, CancellationToken, Task<Stream>>? synthesizeAudio = null)
     {
         CancellationTokenSource request;
         TaskCompletionSource? completion = null;
@@ -112,12 +121,12 @@ public sealed class ReadingSession(ISpeechSynthesis speech, IAudioPlaybackFactor
             await synthesisGate.WaitAsync(request.Token).ConfigureAwait(false);
             try
             {
-                if (speech is IStreamingSpeechSynthesis streaming && streaming.UsesStreaming(settings) && outputs is IStreamingPlaybackFactory streamingOutputs)
+                if (synthesizeAudio is null && speech is IStreamingSpeechSynthesis streaming && streaming.UsesStreaming(settings) && outputs is IStreamingPlaybackFactory streamingOutputs)
                 {
                     await ReadStreamingAsync(text, settings, id, request, streaming, streamingOutputs).ConfigureAwait(false);
                     return;
                 }
-                audio = await speech.SynthesizeAsync(text, settings, request.Token).ConfigureAwait(false);
+                audio = await (synthesizeAudio ?? speech.SynthesizeAsync)(text, settings, request.Token).ConfigureAwait(false);
             }
             finally { synthesisGate.Release(); }
             request.Token.ThrowIfCancellationRequested();
