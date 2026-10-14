@@ -61,9 +61,9 @@ public partial class AudioWorkbenchWindow : Window
         MiMoOverallStyles = styles.Selected.ToArray(), MiMoStreaming = false,
         OpenAiModel = OpenAiModel.Text.Trim(), OpenAiVoice = OpenAiVoice.Text.Trim(), OpenAiInstructions = Instructions.Text };
     // An unfinished field in another provider's panel must not block the selected provider.
-    private Settings EffectiveDraft()
+    private Settings EffectiveDraft(Settings? baseline = null)
     {
-        var d = Draft(); var s = getSettings() with { Provider = d.Provider, Rate = d.Rate };
+        var d = Draft(); var s = (baseline ?? getSettings()) with { Provider = d.Provider, Rate = d.Rate };
         return d.Provider switch {
             TtsProvider.Windows => s with { VoiceId = d.VoiceId },
             TtsProvider.Azure => s with { AzureRegion = d.AzureRegion, AzureVoice = d.AzureVoice },
@@ -249,8 +249,18 @@ public partial class AudioWorkbenchWindow : Window
     private void Settings_Click(object sender, RoutedEventArgs e) => showSettings();
     private void Defaults_Click(object sender, RoutedEventArgs e)
     {
-        try { edgeSelection = EdgeVoice.SelectedValue as string ?? edgeSelection; var draft = Draft();
-            if (!draft.IsValid) throw new UserFeedbackException("参数无效，未保存默认值。");
+        try { edgeSelection = EdgeVoice.SelectedValue as string ?? edgeSelection;
+            // Preserve the workbench's saved values, not daily settings or inactive drafts.
+            var draft = EffectiveDraft(preferences.Tts);
+            if (!draft.IsValid) throw new UserFeedbackException($"{draft.Provider} 参数无效，未保存默认值。");
+            var error = draft.Provider switch {
+                TtsProvider.Windows when LocalVoice.SelectedValue is not string => "请选择可用的 Windows 本地语音。",
+                TtsProvider.Azure when !Settings.IsRegionValid(draft.AzureRegion) || string.IsNullOrWhiteSpace(draft.AzureVoice) => "请填写 Azure Region 并选择语音。",
+                TtsProvider.Edge when string.IsNullOrWhiteSpace(draft.EdgeVoice) => "请查询并选择 Edge 语音。",
+                TtsProvider.MiMo when MiMoVoice.SelectedItem is not string => "请选择 MiMo 预置音色。",
+                TtsProvider.OpenAiCompatible when draft.OpenAiModel is "tts-1" or "tts-1-hd" && !string.IsNullOrWhiteSpace(draft.OpenAiInstructions) => "tts-1 / tts-1-hd 不支持 Instructions，请清空或选择支持的模型。",
+                _ => null };
+            if (error is not null) throw new UserFeedbackException(error + "未保存默认值。");
             preferences = preferences with { Tts = WorkbenchPreferences.OnlyTts(draft) }; SavePreferences(); GenerationStatus.Text = "工作台默认参数已保存，日常朗读设置未改变。"; }
         catch (Exception ex) { Feedback(ex, "工作台参数保存失败。"); }
     }

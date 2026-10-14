@@ -9,6 +9,105 @@ namespace SeleVox.Tests;
 [Collection("WPF desktop")]
 public sealed class AudioWorkbenchWindowTests
 {
+    [Theory]
+    [InlineData(TtsProvider.Windows)] [InlineData(TtsProvider.Azure)] [InlineData(TtsProvider.Edge)]
+    [InlineData(TtsProvider.MiMo)] [InlineData(TtsProvider.OpenAiCompatible)]
+    public Task DefaultsSaveOnlySelectedProviderAndRestoreOtherSavedParameters(TtsProvider selected) => OcrDesktopTests.RunSta(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        var main = new Settings(Provider: TtsProvider.MiMo, Rate: .8, AutoSpeak: true, AutoAsk: true,
+            AllowAutomaticCloud: true, AllowAutomaticEdge: true, AllowAutomaticMiMo: true, AllowAutomaticOpenAi: true,
+            OpenAiBaseUrl: "http://localhost:8472/v1", OpenAiAuthorizedBaseUrl: "http://localhost:8472/v1",
+            MiMoModel: "daily-mimo-model", MiMoVoice: "Mia", OpenAiModel: "daily-openai-model");
+        var saved = WorkbenchPreferences.OnlyTts(new Settings(VoiceId: SpeechAudio.GetVoices().First().Id,
+            AzureRegion: "eastasia", AzureVoice: "zh-CN-XiaoxiaoNeural", EdgeVoice: "zh-CN-XiaoyiNeural", EdgePitchHz: 25,
+            MiMoModel: "saved-mimo-model", MiMoVoice: "Dean", MiMoStyle: "saved calm", MiMoOverallStyles: ["温柔"],
+            OpenAiModel: "saved-openai-model", OpenAiVoice: "saved-voice", OpenAiInstructions: "saved instructions"));
+        // PR11's original file serialized the entire Settings record; it must still load.
+        File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(new WorkbenchPreferences(saved, 100, 150)));
+        var speech = new AudioGenerationTests.Speech();
+        AudioWorkbenchWindow Open() => new(() => main, () => { }, (_, _) => Task.CompletedTask, () => { }, () => { }, path, speech);
+        var window = Open();
+        try
+        {
+            window.Show(); ((ComboBox)window.FindName("Provider")).SelectedItem = selected;
+            ((TextBox)window.FindName("InputText")).Text = "private input fixture";
+            ((Slider)window.FindName("Rate")).Value = 1.65;
+            // Every inactive provider gets an incomplete draft; none may block saving.
+            if (selected != TtsProvider.Windows) ((ComboBox)window.FindName("LocalVoice")).SelectedIndex = -1;
+            ((TextBox)window.FindName("Region")).Text = selected == TtsProvider.Azure ? "westus" : "INVALID";
+            if (selected != TtsProvider.Azure) ((ComboBox)window.FindName("AzureVoice")).SelectedIndex = -1;
+            if (selected == TtsProvider.Edge) ((Slider)window.FindName("Pitch")).Value = 60;
+            ((TextBox)window.FindName("MiMoModel")).Text = selected == TtsProvider.MiMo ? "updated-mimo-model" : "";
+            ((TextBox)window.FindName("MiMoStyle")).Text = "unsaved other style";
+            ((TextBox)window.FindName("OpenAiModel")).Text = selected == TtsProvider.OpenAiCompatible ? "updated-openai-model" : "";
+            ((TextBox)window.FindName("Instructions")).Text = selected == TtsProvider.OpenAiCompatible ? "updated instructions" : new string('x', 4097);
+            Click(window, "保存工作台默认参数");
+            Assert.Contains("已保存", ((TextBlock)window.FindName("GenerationStatus")).Text);
+            var persisted = WorkbenchPreferences.Load(path, new()).Tts;
+            Assert.True(persisted.IsValid); Assert.Equal(selected, persisted.Provider); Assert.Equal(1.65, persisted.Rate);
+            Assert.Equal(saved.VoiceId, persisted.VoiceId);
+            Assert.Equal(selected == TtsProvider.Azure ? "westus" : saved.AzureRegion, persisted.AzureRegion);
+            Assert.Equal(saved.AzureVoice, persisted.AzureVoice); Assert.Equal(saved.EdgeVoice, persisted.EdgeVoice);
+            Assert.Equal(selected == TtsProvider.Edge ? 60 : saved.EdgePitchHz, persisted.EdgePitchHz);
+            Assert.Equal(selected == TtsProvider.MiMo ? "updated-mimo-model" : saved.MiMoModel, persisted.MiMoModel);
+            Assert.Equal(saved.MiMoVoice, persisted.MiMoVoice); Assert.Equal(saved.MiMoOverallStyles, persisted.MiMoOverallStyles);
+            Assert.Equal(selected == TtsProvider.MiMo ? "unsaved other style" : saved.MiMoStyle, persisted.MiMoStyle);
+            Assert.Equal(selected == TtsProvider.OpenAiCompatible ? "updated-openai-model" : saved.OpenAiModel, persisted.OpenAiModel);
+            Assert.Equal(saved.OpenAiVoice, persisted.OpenAiVoice);
+            Assert.Equal(selected == TtsProvider.OpenAiCompatible ? "updated instructions" : saved.OpenAiInstructions, persisted.OpenAiInstructions);
+            var json = File.ReadAllText(path);
+            Assert.DoesNotContain("private input fixture", json); Assert.DoesNotContain("Automatic", json);
+            Assert.DoesNotContain("Authorized", json); Assert.DoesNotContain("BaseUrl", json); Assert.DoesNotContain("Key", json);
+            Assert.Equal(TtsProvider.MiMo, main.Provider); Assert.Equal(.8, main.Rate); Assert.True(main.AutoSpeak); Assert.True(main.AllowsAutomaticProvider);
+            Assert.Equal("http://localhost:8472/v1", main.OpenAiBaseUrl); Assert.Equal(main.OpenAiBaseUrl, main.OpenAiAuthorizedBaseUrl);
+
+            if (selected == TtsProvider.Windows)
+            {
+                ((ComboBox)window.FindName("Provider")).SelectedItem = TtsProvider.OpenAiCompatible;
+                Click(window, "保存工作台默认参数"); Assert.Contains("未保存", ((TextBlock)window.FindName("GenerationStatus")).Text);
+                Assert.Equal(json, File.ReadAllText(path)); ((ComboBox)window.FindName("Provider")).SelectedItem = selected;
+            }
+
+            // The selected provider's own invalid configuration must still be refused.
+            switch (selected)
+            {
+                case TtsProvider.Windows: ((ComboBox)window.FindName("LocalVoice")).SelectedIndex = -1; break;
+                case TtsProvider.Azure: ((TextBox)window.FindName("Region")).Clear(); break;
+                case TtsProvider.Edge: break; // Missing selection is covered with an unconfigured voice below.
+                case TtsProvider.MiMo: ((TextBox)window.FindName("MiMoModel")).Clear(); break;
+                default: ((TextBox)window.FindName("OpenAiModel")).Clear(); break;
+            }
+            if (selected != TtsProvider.Edge)
+            {
+                Click(window, "保存工作台默认参数"); Assert.Contains("未保存", ((TextBlock)window.FindName("GenerationStatus")).Text);
+                Assert.Equal(json, File.ReadAllText(path));
+            }
+            window.Close(); window = Open(); window.Show();
+            Assert.Equal(selected, window.Draft().Provider); Assert.Equal(persisted.MiMoModel, window.Draft().MiMoModel);
+            Assert.Equal(persisted.OpenAiModel, window.Draft().OpenAiModel); Assert.Equal(persisted.OpenAiInstructions, window.Draft().OpenAiInstructions);
+            Assert.Equal(persisted.AzureRegion, window.Draft().AzureRegion); Assert.Equal(persisted.EdgePitchHz, window.Draft().EdgePitchHz);
+            Assert.Empty(speech.Texts);
+        }
+        finally { window.Close(); File.Delete(path); }
+        return Task.CompletedTask;
+    });
+    [Theory] [InlineData(TtsProvider.Azure)] [InlineData(TtsProvider.Edge)] [InlineData(TtsProvider.OpenAiCompatible)]
+    public Task DefaultsRejectMissingOnlineVoiceAndUnsupportedInstructions(TtsProvider provider) => OcrDesktopTests.RunSta(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        var saved = new Settings(AzureRegion: "eastasia", OpenAiModel: "tts-1", OpenAiInstructions: "unsupported");
+        new WorkbenchPreferences(saved).Save(path); var before = File.ReadAllText(path);
+        var window = new AudioWorkbenchWindow(() => new(), () => { }, (_, _) => Task.CompletedTask, () => { }, () => { }, path);
+        try
+        {
+            window.Show(); ((ComboBox)window.FindName("Provider")).SelectedItem = provider;
+            Click(window, "保存工作台默认参数");
+            Assert.Contains("未保存", ((TextBlock)window.FindName("GenerationStatus")).Text); Assert.Equal(before, File.ReadAllText(path));
+        }
+        finally { window.Close(); File.Delete(path); }
+        return Task.CompletedTask;
+    });
     [Fact] public Task FixedSampleActualTextCachedPreviewSnapshotProviderDraftsAndIndependentClose() => OcrDesktopTests.RunSta(async () =>
     {
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");

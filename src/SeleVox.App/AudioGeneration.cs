@@ -120,7 +120,14 @@ internal sealed record WorkbenchPreferences(Settings Tts, double Left = double.N
         var p = this with { Tts = OnlyTts(Tts) };
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + ".tmp";
-        try { File.WriteAllText(temp, JsonSerializer.Serialize(p, new JsonSerializerOptions { NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals })); File.Move(temp, path, true); }
+        // Keep the existing Tts JSON shape, but write only workbench fields, never
+        // daily settings, automatic permissions or service-address credential bindings.
+        var s = p.Tts;
+        var persisted = new { Tts = new { s.VoiceId, s.Provider, s.Rate, s.AzureRegion, s.AzureVoice,
+            s.EdgeVoice, s.EdgePitchHz, s.EdgeLocaleFilter, s.MiMoModel, s.MiMoVoice, s.MiMoStyle,
+            s.MiMoOverallStyles, s.MiMoStreaming, s.OpenAiModel, s.OpenAiVoice, s.OpenAiInstructions },
+            p.Left, p.Top, p.Width, p.Height };
+        try { File.WriteAllText(temp, JsonSerializer.Serialize(persisted, new JsonSerializerOptions { NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals })); File.Move(temp, path, true); }
         finally { if (File.Exists(temp)) File.Delete(temp); }
     }
 }
