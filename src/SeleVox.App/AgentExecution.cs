@@ -81,8 +81,7 @@ internal sealed class AgentExecution : IDisposable
                 if (request.Command == "speak")
                 {
                     var devices = AudioOutputs.GetDevices().Select(d => d.Id).ToHashSet();
-                    if ((settings.OutputDeviceIds ?? []).Any(d => !devices.Contains(d))) throw new AgentDeviceUnavailableException();
-                    settings = settings with { StrictOutputDevices = true };
+                    if (settings.StrictOutputDevices && (settings.OutputDeviceIds ?? []).Any(d => !devices.Contains(d))) throw new AgentDeviceUnavailableException();
                 }
                 connection.ThrowIfCancellationRequested();
                 var wait = a.TryGetProperty("wait", out var w) && w.GetBoolean();

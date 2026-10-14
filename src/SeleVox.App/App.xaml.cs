@@ -142,7 +142,11 @@ public partial class App : System.Windows.Application
                 !(updated.Applications ?? []).SequenceEqual(settings.Applications ?? []) ||
                 settings.AllowsAutomaticProvider && !updated.AllowsAutomaticProvider ||
                 updated.Provider != settings.Provider || Settings.NormalizeServiceUrl(updated.LlmBaseUrl) != Settings.NormalizeServiceUrl(settings.LlmBaseUrl);
+            var virtualRouteChanged = settings.VirtualMicrophoneEnabled &&
+                (!updated.VirtualMicrophoneEnabled || updated.VirtualMicrophone != settings.VirtualMicrophone);
             StartupRegistration.Apply(updated.StartWithWindows); store.Save(updated); settings = updated;
+            // Do not leave a previously enabled route injecting old audio after saving Disable.
+            if (virtualRouteChanged) StopReading();
             InvalidateSelectionAction(); if (invalidateAutomaticQuestion) questionSession?.CancelAutomatic();
             CancelAutomaticReading();
             settingsWindow?.SetAutomaticSettings(settings);
@@ -207,6 +211,7 @@ public partial class App : System.Windows.Application
     }
     private void StopReading()
     {
+        settingsWindow?.CancelVirtualMicrophoneTest();
         agentExecution?.CancelAll();
         audioWorkbench?.CancelGeneration();
         if (ocrOperation.IsActive) settingsWindow?.SetNotice("屏幕 OCR 已取消。");

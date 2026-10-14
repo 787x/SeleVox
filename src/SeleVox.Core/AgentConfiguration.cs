@@ -108,7 +108,10 @@ public static class AgentParameters
         string[]? Array(string name, string[]? fallback) => f.TryGetProperty(name, out var v) ? v.ValueKind == JsonValueKind.Null ? [] : v.EnumerateArray().Select(x => x.GetString()!).ToArray() : fallback;
         var provider = Enum.Parse<TtsProvider>(Str("provider", main.Provider.ToString()) ?? "Windows");
         var s = main with { Provider = provider, Rate = Num("rate", main.Rate), Volume = (float)Num("volume", main.Volume),
-            OutputDeviceIds = Array("devices", main.OutputDeviceIds), MiMoStreaming = false };
+            OutputDeviceIds = Array("devices", main.OutputDeviceIds), MiMoStreaming = false,
+            VirtualMicrophoneEnabled = !f.TryGetProperty("devices", out _) && main.VirtualMicrophoneEnabled,
+            ExplicitOutputDevices = f.TryGetProperty("devices", out _),
+            StrictOutputDevices = f.TryGetProperty("devices", out _) || !main.VirtualMicrophoneEnabled };
         var voice = Str("voice", provider switch { TtsProvider.Windows => main.VoiceId, TtsProvider.Azure => main.AzureVoice, TtsProvider.Edge => main.EdgeVoice, TtsProvider.MiMo => main.MiMoVoice, _ => main.OpenAiVoice });
         var advanced = new[] { "style", "tags", "role", "scene", "direction", "autoSegment", "segmentCharacters", "mode", "voiceDescription", "cloneSampleId" };
         if (provider != TtsProvider.MiMo && advanced.Any(n => explicitFields.TryGetProperty(n, out _)) || provider != TtsProvider.Edge && explicitFields.TryGetProperty("pitch", out _) ||

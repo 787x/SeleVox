@@ -71,6 +71,8 @@ internal static partial class AudioOutputs
 
     public static IAudioPlayback CreatePlayback(Stream audio, Settings settings)
     {
+        try { settings = VirtualMicrophones.Resolve(settings); }
+        catch { audio.Dispose(); throw; }
         var resolvedIds = new HashSet<string>(StringComparer.Ordinal);
         using var enumerator = new MMDeviceEnumerator();
         return CreatePlayback(audio, settings, (id, stream, volume) =>
@@ -80,12 +82,13 @@ internal static partial class AudioOutputs
             {
                 device = id == Settings.DefaultOutput ? enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia) : enumerator.GetDevice(id);
                 if (device.DataFlow != DataFlow.Render || device.State != DeviceState.Active) throw new IOException();
+                if (settings.UnavailableOutputIds.Contains(device.ID)) throw new IOException();
                 if (resolvedIds.Contains(device.ID)) { device.Dispose(); stream.Dispose(); return null; }
                 var resolved = device.ID;
                 var owned = device; device = null;
                 var player = new WasapiPlayback(stream, volume, owned, settings.StartupSilenceMilliseconds);
                 resolvedIds.Add(resolved);
-                return player;
+                return VirtualMicrophones.Track(player, resolved, settings);
             }
             catch { device?.Dispose(); throw; }
         });
@@ -109,12 +112,13 @@ internal static partial class AudioOutputs
                 var stream = new MemoryStream(bytes, writable: false);
                 try
                 {
+                    if (settings.UnavailableOutputIds.Contains(id)) throw new IOException();
                     // MemoryStream has its own cursor, while all outputs share an immutable byte array.
                     var player = open(id, stream, settings.Volume);
                     if (player is not null) players.Add(player);
                     else stream.Dispose();
                 }
-                catch { stream.Dispose(); ++failed; }
+                catch { stream.Dispose(); ++failed; VirtualMicrophones.MarkFailure(id, settings); }
             }
             foreach (var id in (settings.OutputDeviceIds is { Length: > 0 } ids ? ids : [Settings.DefaultOutput]).Distinct()) Open(id);
             if (settings.StrictOutputDevices && failed > 0)
@@ -122,13 +126,14 @@ internal static partial class AudioOutputs
                 foreach (var player in players) { try { player.Dispose(); } catch { /* Release every remaining output too. */ } }
                 throw new UserFeedbackException("指定输出设备不可用，未回退播放。");
             }
-            string? warning = failed > 0 ? "部分所选输出不可用，已跳过" : null;
-            if (players.Count == 0 && !settings.StrictOutputDevices)
+            string? warning = failed > 0 ? "部分所选输出不可用，已跳过" + (settings.NoFallbackOutputIds.Length > 0 ? "（虚拟麦克风目标不会回退）" : "") : null;
+            if (players.Count == 0 && !settings.StrictOutputDevices && VirtualMicrophones.CanFallback(settings))
             {
                 Open(Settings.DefaultOutput);
                 warning = "所选输出均不可用，已回退到系统默认输出";
             }
-            if (players.Count == 0) throw new UserFeedbackException("所选设备及系统默认输出均不可用，请检查音频设备连接。");
+            if (players.Count == 0) throw new UserFeedbackException(settings.StrictOutputDevices || !VirtualMicrophones.CanFallback(settings)
+                ? "所选输出设备不可用，未向其他设备回退。请检查设备连接。" : "所选设备及系统默认输出均不可用，请检查音频设备连接。");
             return new MultiOutputPlayback(players, warning);
         }
     }
