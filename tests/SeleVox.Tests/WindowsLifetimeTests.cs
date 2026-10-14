@@ -19,6 +19,16 @@ public sealed class WindowsLifetimeTests
             using var restarted = new SingleInstance(scope); Assert.True(restarted.IsFirst);
         });
     }
+    [Fact] public void AgentSecondInstanceDoesNotSignalShowSettings()
+    {
+        RunSta(() =>
+        {
+            var scope = "SeleVox-test-" + Guid.NewGuid(); using var shown = new ManualResetEventSlim();
+            using var first = new SingleInstance(scope); first.Listen(() => shown.Set());
+            using var second = new SingleInstance(scope, showExisting: false); Assert.False(second.IsFirst);
+            Assert.False(shown.Wait(TimeSpan.FromMilliseconds(150)));
+        });
+    }
     [Fact] public void GlobalHotkeyConflictsAreReportedAndDisposeUnregisters()
     {
         RunSta(() =>

@@ -3,6 +3,14 @@ namespace SeleVox.Tests;
 public sealed class ReadingSessionTests
 {
     private static Task<string> Capture(CancellationToken _) => Task.FromResult("non-sensitive fixture");
+    [Fact] public async Task AlreadyCancelledAgentReadLeavesCurrentGuiPlaybackUntouched()
+    {
+        var audio = new Audio(); using var session = new ReadingSession(audio, audio);
+        var read = session.ReadAsync(Capture, new()); audio.Pending[0].SetResult(new TrackedStream()); await read;
+        var player = Assert.Single(audio.Players);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => session.ReadGeneratedAsync(_ => throw new InvalidOperationException("must not synthesize"), new(), new CancellationToken(true)));
+        Assert.Equal(ReadingState.Playing, session.Status.State); Assert.False(player.Disposed); Assert.Single(audio.Pending); session.Stop();
+    }
     [Theory] [InlineData(TtsProvider.Windows)] [InlineData(TtsProvider.Azure)] [InlineData(TtsProvider.Edge)] [InlineData(TtsProvider.MiMo)] [InlineData(TtsProvider.OpenAiCompatible)]
     public async Task OcrReadUsesManualConsentAndBlankLeavesExistingPlayback(TtsProvider provider)
     {
@@ -30,6 +38,7 @@ public sealed class ReadingSessionTests
         read = session.ReadTextAsync("fixture", settings with { AllowAutomaticCloud = true }); backend.Pending[1].SetResult(new TrackedStream()); await read;
         Assert.Equal(ReadingState.Playing, session.Status.State);
     }
+
     [Theory] [InlineData(TtsProvider.Azure)] [InlineData(TtsProvider.Edge)] [InlineData(TtsProvider.MiMo)] [InlineData(TtsProvider.OpenAiCompatible)]
     public async Task UnauthorizedAutomaticOnlineRequestLeavesPlayingSessionUntouched(TtsProvider provider)
     {
@@ -99,6 +108,7 @@ public sealed class ReadingSessionTests
         Assert.False(session.Status.Notify);
         await session.ReadAsync(_ => throw new IOException(), new()); Assert.True(session.Status.Notify);
     }
+
     [Theory] [InlineData(TtsProvider.Windows)] [InlineData(TtsProvider.Edge)] [InlineData(TtsProvider.MiMo)] [InlineData(TtsProvider.OpenAiCompatible)]
     public async Task StopRejectsLateNonCooperativeSynthesisAndDisposesAudio(TtsProvider provider)
     {

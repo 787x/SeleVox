@@ -22,6 +22,8 @@ public sealed record Settings(string? VoiceId = null, double Rate = 1, float Vol
     PromptPreset[]? CustomPrompts = null, string? SelectedPromptId = null,
     int StartupSilenceMilliseconds = 100)
 {
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool StrictOutputDevices { get; init; }
     // Workbench-only additions; defaults preserve the existing 3000-byte MiMo budget.
     public bool MiMoAutoSegment { get; init; } = true;
     public int MiMoSegmentCharacters { get; init; } = 3000;
