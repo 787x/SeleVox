@@ -78,6 +78,7 @@ public partial class MainWindow : Window
     public void SetAutomaticSettings(Settings settings)
     {
         savedSettings = settings; AutoSpeak.IsChecked = settings.AutoSpeak; AutoAsk.IsChecked = settings.AutoAsk;
+        diagnosticsWindow?.Refresh();
         AutomaticLlm.IsChecked = settings.AllowsAutomaticLlm;
         AutomaticLlmStatus.Text = $"自动上传：{(settings.AllowsAutomaticLlm ? "已授权" : "未授权")} · {Settings.NormalizeServiceUrl(settings.LlmBaseUrl)}（可能产生费用）";
         AutomaticMiMo.IsChecked = settings.AllowAutomaticMiMo;
@@ -88,6 +89,7 @@ public partial class MainWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         voiceQuery?.Cancel();
+        diagnosticsWindow?.Close();
         if (System.Windows.Application.Current is App { IsExiting: false }) { e.Cancel = true; Hide(); }
         base.OnClosing(e);
     }
@@ -215,12 +217,12 @@ public partial class MainWindow : Window
     }
     private void SaveLlmKey_Click(object sender, RoutedEventArgs e)
     {
-        try { AzureCredentials.Llm(LlmBaseUrl.Text).Write(LlmKey.Password); LlmKey.Clear(); LlmCredentialsChanged?.Invoke(); UpdateLlmCredentialStatus(); }
+        try { AzureCredentials.Llm(LlmBaseUrl.Text).Write(LlmKey.Password); LlmKey.Clear(); LlmCredentialsChanged?.Invoke(); diagnosticsWindow?.CredentialsChanged(); UpdateLlmCredentialStatus(); }
         catch (UserFeedbackException ex) { SetNotice(ex.Message); }
     }
     private void ClearLlmKey_Click(object sender, RoutedEventArgs e)
     {
-        try { AzureCredentials.Llm(LlmBaseUrl.Text).Clear(); LlmKey.Clear(); LlmCredentialsChanged?.Invoke(); UpdateLlmCredentialStatus(); }
+        try { AzureCredentials.Llm(LlmBaseUrl.Text).Clear(); LlmKey.Clear(); LlmCredentialsChanged?.Invoke(); diagnosticsWindow?.CredentialsChanged(); UpdateLlmCredentialStatus(); }
         catch (UserFeedbackException ex) { SetNotice(ex.Message); }
     }
     private void RefreshMiMoStyles()
@@ -339,12 +341,12 @@ public partial class MainWindow : Window
     }
     private void SaveKey_Click(object sender, RoutedEventArgs e)
     {
-        try { voiceQuery?.Cancel(); credentials.Write(AzureKey.Password.Trim()); AzureKey.Clear(); UpdateCredentialStatus(); SetNotice("Key 已安全保存。"); }
+        try { voiceQuery?.Cancel(); credentials.Write(AzureKey.Password.Trim()); diagnosticsWindow?.CredentialsChanged(); AzureKey.Clear(); UpdateCredentialStatus(); SetNotice("Key 已安全保存。"); }
         catch (UserFeedbackException ex) { SetNotice(ex.Message); }
     }
     private void ClearKey_Click(object sender, RoutedEventArgs e)
     {
-        try { voiceQuery?.Cancel(); credentials.Clear(); AzureKey.Clear(); UpdateCredentialStatus(); SetNotice("Azure Key 已清除，本地朗读不受影响。"); }
+        try { voiceQuery?.Cancel(); credentials.Clear(); diagnosticsWindow?.CredentialsChanged(); AzureKey.Clear(); UpdateCredentialStatus(); SetNotice("Azure Key 已清除，本地朗读不受影响。"); }
         catch (UserFeedbackException ex) { SetNotice(ex.Message); }
     }
     private void UpdateHttpCredentialStatus()
@@ -380,7 +382,7 @@ public partial class MainWindow : Window
         {
             var store = mimo ? AzureCredentials.MiMo() : AzureCredentials.OpenAi(OpenAiBaseUrl.Text);
             if (clear) { cancelAutomatic(); store.Clear(); } else store.Write(box.Password.Trim());
-            box.Clear(); UpdateHttpCredentialStatus(); SetNotice(clear ? "此服务 Key 已清除。" : "此服务 Key 已安全保存；服务配置请点击底部保存设置。");
+            box.Clear(); diagnosticsWindow?.CredentialsChanged(); UpdateHttpCredentialStatus(); SetNotice(clear ? "此服务 Key 已清除。" : "此服务 Key 已安全保存；服务配置请点击底部保存设置。");
         }
         catch (UserFeedbackException ex) { SetNotice(ex.Message); }
     }

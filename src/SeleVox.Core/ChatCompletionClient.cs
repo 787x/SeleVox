@@ -11,11 +11,13 @@ public sealed class ChatCompletionClient
     private static readonly HttpClient Shared = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = Timeout.InfiniteTimeSpan };
     private readonly HttpClient client;
     private readonly TimeSpan idleTimeout, totalTimeout;
-    public ChatCompletionClient(HttpClient? client = null, TimeSpan? idleTimeout = null, TimeSpan? totalTimeout = null)
+    private readonly bool requireConfiguredMode;
+    public ChatCompletionClient(HttpClient? client = null, TimeSpan? idleTimeout = null, TimeSpan? totalTimeout = null, bool requireConfiguredMode = false)
     {
         this.client = client ?? Shared;
         this.idleTimeout = idleTimeout ?? TimeSpan.FromSeconds(45);
         this.totalTimeout = totalTimeout ?? TimeSpan.FromMinutes(3);
+        this.requireConfiguredMode = requireConfiguredMode;
     }
     public static void Validate(string question, Settings settings, string? key)
     {
@@ -54,9 +56,11 @@ public sealed class ChatCompletionClient
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headers.Token).ConfigureAwait(false);
             headers.CancelAfter(Timeout.InfiniteTimeSpan);
             if (!response.IsSuccessStatusCode)
-                throw new UserFeedbackException($"AI 服务返回 HTTP {(int)response.StatusCode}。请检查地址、模型、凭据、额度及 Thinking 协议/取值是否受模型支持；未自动重试。流式不兼容时可关闭 Streaming 后主动重试。");
+                throw UserFeedbackException.Http((int)response.StatusCode);
             if (response.Content.Headers.ContentLength > MaxResponseBytes) throw Limit();
             using var body = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+            if (requireConfiguredMode && response.Content.Headers.ContentType?.MediaType != (settings.LlmStreaming ? "text/event-stream" : "application/json"))
+                throw new UserFeedbackException("AI 响应未使用已配置的 Streaming 模式，未验证该模式可用。", ServiceFailure.InvalidResponse);
             if (response.Content.Headers.ContentType?.MediaType == "application/json")
             {
                 using var bytes = new MemoryStream(); var buffer = new byte[8192];
@@ -130,11 +134,11 @@ public sealed class ChatCompletionClient
             throw new UserFeedbackException("AI 流在 [DONE] 前断开，已保留部分回答；未自动朗读或重试。");
         }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
-        { throw new UserFeedbackException("AI 网络等待超时；未自动重试或朗读。"); }
+        { throw new UserFeedbackException("AI 网络等待超时；未自动重试或朗读。", ServiceFailure.Timeout); }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException or DecoderFallbackException)
         { throw new UserFeedbackException("AI 响应格式无效或不完整；未自动重试或朗读。"); }
-        catch (HttpRequestException) { throw new UserFeedbackException("无法连接 AI 服务或连接中断；未自动重试或朗读。"); }
-        catch (IOException) { throw new UserFeedbackException("AI 响应读取中断；未自动重试或朗读。"); }
+        catch (HttpRequestException) { throw new UserFeedbackException("无法连接 AI 服务或连接中断；未自动重试或朗读。", ServiceFailure.Connection); }
+        catch (IOException) { throw new UserFeedbackException("AI 响应读取中断；未自动重试或朗读。", ServiceFailure.Connection); }
     }
     private async Task<int> ReadAsync(Stream body, byte[] buffer, CancellationToken token)
     {

@@ -36,10 +36,16 @@ internal sealed class AzureSpeech(HttpClient? client = null, Func<string?>? read
     public async Task<Stream> SynthesizeAsync(string text, Settings settings, CancellationToken cancellation)
     {
         if (string.IsNullOrWhiteSpace(settings.AzureVoice)) throw new UserFeedbackException("请查询并选择 Azure 区域可用的语音，再保存设置。");
-        using var response = await SendAsync(settings.AzureRegion, "v1", CreateSsml(text, settings.AzureVoice, settings.Rate), cancellation).ConfigureAwait(false);
-        var bytes = await response.Content.ReadAsByteArrayAsync(cancellation).ConfigureAwait(false);
-        cancellation.ThrowIfCancellationRequested();
-        return new MemoryStream(bytes, writable: false);
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellation); budget.CancelAfter(TimeSpan.FromSeconds(60));
+        try
+        {
+            using var response = await SendAsync(settings.AzureRegion, "v1", CreateSsml(text, settings.AzureVoice, settings.Rate), budget.Token).ConfigureAwait(false);
+            var bytes = await HttpSpeech.ReadBoundedAsync(response.Content, budget.Token).ConfigureAwait(false);
+            budget.Token.ThrowIfCancellationRequested();
+            return new MemoryStream(bytes, writable: false);
+        }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+        { throw new UserFeedbackException("Azure 请求超时，请稍后主动重试。", ServiceFailure.Timeout); }
     }
     private async Task<HttpResponseMessage> SendAsync(string region, string route, string? ssml, CancellationToken cancellation)
     {
@@ -56,17 +62,11 @@ internal sealed class AzureSpeech(HttpClient? client = null, Func<string?>? read
             request.Content = new StringContent(ssml, Encoding.UTF8, "application/ssml+xml");
         }
         HttpResponseMessage response;
-        try { response = await http.SendAsync(request, cancellation).ConfigureAwait(false); }
-        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { throw new UserFeedbackException("Azure 请求超时，请检查网络或稍后重试。"); }
-        catch (HttpRequestException) { throw new UserFeedbackException("无法连接 Azure Speech，请检查网络及 Region。"); }
+        try { response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { throw new UserFeedbackException("Azure 请求超时，请检查网络或稍后重试。", ServiceFailure.Timeout); }
+        catch (HttpRequestException) { throw new UserFeedbackException("无法连接 Azure Speech，请检查网络及 Region。", ServiceFailure.Connection); }
         if (response.IsSuccessStatusCode) return response;
         var code = response.StatusCode; response.Dispose();
-        throw new UserFeedbackException(code switch
-        {
-            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "Azure 认证失败，请检查 Key 与 Region 是否匹配。",
-            HttpStatusCode.TooManyRequests => "Azure 请求过多或配额不足，请稍后重试。",
-            HttpStatusCode.BadRequest => "Azure 拒绝合成请求，请检查所选语音在该 Region 是否可用或缩短文本。",
-            _ => $"Azure 服务错误（HTTP {(int)code}），请稍后重试。"
-        });
+        throw UserFeedbackException.Http((int)code);
     }
 }

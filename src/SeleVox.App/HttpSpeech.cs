@@ -222,13 +222,7 @@ internal static class HttpSpeech
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
                 request.Content = new StringContent(JsonSerializer.Serialize(payload(part)), Encoding.UTF8, "application/json");
                 using var response = await (client ?? SharedClient).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, segment.Token).ConfigureAwait(false);
-                if (!response.IsSuccessStatusCode) throw new UserFeedbackException(response.StatusCode switch
-                {
-                    HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => $"{label} 认证失败，请检查 API Key 和服务权限。",
-                    HttpStatusCode.TooManyRequests => $"{label} 请求过多或额度不足，请稍后重试。",
-                    HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => $"{label} 拒绝请求，请检查模型、音色、Instructions 等参数或缩短文本。",
-                    _ => $"{label} 服务错误（HTTP {(int)response.StatusCode}），不会重定向或切换服务。"
-                });
+                if (!response.IsSuccessStatusCode) throw UserFeedbackException.Http((int)response.StatusCode);
                 var body = await ReadBoundedAsync(response.Content, segment.Token).ConfigureAwait(false);
                 var bytes = decode(body, segment.Token);
                 segment.Token.ThrowIfCancellationRequested();
@@ -246,9 +240,9 @@ internal static class HttpSpeech
             return new MemoryStream(result, writable: false);
         }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
-        { throw new UserFeedbackException($"{label} 请求超时，请缩短文本或稍后重试。"); }
-        catch (HttpRequestException) { throw new UserFeedbackException($"无法连接 {label}，请检查网络和服务地址。"); }
-        catch (IOException) { throw new UserFeedbackException($"{label} 音频响应读取失败或格式无效。"); }
+        { throw new UserFeedbackException($"{label} 请求超时，请缩短文本或稍后重试。", ServiceFailure.Timeout); }
+        catch (HttpRequestException) { throw new UserFeedbackException($"无法连接 {label}，请检查网络和服务地址。", ServiceFailure.Connection); }
+        catch (IOException) { throw new UserFeedbackException($"{label} 音频响应读取中断。", ServiceFailure.Connection); }
         catch (ArgumentException) { throw new UserFeedbackException($"{label} 请求参数或音频格式无效，请检查设置。"); }
         catch (FormatException) { throw new UserFeedbackException($"{label} API Key 或请求格式无效，请检查设置。"); }
         finally { writer?.Dispose(); }
@@ -256,12 +250,12 @@ internal static class HttpSpeech
 
     internal static async Task<byte[]> ReadBoundedAsync(HttpContent content, CancellationToken cancellation)
     {
-        if (content.Headers.ContentLength > MaxResponseBytes) throw new UserFeedbackException("语音响应过大，请缩短文本。");
+        if (content.Headers.ContentLength > MaxResponseBytes) throw new UserFeedbackException("语音响应过大，请缩短文本。", ServiceFailure.ResponseTooLarge);
         using var input = await content.ReadAsStreamAsync(cancellation).ConfigureAwait(false);
         using var output = new MemoryStream(); var buffer = new byte[16384]; int read;
         while ((read = await input.ReadAsync(buffer, cancellation).ConfigureAwait(false)) > 0)
         {
-            if (output.Length + read > MaxResponseBytes) throw new UserFeedbackException("语音响应过大，请缩短文本。");
+            if (output.Length + read > MaxResponseBytes) throw new UserFeedbackException("语音响应过大，请缩短文本。", ServiceFailure.ResponseTooLarge);
             await output.WriteAsync(buffer.AsMemory(0, read), cancellation).ConfigureAwait(false);
         }
         cancellation.ThrowIfCancellationRequested();

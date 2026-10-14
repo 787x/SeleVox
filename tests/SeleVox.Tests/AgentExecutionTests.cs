@@ -29,6 +29,26 @@ public sealed class AgentExecutionTests
     }
     private static AgentRequest R(string command, object args) => new(1, command, AgentJson.Element(args));
     private static async Task<AgentJob> Status(AgentExecution execution, string id) => (AgentJob)await execution.ExecuteAsync(R("jobs.status", new { id }), default);
+    [Fact] public async Task DiagnosticCancelDoesNotCancelActiveAgentExport()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "pr15-agent-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var speech = new Speech(async token => { entered.TrySetResult(); await release.Task.WaitAsync(token); return Wave(); });
+        using var reading = new ReadingSession(speech, new NoPlayback());
+        using var execution = new AgentExecution(reading, speech, () => new(), action => action(), directory);
+        try
+        {
+            var job = (AgentJob)await execution.ExecuteAsync(R("synthesize", new { text = "agent fixture", output = Path.Combine(directory, "out.wav") }), default); await entered.Task;
+            var diag = ProviderDiagnosticsTests.Fake(async (_, _, token) => { await Task.Delay(-1, token); throw new Exception(); });
+            using var cancel = new CancellationTokenSource(); var pending = diag.RunAsync(ProviderDiagnosticsTests.Snapshot(DiagnosticService.Windows), cancel.Token);
+            cancel.Cancel(); Assert.Equal(DiagnosticState.Canceled, (await pending).State);
+            Assert.Equal("synthesizing", (await Status(execution, job.Id)).State);
+            release.TrySetResult(); await execution.WaitForJobAsync(job.Id, default); Assert.Equal("completed", (await Status(execution, job.Id)).State);
+            using var wave = new WaveFileReader(Path.Combine(directory, "out.wav")); Assert.Equal(4800, wave.Length);
+        }
+        finally { release.TrySetResult(); Directory.Delete(directory, true); }
+    }
     [Fact] public async Task BoundedJobsCancelStaleStopAndSaveOnceWithoutDevice()
     {
         var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()); Directory.CreateDirectory(directory);
