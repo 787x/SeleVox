@@ -141,7 +141,7 @@ Portable 需完整解压，可免装 .NET Runtime，但并非所有数据都存�
 
 `Install-InnoSetup.ps1` 从 [Inno Setup 官方固定 Release](https://github.com/jrsoftware/issrc/releases/tag/is-6_7_3) 获取 6.7.3，执行前核对仓库固定 SHA-256，不执行下载脚本。安装定义为 `installer/SeleVox.iss`；CI 和 Release 均经 `Package-Windows.ps1` 调用 `Build-Installer.ps1`，发布目录为唯一程序源。AppId 跨版本不变，RC 文本版本与 Stable 文本版本均由 `Release-Version.ps1` 注入。
 
-普通 PR CI 只构建测试版，不创建 Tag 或 Release。一次性 Actions 账户执行 `Test-Installed.ps1`：静默当前用户安装、逐文件哈希、已安装 CLI `--help`、重复安装、卸载、用户数据哨兵保留。该脚本要求显式 disposable 环境且拒绝已有配置/安装/启动项；不可在开发机伪造环境运行。Actions Windows Server runner 只能证明内核兼容的自动安装路径，其管理员令牌不能证明普通用户权限或 Windows 11 GUI 验收。Windows 11 非管理员安装、GUI、实际版本升级、Portable 迁移、登录自启与带音频任务卸载须单独验收，见 [安装说明](Installation.md) 和 [PR29 记录](../verification/PR29.md)。
+普通 PR CI 只构建测试版，不创建 Tag 或 Release。一次性 Actions VM 通过 `Test-InstallerStandardUser.ps1` 创建仅属于 Users 的测试账户，以该账户执行 `Test-Installed.ps1`：静默当前用户安装、逐文件哈希、已安装 CLI `--help`、文件占用升级拒绝、重复安装、合成旧 Portable 自启迁移、卸载自启归属与用户数据哨兵保留。该脚本要求显式 disposable 环境且拒绝已有配置/安装/启动项；不可在开发机伪造环境运行。测试子进程断言没有管理员权限；Actions Windows Server runner 仍只能证明内核兼容的自动安装路径，不能代表 Windows 11 GUI 验收。Windows 11 非管理员安装、GUI、实际版本升级、Portable 迁移、登录自启与带音频任务卸载须单独验收，见 [安装说明](Installation.md) 和 [PR29 记录](../verification/PR29.md)。
 
 ## 本地打包验证（不创建 Release）
 

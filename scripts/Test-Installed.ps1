@@ -10,17 +10,22 @@ $source = (Resolve-Path -LiteralPath $PublishDirectory).Path
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{BDC7B521-DF8E-44A7-AD0A-4765EAC38629}_is1'
 $data = Join-Path $env:LOCALAPPDATA 'SeleVox'
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-$shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'SeleVox'
+$shortcut = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::Programs, [Environment+SpecialFolderOption]::Create)) 'SeleVox'
 if ((Test-Path -LiteralPath $data) -or (Test-Path -LiteralPath $uninstallKey) -or (Test-Path -LiteralPath $shortcut) -or (Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox -ErrorAction SilentlyContinue)) { throw 'Account is not clean; refusing to touch existing state' }
 $root = Join-Path ([IO.Path]::GetTempPath()) ('SeleVox-install-' + [guid]::NewGuid().ToString('N'))
 $target = Join-Path $root '中文 installed app'
 New-Item -ItemType Directory -Path $root,$data | Out-Null
 $sentinel = Join-Path $data 'installer-test-sentinel.txt'
 [IO.File]::WriteAllText($sentinel, 'preserve-me')
-function Run-Setup([string]$File, [string[]]$Arguments) {
+function Run-Setup([string]$File, [string[]]$Arguments, [bool]$ExpectFailure = $false) {
     $process = Start-Process -FilePath $File -ArgumentList $Arguments -WindowStyle Hidden -Wait -PassThru
-    if ($process.ExitCode -ne 0) { throw "Installer process failed: $($process.ExitCode)" }
+    if ($ExpectFailure) {
+        if ($process.ExitCode -eq 0) { throw 'Installer accepted locked program files' }
+    } elseif ($process.ExitCode -ne 0) { throw "Installer process failed: $($process.ExitCode)" }
 }
+$migratedCommand = '"' + (Join-Path $target 'SeleVox.App.exe') + '" --background'
+$portableCommand = '"C:\SeleVox old portable\SeleVox.App.exe" --background'
+$settingsFixture = Join-Path $data 'settings.json'
 try {
     Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $target + '"'), ('/LOG="' + (Join-Path $root 'install.log') + '"'))
     if (-not (Test-Path -LiteralPath $uninstallKey)) { throw 'Missing current-user uninstall registration' }
@@ -34,16 +39,37 @@ try {
     }
     if (Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox -ErrorAction SilentlyContinue) { throw 'Installation enabled startup without consent' }
     if (Get-Process -Name SeleVox.App -ErrorAction SilentlyContinue) { throw 'Silent installation started desktop/services' }
+    $lockedPath = Join-Path $target 'SeleVox.Core.dll'
+    $before = (Get-FileHash -LiteralPath $lockedPath).Hash
+    $lock = [IO.File]::Open($lockedPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+    try { Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-') $true }
+    finally { $lock.Dispose() }
+    if ((Get-FileHash -LiteralPath $lockedPath).Hash -ne $before) { throw 'Rejected upgrade changed locked payload' }
+    # Synthetic Portable startup and settings belong only to this clean test account.
+    $settingsText = '{"StartWithWindows":true}'
+    [IO.File]::WriteAllText($settingsFixture, $settingsText)
+    New-Item -Path $runKey -Force | Out-Null
+    Set-ItemProperty -LiteralPath $runKey -Name SeleVox -Value $portableCommand
     # Same-AppId upgrade; no second uninstall entry and no data reset.
     Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-')
+    if ((Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox) -cne $migratedCommand) { throw 'Portable startup was not migrated' }
+    if ([IO.File]::ReadAllText($settingsFixture) -cne $settingsText) { throw 'Upgrade changed saved startup preference' }
     Run-Setup (Join-Path $target 'unins000.exe') @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
     if ((Test-Path -LiteralPath (Join-Path $target 'SeleVox.App.exe')) -or (Test-Path -LiteralPath $uninstallKey) -or (Test-Path -LiteralPath $shortcut)) { throw 'Uninstall left program or shortcut/registration' }
     if ([IO.File]::ReadAllText($sentinel) -cne 'preserve-me') { throw 'Uninstall deleted user data' }
-    Write-Host 'Actual current-user install, full payload hashes, installed CLI, reinstallation, uninstall and data preservation passed. '
+    if (Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox -ErrorAction SilentlyContinue) { throw 'Uninstall left owned startup value' }
+    Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $target + '"'))
+    Set-ItemProperty -LiteralPath $runKey -Name SeleVox -Value $portableCommand
+    Run-Setup (Join-Path $target 'unins000.exe') @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
+    if ((Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox) -cne $portableCommand) { throw 'Uninstall removed a different Portable startup value' }
+    Write-Host 'Actual current-user install, payload hashes, installed CLI, locked upgrade rejection, startup migration, owned/foreign Run cleanup, reinstallation, uninstall and data preservation passed.'
 } finally {
     if (Test-Path -LiteralPath (Join-Path $root 'install.log')) { Get-Content -LiteralPath (Join-Path $root 'install.log') -Tail 45 }
     # Preserve failed installations/logs for investigation. Never recurse over user data.
     if (Test-Path -LiteralPath $sentinel) { Remove-Item -LiteralPath $sentinel }
+    if (Test-Path -LiteralPath $settingsFixture) { Remove-Item -LiteralPath $settingsFixture }
+    $run = Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox -ErrorAction SilentlyContinue
+    if ($run -ceq $portableCommand -or $run -ceq $migratedCommand) { Remove-ItemProperty -LiteralPath $runKey -Name SeleVox }
     if ((Test-Path -LiteralPath $data) -and -not (Get-ChildItem -LiteralPath $data -Force | Select-Object -First 1)) { Remove-Item -LiteralPath $data }
     if (-not (Test-Path -LiteralPath $uninstallKey)) {
         $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'

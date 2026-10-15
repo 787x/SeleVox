@@ -70,6 +70,7 @@ jobs:
         run: |
           ./scripts/Package-Windows.ps1 -VersionTag $env:RELEASE_TAG
           ./scripts/Test-ReleaseAssets.ps1 -Directory artifacts/release -VersionTag $env:RELEASE_TAG
+          ./scripts/Test-ReleasePublishing.ps1 -VersionTag $env:RELEASE_TAG -AssetDirectory artifacts/release
       - name: Standard-user install, installed CLI and uninstall smoke
         env:
           SELEVOX_INSTALLER_DISPOSABLE: '1'

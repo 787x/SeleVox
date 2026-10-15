@@ -68,7 +68,8 @@ begin
   if (Copy(Value, 1, 1) <> '"') or (Copy(Value, Length(Value)-13, 14) <> '" --background') then Exit;
   Path := Copy(Value, 2, Length(Value)-15);
   Result := (Pos('"', Path) = 0) and (Pos(#13, Path) = 0) and (Pos(#10, Path) = 0) and
-    (CompareText(ExtractFileName(Path), 'SeleVox.App.exe') = 0) and (ExtractFileDrive(Path) <> '');
+    (CompareText(ExtractFileName(Path), 'SeleVox.App.exe') = 0) and
+    (((Length(Path) >= 3) and (Copy(Path, 2, 2) = ':\')) or (Copy(Path, 1, 2) = '\\'));
 end;
 
 function BeginMaintenance: Boolean;

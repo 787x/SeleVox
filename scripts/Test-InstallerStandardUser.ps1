@@ -26,7 +26,11 @@ try {
 $ErrorActionPreference = 'Stop'
 $env:GITHUB_ACTIONS = 'true'
 $env:SELEVOX_INSTALLER_DISPOSABLE = '1'
-$env:LOCALAPPDATA = [Environment]::GetFolderPath('LocalApplicationData')
+$env:LOCALAPPDATA = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData, [Environment+SpecialFolderOption]::Create)
+if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) { throw 'Standard-user LocalAppData could not be created' }
+$env:TEMP = Join-Path $env:LOCALAPPDATA 'Temp'
+$env:TMP = $env:TEMP
+New-Item -ItemType Directory -Path $env:TEMP -Force | Out-Null
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Smoke must run without administrator privileges' }
 & (Join-Path $PSScriptRoot 'scripts\Test-Installed.ps1') -VersionTag ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'version.txt'))) -SetupDirectory (Join-Path $PSScriptRoot 'setup') -PublishDirectory (Join-Path $PSScriptRoot 'publish')
