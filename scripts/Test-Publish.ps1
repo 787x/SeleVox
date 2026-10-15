@@ -15,7 +15,7 @@ foreach ($file in @(
     'PresentationFramework.dll', 'PresentationCore.dll', 'WindowsBase.dll', 'wpfgfx_cor3.dll',
     'Tesseract.dll', 'x64/tesseract50.dll', 'x64/leptonica-1.82.0.dll',
     'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll',
-    'OcrData/pr18-intentionally-missing.traineddata', 'OcrData/chi_sim.traineddata',
+    'OcrData/eng.traineddata', 'OcrData/chi_sim.traineddata',
     'OcrData/LICENSE', 'OcrData/Native-Tesseract-LICENSE', 'OcrData/Tesseract-LICENSE.txt',
     'OcrData/Leptonica-LICENSE.txt', 'OcrData/InteropDotNet-LICENSE.txt', 'OcrData/NOTICE.md',
     'OcrRuntime/NOTICE.md', 'OcrRuntime/Visual-C-Runtime-LICENSE.docx', 'OcrRuntime/Visual-C-Runtime-LICENSE.txt',
