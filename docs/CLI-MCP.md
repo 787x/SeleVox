@@ -1,18 +1,22 @@
 # CLI / MCP 使用说明（PR14）
 
-发布目录中的 `SeleVox.Cli.exe` 提供 CLI 和 MCP stdio 两种入口。保留整个发布目录，桌面端 `SeleVox.App.exe` 必须与 CLI 位于同一目录；无需安装 .NET、Python、Node.js 或开发环境。
+发布目录中的 `SeleVox.Cli.exe` 提供 CLI 和 MCP stdio 两种入口。保留整个发布目录，桌面端 `SeleVox.App.exe` 必须与 CLI 位于同一目录；使用已发布的 self-contained 便携包无需安装 .NET、Python、Node.js 或开发环境。
+
+从仓库根目录构建便携目录（需要 .NET 10 SDK 和 PowerShell 7.2+；默认输出目录 `artifacts/win-x64` 必须为空）：
 
 ```powershell
-./scripts/Publish-Windows.ps1
-./artifacts/pr14-portable/SeleVox.Cli.exe --help
+pwsh ./scripts/Publish-Windows.ps1
+./artifacts/win-x64/SeleVox.Cli.exe --help
 ```
+
+如果使用 GitHub Release 的 ZIP，完整解压后直接运行其中的 `SeleVox.Cli.exe`，无需执行上述构建命令；下文 `$cli` 应改为实际解压位置。
 
 所有 TTS 请求均由当前用户的桌面实例执行，CLI 和 MCP 共享参数解析、配置、任务和合成实现。桌面端未运行时自动以 `--agent-background` 启动；已有实例直接复用。旧版本桌面端没有此 IPC，需先退出并启动新版本；连接失败返回明确错误，不自动结束旧进程。
 
 ## CLI 入门
 
 ```powershell
-$cli = './artifacts/pr14-portable/SeleVox.Cli.exe'
+$cli = './artifacts/win-x64/SeleVox.Cli.exe'
 & $cli providers list
 & $cli voices list --provider Windows
 & $cli devices list
