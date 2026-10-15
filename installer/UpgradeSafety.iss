@@ -191,6 +191,7 @@ begin
   if FileExists(Marker) then begin
     Repairing := True;
     if GetIniString('Upgrade', 'Target', '', Marker) <> '{#Version}' then begin Result := 'An unfinished installation must first be repaired using Setup '+GetIniString('Upgrade', 'Target', 'unknown', Marker)+'. Attempted: {#Version}. Keep recovery files.'; Exit; end;
+    if GetIniString('Upgrade', 'NewHash', '', Marker) <> '{#PayloadHash}' then begin Result := 'Recovery payload differs. Use the original target version Setup and keep recovery files.'; Exit; end;
     Completing := GetIniString('Upgrade', 'Complete', '', Marker) = '1';
     ParseRelease('{#Version}', Target);
     BaseVersion := GetIniString('Upgrade', 'Base', '', Marker);
@@ -260,7 +261,7 @@ begin
     if BaseVersion <> '' then
       if not CopyFile(ExpandConstant('{app}\')+PayloadName, State+'\previous.manifest', True) then RaiseException('Cannot save the previous ownership record.');
     if not SetIniString('Upgrade', 'Target', '{#Version}', Marker) or not SetIniString('Upgrade', 'Base', BaseVersion, Marker) or
-      not SetIniString('Upgrade', 'OldHash', OldHash, Marker) then RaiseException('Cannot write upgrade recovery marker. Keep recovery files.');
+      not SetIniString('Upgrade', 'OldHash', OldHash, Marker) or not SetIniString('Upgrade', 'NewHash', '{#PayloadHash}', Marker) then RaiseException('Cannot write upgrade recovery marker. Keep recovery files.');
   end;
   for I := 0 to OldFiles.Count-1 do if OwnedHash(NewFiles, OwnedName(OldFiles, I)) = '' then begin
     Path := ExpandConstant('{app}\')+OwnedName(OldFiles, I); Backup := State+'\retired\'+OwnedName(OldFiles, I);

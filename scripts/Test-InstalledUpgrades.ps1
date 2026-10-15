@@ -101,11 +101,35 @@ try {
     finally { [IO.File]::WriteAllBytes($obsolete, $bytes) }
     $lock = [IO.File]::Open($obsolete, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
     try { Invoke-Setup 'v0.0.2-rc.2' 'Installation files are in use' } finally { $lock.Dispose() }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class SeleVoxUpgradeAcl {
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr CreateFileW(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+    public static bool DeleteAccessDenied(string path) {
+        var handle = CreateFileW(path, 0x80010000, 0, IntPtr.Zero, 3, 0, IntPtr.Zero);
+        if (handle == new IntPtr(-1)) return Marshal.GetLastWin32Error() == 5;
+        CloseHandle(handle); return false;
+    }
+}
+'@
+    $parentPath = Split-Path $obsolete
+    $parentAcl = Get-Acl -LiteralPath $parentPath
+    $restrictedParent = Get-Acl -LiteralPath $parentPath
+    $restrictedParent.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.WindowsIdentity]::GetCurrent().User, 'DeleteSubdirectoriesAndFiles', 'Deny'))
     $acl = Get-Acl -LiteralPath $obsolete
     $deny = [Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.WindowsIdentity]::GetCurrent().User, 'Delete', 'Deny')
     $restricted = Get-Acl -LiteralPath $obsolete; $restricted.AddAccessRule($deny)
-    try { Set-Acl -LiteralPath $obsolete -AclObject $restricted; Invoke-Setup 'v0.0.2-rc.2' 'retired program component is locked or lacks delete permission' }
-    finally { Set-Acl -LiteralPath $obsolete -AclObject $acl }
+    try {
+        Set-Acl -LiteralPath $obsolete -AclObject $restricted
+        Set-Acl -LiteralPath $parentPath -AclObject $restrictedParent
+        if (-not [SeleVoxUpgradeAcl]::DeleteAccessDenied($obsolete)) { throw 'ACL fixture did not deny DELETE access; refusing to claim a permission test' }
+        Invoke-Setup 'v0.0.2-rc.2' 'retired program component is locked or lacks delete permission'
+    } finally {
+        if (Test-Path -LiteralPath $obsolete) { Set-Acl -LiteralPath $obsolete -AclObject $acl }
+        Set-Acl -LiteralPath $parentPath -AclObject $parentAcl
+    }
     Invoke-Setup 'v0.0.2-rc.2'; Assert-Installed 'v0.0.2-rc.2'
     if (Test-Path -LiteralPath $obsolete) { throw 'Removed old component remained in the runtime directory' }
     Invoke-Setup 'v0.0.2-rc.1' 'Downgrade refused: installed 0.0.2-rc.2, attempted 0.0.2-rc.1'
