@@ -102,7 +102,7 @@ public partial class App : System.Windows.Application
         notices.AddRange(hotkeys.Conflicts);
         if (settingsWindow.VoiceWarning is not null) notices.Add(settingsWindow.VoiceWarning);
         try { StartupRegistration.Apply(settings.StartWithWindows); }
-        catch (Exception ex) { notices.Add($"开机启动设置不可用（{ex.GetType().Name}）。"); }
+        catch (Exception ex) { notices.Add(ex is StartupRegistrationException ? ex.Message : $"开机启动设置不可用（{ex.GetType().Name}）。"); }
         if (!SingleInstance.IsBackground(e.Args)) ShowSettings();
         if (notices.Count > 0) { var notice = string.Join(Environment.NewLine, notices); settingsWindow.SetNotice(notice); Notify(notice); }
     }
@@ -165,7 +165,7 @@ public partial class App : System.Windows.Application
         catch (Exception ex)
         {
             try { StartupRegistration.Apply(settings.StartWithWindows); } catch { /* Keep the original failure; never log provider text. */ }
-            return $"设置保存失败（{ex.GetType().Name}），请检查用户目录及开机启动权限。";
+            return ex is StartupRegistrationException ? ex.Message : $"设置保存失败（{ex.GetType().Name}），请检查用户目录及开机启动权限。";
         }
     }
     private string? ApplyAutomatic()

@@ -39,8 +39,9 @@ try {
     Run-Setup (Join-Path $target 'unins000.exe') @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
     if ((Test-Path -LiteralPath (Join-Path $target 'SeleVox.App.exe')) -or (Test-Path -LiteralPath $uninstallKey) -or (Test-Path -LiteralPath $shortcut)) { throw 'Uninstall left program or shortcut/registration' }
     if ([IO.File]::ReadAllText($sentinel) -cne 'preserve-me') { throw 'Uninstall deleted user data' }
-    Write-Host 'Actual current-user install, full payload hashes, installed CLI, reinstallation, uninstall and data preservation passed. Runner token is not proof of non-administrator behavior.'
+    Write-Host 'Actual current-user install, full payload hashes, installed CLI, reinstallation, uninstall and data preservation passed. '
 } finally {
+    if (Test-Path -LiteralPath (Join-Path $root 'install.log')) { Get-Content -LiteralPath (Join-Path $root 'install.log') -Tail 45 }
     # Preserve failed installations/logs for investigation. Never recurse over user data.
     if (Test-Path -LiteralPath $sentinel) { Remove-Item -LiteralPath $sentinel }
     if ((Test-Path -LiteralPath $data) -and -not (Get-ChildItem -LiteralPath $data -Force | Select-Object -First 1)) { Remove-Item -LiteralPath $data }

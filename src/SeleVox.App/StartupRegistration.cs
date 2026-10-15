@@ -1,17 +1,19 @@
 using Microsoft.Win32;
 namespace SeleVox.App;
+internal sealed class StartupRegistrationException(string message) : InvalidOperationException(message);
 internal static class StartupRegistration
 {
     internal const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     internal static string Command(string? executable)
     {
         if (string.IsNullOrWhiteSpace(executable) || !Path.IsPathFullyQualified(executable) ||
-            executable.IndexOfAny(['"', '\r', '\n', '\0']) >= 0 ||
+            executable.IndexOfAny(['"', '\r', '\n', '\0', '<', '>', '|', '?', '*']) >= 0 ||
+            executable[Path.GetPathRoot(executable)!.Length..].Contains(':') ||
             !Path.GetFileName(executable).Equals("SeleVox.App.exe", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("无法注册开机启动：请使用合法的 SeleVox.App.exe 绝对路径。");
+            throw new StartupRegistrationException("无法注册开机启动：请使用合法的 SeleVox.App.exe 绝对路径。");
         var command = $"\"{executable}\" --background";
         // Windows Run commands have a documented 260-character limit.
-        if (command.Length > 260) throw new InvalidOperationException("开机启动命令超过 Windows 的 260 字符限制。");
+        if (command.Length > 260) throw new StartupRegistrationException("开机启动命令超过 Windows 的 260 字符限制。");
         return command;
     }
     internal static bool IsSeleVoxCommand(string? command) => command is not null &&
@@ -38,7 +40,7 @@ internal static class StartupRegistration
         }
         var command = Command(executable);
         if (existing is not null && (existing is not string text || !IsSeleVoxCommand(text)))
-            throw new InvalidOperationException("SeleVox 启动项已被其他命令占用，请先检查 Windows 启动设置。");
+            throw new StartupRegistrationException("SeleVox 启动项已被其他命令占用，请先检查 Windows 启动设置。");
         if (!string.Equals(existing as string, command, StringComparison.Ordinal)) key.SetValue("SeleVox", command, RegistryValueKind.String);
     }
 }

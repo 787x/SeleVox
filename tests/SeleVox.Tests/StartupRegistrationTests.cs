@@ -24,7 +24,7 @@ public sealed class StartupRegistrationTests
             StartupRegistration.Apply(key, false, path);
             Assert.Null(key.GetValue("SeleVox"));
             key.SetValue("SeleVox", "other.exe --do-not-touch");
-            Assert.Throws<InvalidOperationException>(() => StartupRegistration.Apply(key, true, path));
+            Assert.Throws<StartupRegistrationException>(() => StartupRegistration.Apply(key, true, path));
             StartupRegistration.Apply(key, false, path);
             Assert.Equal("other.exe --do-not-touch", key.GetValue("SeleVox"));
             Assert.Equal("untouched", key.GetValue("OtherApp"));
@@ -32,10 +32,10 @@ public sealed class StartupRegistrationTests
         finally { Registry.CurrentUser.DeleteSubKeyTree(subkey, false); }
     }
     [Theory]
-    [InlineData(null)] [InlineData("SeleVox.App.exe")] [InlineData(@"C:\wrong.exe")]
+    [InlineData(null)] [InlineData("SeleVox.App.exe")] [InlineData(@"C:\bad?\SeleVox.App.exe")] [InlineData(@"C:\wrong.exe")]
     [InlineData("C:\\bad\"\\SeleVox.App.exe")]
-    public void InvalidPathsFailExplicitly(string? path) => Assert.Throws<InvalidOperationException>(() => StartupRegistration.Command(path));
-    [Fact] public void LongRunCommandRejected() => Assert.Throws<InvalidOperationException>(() => StartupRegistration.Command(@"C:\" + new string('x', 250) + @"\SeleVox.App.exe"));
+    public void InvalidPathsFailExplicitly(string? path) => Assert.Throws<StartupRegistrationException>(() => StartupRegistration.Command(path));
+    [Fact] public void LongRunCommandRejected() => Assert.Throws<StartupRegistrationException>(() => StartupRegistration.Command(@"C:\" + new string('x', 250) + @"\SeleVox.App.exe"));
     [Theory] [InlineData("--background")] [InlineData("--agent-background")]
     public void BothBackgroundModesSuppressShow(string argument)
     {

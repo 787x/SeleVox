@@ -63,10 +63,10 @@ jobs:
         run: |
           ./scripts/Test-Packaging.ps1 -VersionTag v0.0.0-rc.1
           ./scripts/Test-ReleasePublishing.ps1
-      - name: Isolated installed CLI and uninstall smoke
+      - name: Standard-user install, installed CLI and uninstall smoke
         env:
           SELEVOX_INSTALLER_DISPOSABLE: '1'
-        run: ./scripts/Test-Installed.ps1 -VersionTag v0.0.0-rc.1 -SetupDirectory artifacts/release -PublishDirectory artifacts/win-x64
+        run: ./scripts/Test-InstallerStandardUser.ps1 -VersionTag v0.0.0-rc.1 -SetupDirectory artifacts/release -PublishDirectory artifacts/win-x64
       - name: Upload validated Setup, portable ZIP and checksum
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
