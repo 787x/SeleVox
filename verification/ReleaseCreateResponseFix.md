@@ -30,7 +30,10 @@ Windows x64 / .NET SDK 10.0.401 / PowerShell 7。
 
 ## GitHub PR CI
 
-待创建 PR 后记录真实运行。命令模拟是本地/CI 离线控制流程测试，不是真实 GitHub 写入测试。
+- [修复 PR #21](https://github.com/787x/SeleVox/pull/21) 的 [运行 38669923102，attempt 2](https://github.com/787x/SeleVox/actions/runs/38669923102/attempts/2)，代码 `8551023`，全部步骤 success。日志实测 build 0 warning / 0 error；458 total / 457 passed / 0 failed / 1 skipped；541 文件 ZIP 解压、版本、CLI 和 hash 通过；30 个 RC 命令模拟通过，含 stale-list-success、第二次上传失败、上传后 GET 失败与 PATCH 失败；ZIP/checksum 和发布目录 Artifact 上传成功。
+- 同一运行 attempt 1 在既有 MiMoLargeEventTests.LargeMultilineDataAndDecodeCancellationRemainSupported 失败：期待 OperationCanceledException，但没有抛出。实际计数 456 passed / 1 failed / 1 skipped，发布和新模拟尚未执行，TRX 仍上传。检查代码可见任务开始通知后才发起 Cancel，存在解码先完成的调度竞争；这是根据代码的解释，并非对失败时线程调度的直接测量。未修改业务/测试、未排除该用例，同提交重跑 attempt 2 通过；保留为既有偶发测试风险。
+- 只读复查远端 RC1/RC2 peeled Tag commit 未变，RC2 仍 draft=true/prerelease=true、assets=0。两个修改脚本 AST 语法检查通过；工作区无未提交修改。后续记录提交只更新文档，最终 PR Checks 以页面为准。
+- 命令模拟是本地/CI 离线控制流程测试，不是真实 GitHub 写入测试。
 
 ## 恢复与真实验收边界
 
