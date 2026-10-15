@@ -1,3 +1,4 @@
+#requires -Version 7.2
 param(
     [string]$ResultsDirectory = (Join-Path $PSScriptRoot '..\TestResults\ci'),
     [string]$ArtifactsPath

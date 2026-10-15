@@ -1,3 +1,4 @@
+#requires -Version 7.2
 param([string]$OutputDirectory = (Join-Path $PSScriptRoot '..\artifacts\win-x64'))
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -35,5 +36,7 @@ try {
     Write-Host "Validated Windows x64 self-contained publish: $output"
 } finally {
     # Remove only this invocation's random staging directory under the system temp directory.
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    if (-not [IO.Path]::GetFullPath($stage).StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe temporary staging path' }
     if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 }

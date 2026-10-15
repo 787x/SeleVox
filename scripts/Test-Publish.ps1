@@ -1,3 +1,4 @@
+#requires -Version 7.2
 param([Parameter(Mandatory)][string]$PublishDirectory)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -20,10 +21,15 @@ foreach ($file in @(
     'OcrRuntime/NOTICE.md', 'OcrRuntime/Visual-C-Runtime-LICENSE.docx', 'OcrRuntime/Visual-C-Runtime-LICENSE.txt',
     'EdgeTransport/LICENSE', 'EdgeTransport/NOTICE.md'
 )) { Assert-File $file }
+$frameworkIdentity = $null
 foreach ($app in @('SeleVox.App', 'SeleVox.Cli')) {
     foreach ($suffix in @('.dll', '.deps.json', '.runtimeconfig.json')) { Assert-File ($app + $suffix) }
     $config = Get-Content -LiteralPath (Join-Path $root "$app.runtimeconfig.json") -Raw | ConvertFrom-Json -AsHashtable
     if (-not $config.runtimeOptions.includedFrameworks -or $config.runtimeOptions.ContainsKey('framework')) { throw "$app is not self-contained" }
+    $identity = ($config.runtimeOptions.includedFrameworks | Sort-Object name | ForEach-Object { "$($_.name)/$($_.version)" }) -join ';'
+    if ($config.runtimeOptions.tfm -ne 'net10.0' -or $identity -notmatch 'Microsoft.NETCore.App/10\.' -or $identity -notmatch 'Microsoft.WindowsDesktop.App/10\.') { throw "$app requires the .NET 10 desktop runtime pack" }
+    if ($frameworkIdentity -and $frameworkIdentity -ne $identity) { throw 'Desktop and CLI runtime pack versions differ' }
+    $frameworkIdentity = $identity
     $deps = Get-Content -LiteralPath (Join-Path $root "$app.deps.json") -Raw | ConvertFrom-Json -AsHashtable
     if ($deps.runtimeTarget.name -notmatch '/win-x64$') { throw "$app is not win-x64" }
     # The published manifest contains the resolved runtime, native and localized assets.
@@ -70,5 +76,7 @@ try {
     Write-Host 'Publish integrity and actual CLI --help passed.'
 } finally {
     if ($process) { if (-not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }; $process.Dispose() }
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    if (-not [IO.Path]::GetFullPath($scratch).StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe temporary smoke path' }
     Remove-Item -LiteralPath $scratch -Recurse -Force
 }

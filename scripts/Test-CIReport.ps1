@@ -1,3 +1,4 @@
+#requires -Version 7.2
 param([Parameter(Mandatory)][string]$Report)
 $ErrorActionPreference = 'Stop'
 [xml]$trx = Get-Content -LiteralPath $Report -Raw
