@@ -31,6 +31,7 @@ SetupLogging=yes
 Name: desktopicon; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
+Source: "{#PayloadManifest}"; DestDir: "{app}"; DestName: ".selevox-payload"; Flags: ignoreversion
 Source: "{#PublishDirectory}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -195,6 +196,7 @@ begin
 end;
 
 #include PayloadVerification
+#include "UpgradeSafety.iss"
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
@@ -202,12 +204,14 @@ begin
   if not SafeDirectory then Result := 'Choose an empty program directory outside user data (no junctions). For upgrades, use the existing SeleVox installation directory.'
   else if Length(AppCommand) > 260 then Result := 'Installation path exceeds the Windows startup command limit.'
   else if not ProcessesStopped then Result := 'Exit SeleVox from its tray menu and close CLI/MCP tasks before continuing. No process will be terminated. Process ownership must be verifiable.'
-  else if not FilesUnlocked(ExpandConstant('{app}'), False) then Result := 'Installation files are in use or inaccessible. Close applications and retry.';
+  else if not FilesUnlocked(ExpandConstant('{app}'), False) then Result := 'Installation files are in use or inaccessible. Close applications and retry.'
+  else Result := CheckUpgrade;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var Existing: String;
 begin
+  if CurStep = ssInstall then BeginUpgrade;
   if CurStep = ssPostInstall then begin
     { A user must never get a successful install after ignoring a file error. }
     VerifyPayload;
@@ -215,13 +219,14 @@ begin
       (Existing <> AppCommand) then
       if not RegWriteStringValue(HKCU, RunKey, 'SeleVox', AppCommand) then
         RaiseException('Could not migrate the existing startup entry. Check Windows startup settings.');
+    FinishUpgrade;
   end;
 end;
 
 function InitializeUninstall: Boolean;
 begin
-  Result := BeginMaintenance and ProcessesStopped;
-  if not Result then SuppressibleMsgBox('Exit SeleVox and close CLI/MCP tasks before uninstalling. No process will be terminated.', mbError, MB_OK, IDOK);
+  Result := not FileExists(ExpandConstant('{app}\.selevox-upgrade-pending')) and BeginMaintenance and ProcessesStopped;
+  if not Result then SuppressibleMsgBox('Exit SeleVox and close CLI/MCP tasks before uninstalling. If an upgrade is unfinished, repair it with the same target Setup first. No process will be terminated.', mbError, MB_OK, IDOK);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

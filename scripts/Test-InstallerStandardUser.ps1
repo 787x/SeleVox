@@ -1,6 +1,6 @@
 #requires -Version 7.2
 # Creates a standard account only on an ephemeral Actions VM; never on a developer PC.
-param([Parameter(Mandatory)][string]$VersionTag, [Parameter(Mandatory)][string]$SetupDirectory, [Parameter(Mandatory)][string]$PublishDirectory)
+param([Parameter(Mandatory)][string]$VersionTag, [Parameter(Mandatory)][string]$SetupDirectory, [Parameter(Mandatory)][string]$PublishDirectory, [string]$UpgradeFixtureDirectory)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:SELEVOX_INSTALLER_DISPOSABLE -ne '1') { throw 'Disposable GitHub Actions runner required' }
 . (Join-Path $PSScriptRoot 'Release-Version.ps1')
@@ -10,9 +10,13 @@ $root = Join-Path ([Environment]::GetFolderPath('CommonDocuments')) ('SeleVox-in
 $created = $false
 try {
     New-Item -ItemType Directory -Path $root,(Join-Path $root 'scripts'),(Join-Path $root 'setup'),(Join-Path $root 'publish') | Out-Null
-    foreach ($name in @('Test-Installed.ps1', 'Test-Publish.ps1', 'Release-Version.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $root 'scripts') }
+    foreach ($name in @('Test-Installed.ps1', 'Test-InstalledUpgrades.ps1', 'Test-Publish.ps1', 'Release-Version.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $root 'scripts') }
     Copy-Item -LiteralPath (Join-Path $SetupDirectory $version.SetupName) -Destination (Join-Path $root 'setup')
     Get-ChildItem -LiteralPath $PublishDirectory -Force | Copy-Item -Destination (Join-Path $root 'publish') -Recurse
+    if ($UpgradeFixtureDirectory) {
+        New-Item -ItemType Directory -Path (Join-Path $root 'upgrades') | Out-Null
+        Get-ChildItem -LiteralPath $UpgradeFixtureDirectory -Force | Copy-Item -Destination (Join-Path $root 'upgrades') -Recurse
+    }
     [IO.File]::WriteAllText((Join-Path $root 'version.txt'), $VersionTag)
     $password = ConvertTo-SecureString ('Aa1!' + [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))) -AsPlainText -Force
     New-LocalUser -Name $userName -Password $password -AccountNeverExpires -PasswordNeverExpires | Out-Null
@@ -46,6 +50,9 @@ New-Item -ItemType Directory -Path $env:APPDATA,$env:LOCALAPPDATA,$env:TEMP -For
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Smoke must run without administrator privileges' }
 & (Join-Path $PSScriptRoot 'scripts\Test-Installed.ps1') -VersionTag ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'version.txt'))) -SetupDirectory (Join-Path $PSScriptRoot 'setup') -PublishDirectory (Join-Path $PSScriptRoot 'publish')
+if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'upgrades')) {
+    & (Join-Path $PSScriptRoot 'scripts\Test-InstalledUpgrades.ps1') -FixtureDirectory (Join-Path $PSScriptRoot 'upgrades')
+}
 '@ | Set-Content -LiteralPath (Join-Path $root 'run.ps1') -Encoding utf8
     Start-Service seclogon
     $credential = [Management.Automation.PSCredential]::new("$env:COMPUTERNAME\$userName", $password)

@@ -32,6 +32,11 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (System.IO.File.Exists(System.IO.Path.Combine(AppContext.BaseDirectory, ".selevox-upgrade-pending")))
+        {
+            if (!SingleInstance.IsBackground(e.Args)) MessageBox.Show("SeleVox 安装未完成，请先重新运行上次目标版本的 Setup 修复安装；请保留安装目录中的恢复文件。");
+            Shutdown(); return;
+        }
         if (SingleInstance.MaintenanceInProgress())
         {
             if (!SingleInstance.IsBackground(e.Args)) MessageBox.Show("安装或卸载正在进行，请完成后再启动 SeleVox。");
