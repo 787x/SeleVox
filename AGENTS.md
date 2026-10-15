@@ -34,6 +34,6 @@ SeleVox 是已发布的 **Windows 11 x64 桌面朗读、AI 问答与音频创作
 
 - 优先阅读适用的代码、测试和文档，沿用既有抽象；允许为本次任务做必要的局部调整，不为单一功能引入通用框架、数据库或不相关重构。
 - 验证与风险匹配：执行最相关的构建、测试、协议/文件检查和 Windows 实机验证。`scripts/Test-CI.ps1` 是无人值守离线测试入口；真实 UIA/OCR 桌面、声卡/虚拟 Capture、Credential Manager、MCP 桌面连接及在线服务测试须按适用条件单独进行，不把 CI 绿灯等同于这些场景实测通过。
-- 发布使用已有 `scripts/Publish-Windows.ps1`、相关打包/校验脚本与 `.github/workflows/`；发布目录必须保留 App、CLI、OCR/原生依赖，并排除用户数据、密钥和第三方驱动。不得未经授权创建/移动正式版本 Tag、公开/覆盖 Release 或处理不明 Draft。
+- 发布使用已有 `scripts/Publish-Windows.ps1`、相关打包/校验脚本与 `.github/workflows/`；发布目录必须保留 App、CLI、OCR/原生依赖，并排除用户数据、密钥和第三方驱动。
 - 修改用户可见行为、配置格式、CLI/MCP 公共接口或发布行为时，同步更新对应 README、`docs/` 和必要的 `verification/` 记录。
 - 最终简洁报告：**实际修改、实际执行的验证及结果、未执行或受环境限制的检查、剩余风险**。不得将代码推断、模拟结果或旧版本验证说成本次真实测试。
