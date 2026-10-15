@@ -44,8 +44,8 @@ try {
         $extra = 'Source: "' + $trigger + '"; DestDir: "{tmp}"; DestName: "SeleVox-fault-trigger.tmp"; Flags: deleteafterinstall; BeforeInstall: InjectUpgradeFault'
         if ($TestFault -eq 'Verify') { $text = $text.Replace('    VerifyPayload;', "    VerifyPayload;`n    InjectUpgradeFault;") }
         else { $text = $text.Replace('[Icons]', "$extra`n`n[Icons]") }
-        $action = if ($TestFault -eq 'Interrupt') { "Log('TEST interruption checkpoint'); Sleep(60000);" } elseif ($TestFault -eq 'Fail') { "Log('TEST injected installation failure'); Abort;" } else { "RaiseException('TEST injected installation failure');" }
-        $text += "`nprocedure InjectUpgradeFault;`nbegin`n  $action`nend;`n"
+        $action = if ($TestFault -eq 'Interrupt') { "Log('TEST interruption checkpoint'); Sleep(60000);" } elseif ($TestFault -eq 'Fail') { "Log('TEST injected installation failure'); if not DeleteFile(ExpandConstant('{app}\UpgradeFixture\current-component.dll')) then RaiseException('TEST component removal failed');" } else { "RaiseException('TEST injected installation failure');" }
+        $text = $text.Replace('[Code]', "[Code]`nprocedure InjectUpgradeFault;`nbegin`n  $action`nend;`n")
         [IO.File]::WriteAllText($definition, $text, [Text.UTF8Encoding]::new($true))
     }
     & $compiler "/DVersion=$($version.SemVer)" "/DNumericVersion=$($version.Numeric)" "/DVersionTag=$VersionTag" "/DPublishDirectory=$source" "/DOutputDirectory=$output" "/DPayloadVerification=$verification" "/DPayloadManifest=$manifest" "/DPayloadHash=$manifestHash" $definition
