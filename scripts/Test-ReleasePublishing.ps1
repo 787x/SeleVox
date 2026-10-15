@@ -148,3 +148,7 @@ foreach ($scenario in $cases.Keys) {
     }
     Write-Host "Offline release command simulation passed: $scenario (public=$global:SeleVoxReleaseTest_published)"
 }
+# Actions' pwsh wrapper propagates LASTEXITCODE even for a mocked native command.
+# Reach this only after every assertion passes; intentional failure cases must not
+# turn the successful test harness into a failed CI step.
+$global:LASTEXITCODE = 0
