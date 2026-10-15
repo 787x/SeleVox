@@ -18,8 +18,14 @@ $target = Join-Path $root '中文 installed app'
 New-Item -ItemType Directory -Path $root,$data | Out-Null
 $sentinel = Join-Path $data 'installer-test-sentinel.txt'
 [IO.File]::WriteAllText($sentinel, 'preserve-me')
+$script:installerInvocation = 0
 function Run-Setup([string]$File, [string[]]$Arguments, [bool]$ExpectFailure = $false) {
+    $script:installerInvocation++
+    $operationLog = Join-Path $root ("operation-$script:installerInvocation.log")
+    if (-not @($Arguments | Where-Object { $_ -like '/LOG=*' }).Count) { $Arguments += '/LOG="' + $operationLog + '"' }
+    Write-Host "Installer operation $script:installerInvocation ($([IO.Path]::GetFileName($File)))"
     $process = Start-Process -FilePath $File -ArgumentList $Arguments -WindowStyle Hidden -Wait -PassThru
+    if ($process.ExitCode -ne 0 -and (Test-Path -LiteralPath $operationLog)) { Get-Content -LiteralPath $operationLog -Tail 35 }
     if ($ExpectFailure) {
         if ($process.ExitCode -eq 0) { throw 'Installer accepted locked program files' }
     } elseif ($process.ExitCode -ne 0) { throw "Installer process failed: $($process.ExitCode)" }
@@ -93,6 +99,12 @@ namespace SeleVoxInstallerTests {
     Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-')
     if ((Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox) -cne $migratedCommand) { throw 'Portable startup was not migrated' }
     if ([IO.File]::ReadAllText($settingsFixture) -cne $settingsText) { throw 'Upgrade changed saved startup preference' }
+    $uninstallLockLog = Join-Path $root 'uninstall-locked.log'
+    $lock = [IO.File]::Open($lockedPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+    try { Run-Setup (Join-Path $target 'unins000.exe') @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/LOG="' + $uninstallLockLog + '"')) $true }
+    finally { $lock.Dispose() }
+    if ([IO.File]::ReadAllText($uninstallLockLog) -notmatch 'Installation files are in use or inaccessible') { throw 'Locked uninstall failed for an unexpected reason' }
+    if ((Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox) -cne $migratedCommand) { throw 'Rejected uninstall changed startup value' }
     Run-Setup (Join-Path $target 'unins000.exe') @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
     if ((Test-Path -LiteralPath (Join-Path $target 'SeleVox.App.exe')) -or (Test-Path -LiteralPath $uninstallKey) -or (Test-Path -LiteralPath $shortcut)) { throw 'Uninstall left program or shortcut/registration' }
     foreach ($file in Get-ChildItem -LiteralPath $source -File -Recurse) {

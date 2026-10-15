@@ -120,18 +120,24 @@ begin
   end;
 end;
 
-function FilesUnlocked(Directory: String): Boolean;
-var Find: TFindRec; Path: String; Handle: Integer;
+function FilesUnlocked(Directory: String; IsUninstall: Boolean): Boolean;
+var Find: TFindRec; Path, UninstallExe: String; Handle: Integer;
 begin
   Result := True;
+  UninstallExe := '';
+  if IsUninstall then UninstallExe := ExpandConstant('{uninstallexe}');
   if FindFirst(AddBackslash(Directory) + '*', Find) then begin
     try
       repeat
         if (Find.Name <> '.') and (Find.Name <> '..') then begin
           Path := AddBackslash(Directory) + Find.Name;
+          { Inno holds its own EXE/DAT open while running. It owns their cleanup;
+            all application payload files must still pass the exclusive check. }
+          if IsUninstall and ((CompareText(Path, UninstallExe) = 0) or
+            (CompareText(Path, Copy(UninstallExe, 1, Length(UninstallExe)-4) + '.dat') = 0)) then Continue;
           if (Find.Attributes and FILE_ATTRIBUTE_REPARSE_POINT) <> 0 then begin Result := False; Exit; end;
           if (Find.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then begin
-            if not FilesUnlocked(Path) then begin Result := False; Exit; end;
+            if not FilesUnlocked(Path, IsUninstall) then begin Result := False; Exit; end;
           end else begin
             Handle := OpenFileExclusive(Path, $80000000, 0, 0, 3, 0, 0);
             if Handle = -1 then begin Result := False; Exit; end;
@@ -193,7 +199,7 @@ begin
   if not SafeDirectory then Result := 'Choose an empty program directory outside user data (no junctions), or the existing SeleVox installation.'
   else if Length(AppCommand) > 260 then Result := 'Installation path exceeds the Windows startup command limit.'
   else if not ProcessesStopped then Result := 'Exit SeleVox from its tray menu and close CLI/MCP tasks before continuing. No process will be terminated. Process ownership must be verifiable.'
-  else if not FilesUnlocked(ExpandConstant('{app}')) then Result := 'Installation files are in use or inaccessible. Close applications and retry.';
+  else if not FilesUnlocked(ExpandConstant('{app}'), False) then Result := 'Installation files are in use or inaccessible. Close applications and retry.';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -220,7 +226,7 @@ var Existing: String;
 begin
   if CurUninstallStep = usUninstall then begin
     if not ProcessesStopped then RaiseException('SeleVox is running. Exit it before uninstalling.');
-    if not FilesUnlocked(ExpandConstant('{app}')) then RaiseException('Installation files are in use or inaccessible. Close applications before uninstalling.');
+    if not FilesUnlocked(ExpandConstant('{app}'), True) then RaiseException('Installation files are in use or inaccessible. Close applications before uninstalling.');
     if RegQueryStringValue(HKCU, RunKey, 'SeleVox', Existing) and (CompareText(Existing, AppCommand) = 0) then
       if not RegDeleteValue(HKCU, RunKey, 'SeleVox') then RaiseException('Cannot remove startup entry.');
   end;
