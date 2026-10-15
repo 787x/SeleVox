@@ -364,3 +364,11 @@ dotnet build SeleVox.slnx -c Release --no-restore
 ```
 
 脚本要求 PowerShell 7.2+（`pwsh`，CI 已提供）。发布默认输出 `artifacts/win-x64`，要求目录为空（复跑时选择新的 `-OutputDirectory`，或自行清理旧产物）。正式 Release 也应复用此脚本。两端分别在临时目录发布；组合发布使 CLI 使用与 WPF 相同的 WindowsDesktop 运行时包，逐文件哈希一致才允许合并共享依赖。保留 OCR 中英文模型、x64 原生 DLL、VC 运行库与 LICENSE/NOTICE；检查两端依赖清单、self-contained/RID、禁止的配置 / 凭据 / 样本 / 驱动文件，并在独立工作目录实际执行 CLI `--help`。不启动交互式 WPF、不安装 VB-CABLE、不探测收费服务。
+
+## GitHub Release 自动化
+
+维护者推送合法版本 Tag 后，[Windows Release](https://github.com/787x/SeleVox/actions/workflows/release.yml) 从准确 Tag 提交构建并发布 Windows x64 self-contained Portable ZIP 和 SHA256SUMS.txt。先发布 RC 并完成真实 Windows 11 验收，再决定 Stable；仅 main 可达提交允许发布。普通 PR CI 只读执行 ZIP 打包、实际解压、CLI、版本和哈希检查，不创建 Release。
+
+下载 [Releases](https://github.com/787x/SeleVox/releases) 中的 ZIP 与校验文件，用 `Get-FileHash -Algorithm SHA256` 核对后完整解压，启动 `SeleVox/SeleVox.App.exe`；CLI 入口为同目录 `SeleVox.Cli.exe`。不需另外安装 .NET，不包含 VB-CABLE。目前未代码签名，SHA-256 只是文件完整性校验。Portable 表示免安装，现有 LocalAppData 配置和 Credential Manager 凭据行为不变。
+
+Tag 创建、RC/Stable、Actions/资产核对、失败 Draft 与重复发布处理，以及仍需人工完成的验收见 [发布说明](docs/Releases.md)。

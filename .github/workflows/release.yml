@@ -1,0 +1,94 @@
+name: Windows Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    outputs:
+      commit: ${{ steps.identity.outputs.commit }}
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate remote tag and main ancestry
+        id: identity
+        run: |
+          $commit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve HEAD' }
+          ./scripts/Test-ReleaseTag.ps1 -VersionTag $env:RELEASE_TAG -ExpectedCommit $commit
+          "commit=$commit" >> $env:GITHUB_OUTPUT
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore SeleVox.slnx
+      - name: Build versioned Release x64
+        run: |
+          . ./scripts/Release-Version.ps1
+          $properties = @(Get-VersionProperties (Get-ReleaseVersion $env:RELEASE_TAG))
+          dotnet build SeleVox.slnx -c Release --no-restore @properties
+          if ($LASTEXITCODE -ne 0) { throw 'Release build failed' }
+      - name: Offline tests and counts
+        run: ./scripts/Test-CI.ps1
+      - name: Upload test reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: TestResults/ci/**/*.trx
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Publish self-contained and verify
+        run: ./scripts/Publish-Windows.ps1 -VersionTag $env:RELEASE_TAG
+      - name: Package, extract, verify and hash
+        run: |
+          ./scripts/Package-Windows.ps1 -VersionTag $env:RELEASE_TAG
+          ./scripts/Test-ReleaseAssets.ps1 -Directory artifacts/release -VersionTag $env:RELEASE_TAG
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: artifacts/release/
+          if-no-files-found: error
+          retention-days: 7
+  publish:
+    needs: build
+    runs-on: windows-2025
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_COMMIT: ${{ needs.build.outputs.commit }}
+      RELEASE_REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-assets
+          path: artifacts/release
+      - name: Validate assets, upload draft, verify remote digests, publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/Publish-Release.ps1 -VersionTag $env:RELEASE_TAG -ExpectedCommit $env:RELEASE_COMMIT -AssetDirectory artifacts/release -Repository $env:RELEASE_REPOSITORY

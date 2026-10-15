@@ -1,7 +1,10 @@
 #requires -Version 7.2
-param([string]$OutputDirectory = (Join-Path $PSScriptRoot '..\artifacts\win-x64'))
+param([string]$OutputDirectory = (Join-Path $PSScriptRoot '..\artifacts\win-x64'), [string]$VersionTag)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Release-Version.ps1')
+$versionProperties = @()
+if ($VersionTag) { $version = Get-ReleaseVersion $VersionTag; $versionProperties = @(Get-VersionProperties $version) }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 if ((Test-Path -LiteralPath $output) -and (Get-ChildItem -LiteralPath $output -Force | Select-Object -First 1)) {
     throw 'Publish requires an empty output directory. Choose a fresh directory to avoid stale or personal files.'
@@ -10,7 +13,7 @@ $stage = Join-Path ([IO.Path]::GetTempPath()) ('SeleVox-publish-' + [guid]::NewG
 try {
     # Publish independently; never silently overwrite shared dependencies.
     foreach ($project in @('Cli', 'App')) {
-        dotnet publish (Join-Path $PSScriptRoot "..\src\SeleVox.$project\SeleVox.$project.csproj") -c Release -r win-x64 --self-contained true -p:SeleVoxCombinedPublish=true --artifacts-path (Join-Path $stage 'build') -o (Join-Path $stage $project)
+        dotnet publish (Join-Path $PSScriptRoot "..\src\SeleVox.$project\SeleVox.$project.csproj") -c Release -r win-x64 --self-contained true -p:SeleVoxCombinedPublish=true @versionProperties --artifacts-path (Join-Path $stage 'build') -o (Join-Path $stage $project)
         if ($LASTEXITCODE -ne 0) { throw "$project publish failed" }
     }
     $merged = Join-Path $stage 'merged'
@@ -31,6 +34,7 @@ try {
         }
     }
     & (Join-Path $PSScriptRoot 'Test-Publish.ps1') -PublishDirectory $merged
+    if ($VersionTag) { Assert-PublishVersion $merged $version }
     New-Item -ItemType Directory -Path $output -Force | Out-Null
     Get-ChildItem -LiteralPath $merged -Force | Copy-Item -Destination $output -Recurse
     Write-Host "Validated Windows x64 self-contained publish: $output"
