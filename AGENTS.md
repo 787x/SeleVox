@@ -8,9 +8,9 @@ SeleVox 是已发布的 **Windows 11 x64 桌面朗读、AI 问答与音频创作
 - 本地中英文区域 OCR；Windows 本地、Azure、Edge、MiMo、OpenAI-Compatible 五种 TTS，以及可配置的 LLM Chat Completions。
 - 独立音频生成工作台：WAV 导出、MiMo 风格/句内标签、唱歌、导演模式、VoiceDesign、VoiceClone、本地克隆样本与 AI 辅助创作。
 - WASAPI 多设备播放；通过**用户另行安装并验证的 VB-CABLE** 配对端点提供可选虚拟麦克风路由。SeleVox 不自带音频驱动。
-- 原生 CLI、本地 MCP stdio、Agent 默认配置与预设、任务控制、TTS/LLM 服务检测，以及 GitHub Actions CI 和 Windows 便携版 Release。
+- 原生 CLI、本地 MCP stdio、Agent 默认配置与预设、任务控制、TTS/LLM 服务检测，以及 GitHub Actions CI 和 Windows Release。
 
-以**当前任务要求**决定修改范围。功能介绍与操作说明以 `README.md` 为准，MiMo、CLI/MCP、发布细节分别参考 `docs/MiMoTTS.md`、`docs/CLI-MCP.md`、`docs/Releases.md`，按需阅读相关 `verification/` 记录。
+以**当前任务要求**决定修改范围。功能介绍与操作说明以 `README.md` 为准，MiMo、CLI/MCP、发布细节分别按需参考 `docs/MiMoTTS.md`、`docs/CLI-MCP.md`、`docs/Releases.md`，按需阅读相关 `verification/` 记录。
 
 ## 技术基线
 
