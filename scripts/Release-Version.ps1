@@ -7,7 +7,7 @@ function Get-ReleaseVersion([string]$Tag) {
     foreach ($part in $parts) {
         if ([System.Numerics.BigInteger]::Parse($part) -gt 65534) { throw 'Version component exceeds .NET assembly limit 65534.' }
     }
-    [pscustomobject]@{ Tag = $Tag; SemVer = $Tag.Substring(1); Numeric = ($parts -join '.') + '.0'; Prerelease = $Tag.Contains('-rc.'); ZipName = "SeleVox-$Tag-win-x64-portable.zip" }
+    [pscustomobject]@{ Tag = $Tag; SemVer = $Tag.Substring(1); Numeric = ($parts -join '.') + '.0'; Prerelease = $Tag.Contains('-rc.'); SetupName = "SeleVox-$Tag-win-x64-setup.exe"; ZipName = "SeleVox-$Tag-win-x64-portable.zip" }
 }
 function Get-VersionProperties($Version) {
     @("-p:Version=$($Version.SemVer)", "-p:AssemblyVersion=$($Version.Numeric)", "-p:FileVersion=$($Version.Numeric)", "-p:InformationalVersion=$($Version.SemVer)", '-p:IncludeSourceRevisionInInformationalVersion=false')

@@ -23,6 +23,19 @@ try {
     [IO.File]::WriteAllText($sum, ('0' * 64) + "  $($version.ZipName)`n")
     Expect-Failure { & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') -Directory $OutputDirectory -VersionTag $VersionTag } 'SHA256SUMS'
 } finally { [IO.File]::WriteAllText($sum, $originalSum, [Text.UTF8Encoding]::new($false)) }
+$setup = Join-Path $OutputDirectory $version.SetupName
+$hidden = "$setup.missing"
+try {
+    Move-Item -LiteralPath $setup -Destination $hidden
+    Expect-Failure { & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') -Directory $OutputDirectory -VersionTag $VersionTag } 'Expected exactly'
+} finally { Move-Item -LiteralPath $hidden -Destination $setup }
+Expect-Failure { & (Join-Path $PSScriptRoot 'Test-Installer.ps1') -SetupPath $setup -VersionTag 'v9.9.9' } 'version mismatch'
+$bytes = [IO.File]::ReadAllBytes($setup)
+try {
+    $damaged = [byte[]]$bytes.Clone(); $damaged[$damaged.Length - 1] = $damaged[$damaged.Length - 1] -bxor 1
+    [IO.File]::WriteAllBytes($setup, $damaged)
+    Expect-Failure { & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') -Directory $OutputDirectory -VersionTag $VersionTag } 'SHA256SUMS'
+} finally { [IO.File]::WriteAllBytes($setup, $bytes) }
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ('SeleVox-package-test-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $scratch | Out-Null
 try {

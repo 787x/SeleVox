@@ -30,7 +30,9 @@ SeleVox 是一款面向 **Windows 11 x64** 的桌面文字朗读、AI 语音问�
 
 **最新正式版：** [SeleVox — GitHub Releases](https://github.com/787x/SeleVox/releases/latest)
 
-安装步骤：
+v0.1.0 的历史发布仍为 Portable ZIP；PR29 为后续版本加入当前用户 Setup EXE，默认安装到 `%LOCALAPPDATA%\Programs\SeleVox`，提供开始菜单、可选桌面快捷方式和卸载入口。Setup 与 Portable 的数据、自启、迁移及卸载说明见 [Windows 安装指南](docs/Installation.md)。首期 Setup 未配置 Authenticode 签名，SHA-256 不能代替发布者身份签名。
+
+Portable 使用步骤：
 
 1. 下载 ZIP，**完整解压**到固定目录，例如 `D:\Apps\SeleVox`；不要只提取 EXE，OCR 模型、原生依赖和 CLI 需要保留在原目录结构中。
 2. 启动 `SeleVox\SeleVox.App.exe`。关闭设置窗口后程序会留在系统托盘，托盘菜单可重新打开设置、音频生成、暂停/停止或退出。
@@ -129,7 +131,7 @@ SeleVox 可以将同一段朗读发送到多个 Windows **播放端点**。提�
 
 ## 🤖 CLI / MCP：供脚本与 AI Agent 使用
 
-便携包同时包含 `SeleVox.Cli.exe`。CLI 与 MCP stdio 都通过当前用户专属 IPC 复用 SeleVox 桌面实例的合成和播放能力；程序未运行时可按需在后台启动。无需额外安装 Python 或 Node.js。
+Setup 与便携包同时包含 `SeleVox.Cli.exe`。CLI 与 MCP stdio 都通过当前用户专属 IPC 复用 SeleVox 桌面实例的合成和播放能力；程序未运行时可按需在后台启动。无需额外安装 Python 或 Node.js。
 
 在解压后的 `SeleVox` 目录运行 PowerShell：
 
