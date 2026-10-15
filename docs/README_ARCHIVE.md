@@ -1,4 +1,8 @@
-# SeleVox
+# SeleVox — README 历史归档
+
+> **历史归档，非当前版本使用手册。** 本文保留旧版 README 的阶段性功能说明、测试命令与 PR 开发记录，内容反映各记录撰写时的状态，其中部分发布路径、功能范围或待验收事项可能已发生变化。
+>
+> **查看当前信息：** [项目 README](../README.md) · [Windows 发布指南](Releases.md)。需要追溯具体测试结果时，请结合对应验证记录的日期、提交和环境阅读。
 
 Windows 11 x64 的选区朗读工具，支持手动热键与可关闭的鼠标自动朗读，普通用户权限运行。WPF 设置窗口关闭后驻留托盘；托盘双击或“设置”重新打开，“退出”结束程序。重复启动会通知已有实例显示设置窗口。
 
@@ -22,7 +26,7 @@ Thinking 默认不发附加字段，协议须明确选择，不能根据域名�
 
 不同 OpenAI 模型未必支持 none 或 high；第三方服务须自行确认协议，HTTP 拒绝会明确提示检查 Thinking，不自动重发可能收费的请求。MiMo LLM Thinking 与 MiMo TTS 的风格/唱歌参数互不影响。依据：[OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)、[MiMo 深度思考](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/text-generation/deep-thinking)。
 
-实际测试、时点数据和未验收项见 [PR9 验证记录](verification/PR9.md)。短回答与慢 TTS 不保证逐句模式更快；逐句调用也可能增加 TTS 请求次数/费用。
+实际测试、时点数据和未验收项见 [PR9 验证记录](../verification/PR9.md)。短回答与慢 TTS 不保证逐句模式更快；逐句调用也可能增加 TTS 请求次数/费用。
 
 ## PR8：选区与 OCR 的 AI 问答
 
@@ -41,7 +45,7 @@ System Prompt 可完全编辑或清空并保存，重启保持；请求以独立
 
 单次问题/回答最多 32768 UTF-16 单元（UIA 捕获仍沿用原 10000 字符上限），System Prompt 最多 8192 单元，SSE 单事件 256 KiB、总响应 4 MiB，响应头/每次读取空闲 45 秒、问答总计 3 分钟。只接受文本和正常 `stop` 结束；流式还必须收到 `[DONE]`，`length`、过滤或工具结束均不当作完整成功。不默认发送 temperature、工具或模型专有参数。客户端输出上限用于有界拒绝和取消，不承诺限制服务端已产生的费用。
 
-协议依据：[OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。实际验证、收费测试的显式启用方法和未验收项见 [PR8 验证记录](verification/PR8.md)。
+协议依据：[OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。实际验证、收费测试的显式启用方法和未验收项见 [PR8 验证记录](../verification/PR8.md)。
 
 ## PR7：MiMo 整体风格与唱歌流式修复
 
@@ -49,7 +53,7 @@ MiMo 新增**独立整体风格标签选择器**：八类 48 项推荐风格，�
 
 PR7 还修复了唱歌返回较大型 SSE 音频事件时因原 **2 MiB** 客户端限制而误判“事件过大”的问题：改为有界 **16 MiB**，优化事件解析与 Base64 解码中的大块内存复制，保留总响应/PCM 限制、取消、背压和多设备播放。真实较长歌词曾出现约 **4.30 MB** 单事件，首个有效 PCM 等待约 **50–53 秒**；提高接收上限解决误拒收，**不会缩短服务端首音频生成时间**。
 
-开发维护请参阅 [MiMo TTS 完整技术指南](docs/MiMoTTS.md)；真实测试及边界见 [风格验证](verification/MiMoStyles.md) 和 [大型 SSE 修复记录](verification/MiMoSseFix.md)。
+开发维护请参阅 [MiMo TTS 完整技术指南](MiMoTTS.md)；真实测试及边界见 [风格验证](../verification/MiMoStyles.md) 和 [大型 SSE 修复记录](../verification/MiMoSseFix.md)。
 
 ## PR6：离线屏幕框选 OCR
 
@@ -59,7 +63,7 @@ PR7 还修复了唱歌返回较大型 SSE 音频事件时因原 **2 MiB** 客户
 
 框选前取得显示器快照，使用物理桌面坐标和本显示器 WPF DIP 映射；负坐标显示器受支持，单次选择限一台显示器，跨屏拖动明确拒绝。桌面总截图上限 3200 万像素，区域上限 800 万像素，任一边不足 8 像素不识别。截图与原文只存在内存，取消/关闭释放，不写日志、临时截图或配置。受保护画面可能呈现空白，无法识别时说明原因，不尝试绕过保护。原生 OCR 不能立即中止，但计算串行，新请求最多等待旧计算结束，取消后旧结果不会显示。
 
-使用 Tesseract 5.2.0 .NET Standard 封装、本地 x64 Tesseract/Leptonica 与 `tessdata_fast` 简中/英文 LSTM 模型，已经在本项目 .NET 10 x64 上实测。模型来源、固定 revision、校验值与许可证见 [OCR 资产说明](src/SeleVox.App/OcrData/NOTICE.md)。普通 Release 构建和目录式 publish 均复制模型、原生 DLL、许可与 app-local Visual C++ 运行库；保留整个输出目录，**不要只复制 EXE**。不需要 MSIX 包身份、Copilot+ PC、管理员权限或运行时联网。沿用原 .NET 10 桌面运行时要求，可用下方 self-contained 命令打包 .NET。微软运行库的再分发说明见 [运行库说明](src/SeleVox.App/OcrRuntime/NOTICE.md)。
+使用 Tesseract 5.2.0 .NET Standard 封装、本地 x64 Tesseract/Leptonica 与 `tessdata_fast` 简中/英文 LSTM 模型，已经在本项目 .NET 10 x64 上实测。模型来源、固定 revision、校验值与许可证见 [OCR 资产说明](../src/SeleVox.App/OcrData/NOTICE.md)。普通 Release 构建和目录式 publish 均复制模型、原生 DLL、许可与 app-local Visual C++ 运行库；保留整个输出目录，**不要只复制 EXE**。不需要 MSIX 包身份、Copilot+ PC、管理员权限或运行时联网。沿用原 .NET 10 桌面运行时要求，可用下方 self-contained 命令打包 .NET。微软运行库的再分发说明见 [运行库说明](../src/SeleVox.App/OcrRuntime/NOTICE.md)。
 
 ```powershell
 dotnet restore SeleVox.slnx --artifacts-path artifacts/pr6
@@ -73,7 +77,7 @@ $env:SELEVOX_OCR_DESKTOP_TESTS='1'
 dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr6 --filter 'Category=WindowsOcr'
 ```
 
-OCR 不保证小字体、花体、低对比度、复杂多栏/表格、竖排或艺术排版的准确率；请在结果窗口校对。实际验证、混合 DPI 双屏等未实测项与人工清单见 [PR6 验证记录](verification/PR6.md)。
+OCR 不保证小字体、花体、低对比度、复杂多栏/表格、竖排或艺术排版的准确率；请在结果窗口校对。实际验证、混合 DPI 双屏等未实测项与人工清单见 [PR6 验证记录](../verification/PR6.md)。
 
 ## MiMo 与 OpenAI-Compatible（PR5 接入，PR7 增强）
 
@@ -81,7 +85,7 @@ OCR 不保证小字体、花体、低对比度、复杂多栏/表格、竖排或
 
 **MiMo**：保存 API Key（不回填明文），按钮行右侧“获取 API Key”可用默认浏览器打开[小米 Key 控制台](https://platform.xiaomimimo.com/console/api-keys)。选择预置音色并填写可选自然语言风格。默认中文音色为 `冰糖`，还提供 `mimo_default`、`茉莉`、`苏打`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。模型名默认 `mimo-v2.5-tts`，可手工填写其他模型名称，但目前仅验证该预置音色模型；其他模型使用非流式路径且不保证协议兼容，保存后生效；使用 `https://api.xiaomimimo.com/v1/chat/completions`；待合成内容放在 assistant 消息，自然语言风格说明单独放在 user 消息，读取 JSON 中的 Base64 WAV。语速滑块转换为自然语言快慢指导，属于近似控制，不保证精确倍速，不发送数值 speed，不改写或翻译原文。日常选区朗读界面使用预置音色；PR12 的独立音频工作台另提供 VoiceDesign / VoiceClone。
 
-**开发者技术参考：** [MiMo TTS 协议、风格控制、流式音频与唱歌 SSE 技术指南](docs/MiMoTTS.md)。本文说明官方协议与项目实现的区别，并保留用户风格实验及后续维护约束。
+**开发者技术参考：** [MiMo TTS 协议、风格控制、流式音频与唱歌 SSE 技术指南](MiMoTTS.md)。本文说明官方协议与项目实现的区别，并保留用户风格实验及后续维护约束。
 
 ### MiMo 整体风格标签
 
@@ -91,7 +95,7 @@ OCR 不保证小字体、花体、低对比度、复杂多栏/表格、竖排或
 
 “自然语言风格说明”继续使用原有 `MiMoStyle` 配置，原样放入 `user.content`，自行填写的 `(上海话)` 也不会转换为整体标签；原有语速指导仍追加到该说明。两种风格可同时启用，矛盾指导可能影响效果。`唱歌` 是独立模式，选择它会清除普通标签，选择普通风格则退出唱歌并恢复多选；适合中文歌词，普通文章未必能自然演唱。官方唱歌别名 `sing`、`singing` 的自定义项也按独立模式处理。
 
-标签修改需点击固定底部“保存设置”才用于下一次朗读，切换 Provider 不清空已选项，保存和重启会恢复自定义名称及顺序。默认无标签，旧配置无需迁移，自然语言说明及现有授权保持原行为。实际合成、Windows 播放验证与未验证项见 [整体风格验证记录](verification/MiMoStyles.md)。
+标签修改需点击固定底部“保存设置”才用于下一次朗读，切换 Provider 不清空已选项，保存和重启会恢复自定义名称及顺序。默认无标签，旧配置无需迁移，自然语言说明及现有授权保持原行为。实际合成、Windows 播放验证与未验证项见 [整体风格验证记录](../verification/MiMoStyles.md)。
 
 **OpenAI-Compatible**：默认 Base URL `https://api.openai.com/v1`、Model `gpt-4o-mini-tts`、Voice `coral`；模型和音色可手工输入。程序向 `{Base URL}/audio/speech` 发送 Bearer Key、原文 input、WAV 格式和 0.5～2 倍 speed，读取二进制 WAVE。填写支持的模型时可发送 Instructions；`tts-1` / `tts-1-hd` 必须清空 Instructions，否则明确拒绝请求。第三方必须支持这些协议字段，拒绝可选参数时可清空 Instructions，不自动重试不同参数或服务。Base URL 填写完整 API 前缀（含 `/v1` 或服务自定义前缀），末尾斜杠会规范化，不额外添加 `/v1`。远程地址必须 HTTPS，明确填写 `localhost`、`127.0.0.1` 或 `[::1]` 可使用 HTTP。禁止用户名、查询串、片段和 HTTP 重定向。
 
@@ -101,7 +105,7 @@ OCR 不保证小字体、花体、低对比度、复杂多栏/表格、竖排或
 
 MiMo 非流式模式与 OpenAI-Compatible 完整合成后复用原多设备 WASAPI 和会话取消机制。按句子/段落优先在 Unicode 文本元素边界分段，逐段验证完整、非空 PCM/IEEE Float WAVE，再按顺序写入同一个 WAVE 容器。兼容服务若返回 RIFF/data 长度均为 `0xFFFFFFFF` 的未知长度头，仅在 HTTP 响应成功完整读完后按实际 PCM 长度补全；普通声明长度与实际不符仍拒绝。格式不一致明确失败，不拼接独立 WAV 头，不返回部分结果。OpenAI 每段最多 4096 UTF-16 单元；MiMo 根据官方 8K 上下文保守限制每段 3000 UTF-8 字节、风格 1000 UTF-16 单元（最多约 3000 UTF-8 字节），保留协议开销空间。极长单个 Unicode 组合明确拒绝；不截断文本。单任务最多 32768 UTF-16 单元（现有 UIA 入口仍有原 10000 字符限制）、响应体每段 48 MiB、合并 WAVE 64 MiB，每段 90 秒、总计 10 分钟，超限请分次朗读。段之间可能出现短暂停顿。
 
-协议参考：[MiMo 官方合成指南](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)、[MiMo 官方模型与上下文](https://mimo.mi.com/docs/zh-CN/quick-start/summary/model)、[OpenAI Speech API](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create)。实际验证与未验证项见 [PR5 验证记录](verification/PR5.md)。
+协议参考：[MiMo 官方合成指南](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)、[MiMo 官方模型与上下文](https://mimo.mi.com/docs/zh-CN/quick-start/summary/model)、[OpenAI Speech API](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create)。实际验证与未验证项见 [PR5 验证记录](../verification/PR5.md)。
 
 ### MiMo 真正流式播放
 
@@ -117,7 +121,7 @@ Stop、替换和退出取消网络与全部播放器。自动权限撤销时，�
 
 响应头 30 秒、单次网络读取闲置 45 秒、每段累计实际网络读取时间最多 10 分钟；三者独立，应用缓冲背压/暂停不计入读取时间预算。45 秒是**一次网络读取的空闲预算**，不是从请求开始到首个音频事件的总等待时间。服务端自身仍可能在长时间暂停时断开，届时明确显示中断并保留已收到音频。
 
-唱歌可能在生成较长音频后才发出一个大的完整事件。等待状态会提示“等待首段完整音频，首次生成可能较慢”；完整 JSON/Base64 音频事件到达前，客户端无法播放它。实测较长原创歌词出现约 4.30 MB 事件，首个完整音频约等待 50–53 秒，客户端解析/解码约 20–30 ms，之后完整播放通过。提高事件上限解决误拒收，不代表缩短服务端生成时间，也不会强制唱歌切到非流式或额外拆分歌词。详细实测、峰值内存与限制见 [MiMo SSE 修复验证记录](verification/MiMoSseFix.md)。
+唱歌可能在生成较长音频后才发出一个大的完整事件。等待状态会提示“等待首段完整音频，首次生成可能较慢”；完整 JSON/Base64 音频事件到达前，客户端无法播放它。实测较长原创歌词出现约 4.30 MB 事件，首个完整音频约等待 50–53 秒，客户端解析/解码约 20–30 ms，之后完整播放通过。提高事件上限解决误拒收，不代表缩短服务端生成时间，也不会强制唱歌切到非流式或额外拆分歌词。详细实测、峰值内存与限制见 [MiMo SSE 修复验证记录](../verification/MiMoSseFix.md)。
 
 流式真实服务比较测试独立显式启用，会使用已保存 MiMo Key 发送固定中英文及长文本并实际播放，可能产生费用。它记录首个 PCM 块、调用 Play、端点 loopback 首个非静音样本、网络完成和缓冲静音量；loopback 时点不是物理扬声器的声学测量。非流式长文本仅播放到首个样本以测量首声，流式长文本完整播放。
 
@@ -127,7 +131,7 @@ dotnet test SeleVox.slnx -c Release --artifacts-path artifacts/pr5-stream --filt
 Remove-Item Env:SELEVOX_MIMO_STREAM_TESTS
 ```
 
-默认测试不调用真实 MiMo 服务。可控 SSE 与真实 WASAPI/loopback 的组合测试位于 WindowsAudio 组，仍需独立启用 `SELEVOX_AUDIO_TESTS=1`。最新实际数据与限制见 [PR5 流式验证记录](verification/PR5.md)。
+默认测试不调用真实 MiMo 服务。可控 SSE 与真实 WASAPI/loopback 的组合测试位于 WindowsAudio 组，仍需独立启用 `SELEVOX_AUDIO_TESTS=1`。最新实际数据与限制见 [PR5 流式验证记录](../verification/PR5.md)。
 
 ## 构建与运行
 
@@ -169,7 +173,7 @@ Key 单独保存在当前用户的 **Windows Credential Manager** 通用凭据 `
 
 Edge 通过固定版本 **EdgeTTS.DotNet 0.4.0** 的局部传输适配接入。完整接收每个服务段并确认结束后，用 **NAudio 3.1 / Windows ACM MP3 解码器** 解码为完整 PCM/WAVE，复用原有播放层；没有额外播放器、FFmpeg sidecar、网络边下载边播放或音频导出。网络分块不等于 MP3 帧边界；分别解码完整服务段后追加 PCM，损坏、截断、空音频、取消或不完整响应全部拒绝播放。
 
-语音查询预算 20 秒，单服务段 45 秒，整个合成 3 分钟（包括重试/解码），超时会提示缩短选区或检查网络。仅在语音查询的传输失败或合成发送文本前的连接失败时重试一次，保持相同 URI/身份；服务拒绝不重试、不更换身份、不修正时钟绕过拒绝。中途网络失败不会重试或播放已收的部分音频。内存音频有大小上限；现有 UIA 选区仍限制 10000 字符。第三方库 MIT 许可证仅适用于库代码，不代表微软服务授权或可用性保证。适配来源与修改见 [NOTICE](src/SeleVox.App/EdgeTransport/NOTICE.md)。
+语音查询预算 20 秒，单服务段 45 秒，整个合成 3 分钟（包括重试/解码），超时会提示缩短选区或检查网络。仅在语音查询的传输失败或合成发送文本前的连接失败时重试一次，保持相同 URI/身份；服务拒绝不重试、不更换身份、不修正时钟绕过拒绝。中途网络失败不会重试或播放已收的部分音频。内存音频有大小上限；现有 UIA 选区仍限制 10000 字符。第三方库 MIT 许可证仅适用于库代码，不代表微软服务授权或可用性保证。适配来源与修改见 [NOTICE](../src/SeleVox.App/EdgeTransport/NOTICE.md)。
 
 在“音频输出”列表点击多选（无需 Ctrl），选择耳机、扬声器或虚拟声卡的 **播放端点**，保存后下一次朗读生效。设备按 Windows endpoint ID 保存；“刷新播放设备”更新列表，失联的已选项仍显示以便移除。未选择任何项与“系统默认输出”等价。默认项在每次创建播放时解析；同时选择默认项和它指向的实际设备只创建一份输出。
 
@@ -214,7 +218,7 @@ dotnet test tests/SeleVox.Tests/SeleVox.Tests.csproj -c Release --filter Categor
 Remove-Item Env:SELEVOX_AUDIO_TESTS
 ```
 
-PR3 实际验证与未验证项见 [verification/PR3.md](verification/PR3.md)；PR2 历史记录见 [verification/PR2.md](verification/PR2.md)，PR1 历史记录见 [verification/PR1.md](verification/PR1.md)。编译、程序状态及流进度检查不等同于人工听音或虚拟录音端收到音频。
+PR3 实际验证与未验证项见 [verification/PR3.md](../verification/PR3.md)；PR2 历史记录见 [verification/PR2.md](../verification/PR2.md)，PR1 历史记录见 [verification/PR1.md](../verification/PR1.md)。编译、程序状态及流进度检查不等同于人工听音或虚拟录音端收到音频。
 
 ### PR4 Edge 验证
 
@@ -230,7 +234,7 @@ dotnet test tests/SeleVox.Tests/SeleVox.Tests.csproj -c Release --filter 'Catego
 Remove-Item Env:SELEVOX_EDGE_TESTS, Env:SELEVOX_AUDIO_TESTS
 ```
 
-测试输出只记录格式、时长、数量和脱敏错误类别，不记录请求 URI、Cookie、请求令牌、原文或音频。实际执行结果及未验证项见 [PR4 验证记录](verification/PR4.md)。Azure 真实服务需要用户凭据，不由 Edge 测试替代。
+测试输出只记录格式、时长、数量和脱敏错误类别，不记录请求 URI、Cookie、请求令牌、原文或音频。实际执行结果及未验证项见 [PR4 验证记录](../verification/PR4.md)。Azure 真实服务需要用户凭据，不由 Edge 测试替代。
 
 ### PR5 HTTP TTS 验证
 
@@ -266,7 +270,7 @@ Remove-Item Env:SELEVOX_HTTP_TTS_TESTS
 - 保存时显式确认覆盖，同目录临时文件写入完成后提交，失败或取消清理临时文件。PR10 的 0–250 ms 起音补偿只在播放层插入，不写入导出。
 - “保存工作台默认参数”只保存语音参数；窗口位置和大小在关闭时保存到 `%LOCALAPPDATA%\SeleVox\audio-workbench.json`，不保存待合成正文或生成音频，不改写 `settings.json` 和自动上传授权。风格说明和 Instructions 属于显式保存的工作台参数，请勿在其中填写秘密。
 
-本 PR 不实现 CLI/MCP、MP3 或批量任务。实际验证、复跑命令和待人工验收项见 [PR11 验证记录](verification/PR11.md)。
+本 PR 不实现 CLI/MCP、MP3 或批量任务。实际验证、复跑命令和待人工验收项见 [PR11 验证记录](../verification/PR11.md)。
 
 ### PR12：MiMo 高级创作控制台
 
@@ -284,7 +288,7 @@ Remove-Item Env:SELEVOX_HTTP_TTS_TESTS
 
 结果始终保留生成时的参数。修改草稿不改变旧结果；失败 / 取消保留最后成功结果，迟到结果被废弃。试听、保存 WAV、保存设计结果为克隆源都复用音频。显式保存默认值会保存模型、音色描述、最终风格指令和分段设置；导演字段再次打开以合并后的自然语言显示，不保存正文、参考音频 Base64 或 Key。
 
-实际可控 HTTP、Windows 桌面与录音验证、真实服务未验证项见 [PR12 验证记录](verification/PR12.md)。
+实际可控 HTTP、Windows 桌面与录音验证、真实服务未验证项见 [PR12 验证记录](../verification/PR12.md)。
 
 ### PR13：音频工作台 AI 辅助创作
 
@@ -294,7 +298,7 @@ MiMo“音频标签脚本”模式提供“AI 添加标签”：在完整原文�
 
 点击时会发送对应输入到已配置 LLM，可能产生 API 费用。请求期间可“取消 AI”；编辑输入、切换 Provider / 模型模式 / 控制方式、关闭或发起新操作都会隔离旧结果。“恢复 AI 替换前文本”可恢复最近一次成功替换前的文本（会覆盖该框后续编辑）。生成后可继续修改，点击原有“生成语音”才调用 TTS；已有 WAV、试听和保存继续可用。普通问答的 System Prompt 和设置不会改变，失败后可通过工作台“前往主设置”检查配置。
 
-验证与未验证限制见 [PR13 验证记录](verification/PR13.md)。
+验证与未验证限制见 [PR13 验证记录](../verification/PR13.md)。
 
 导演模式也提供标题右侧“AI 生成”：在角色、场景或指导任一栏填写需求，AI 根据当前三栏补全表演方案并分别填回三栏。三栏合并含标题 / 换行最多 1000 字符。格式无效或超限保留三栏；任一栏编辑会取消旧请求，“恢复 AI 替换前文本”同时恢复三栏。预置音色、VoiceDesign、VoiceClone 的导演模式均可使用。
 
@@ -308,7 +312,7 @@ MiMo“音频标签脚本”模式提供“AI 添加标签”：在完整原文�
 ./artifacts/win-x64/SeleVox.Cli.exe mcp
 ```
 
-主界面配置好在线 TTS 服务及凭据后，CLI/MCP 可直接使用，无需额外 Agent 授权；Auto Speak、Auto Ask 的独立自动上传授权不变。服务地址和 Key 仍仅在主界面管理，Agent 不能覆盖地址或读取、导出凭据。MCP 默认不暴露修改持久默认值和删除预设，可由 CLI 单独开启。实际参数、MiMo 三模式、MCP 客户端配置、任务语义及文件权限边界见 [CLI / MCP 使用说明](docs/CLI-MCP.md)，构建、真实服务和未验证项见 [PR14 验证记录](verification/PR14.md)。
+主界面配置好在线 TTS 服务及凭据后，CLI/MCP 可直接使用，无需额外 Agent 授权；Auto Speak、Auto Ask 的独立自动上传授权不变。服务地址和 Key 仍仅在主界面管理，Agent 不能覆盖地址或读取、导出凭据。MCP 默认不暴露修改持久默认值和删除预设，可由 CLI 单独开启。实际参数、MiMo 三模式、MCP 客户端配置、任务语义及文件权限边界见 [CLI / MCP 使用说明](CLI-MCP.md)，构建、真实服务和未验证项见 [PR14 验证记录](../verification/PR14.md)。
 
 ### PR15：TTS / LLM 服务检测
 
@@ -323,7 +327,7 @@ SeleVox 标题行右侧的“服务检测”可打开独立窗口，分别检查
 
 一次只执行一项诊断，无排队请求，可取消；关闭诊断 / 主设置窗口会取消并丢弃迟到结果。总诊断预算 90 秒，Azure 保留自身 60 秒上限；响应沿用现有大小限制（TTS HTTP / SSE 48 MiB、PCM / 完整音频 64 MiB、LLM 4 MiB）。检测不接入 ReadingSession、音频设备或 Agent Job，不改工作台 / Agent 默认值和自动云端许可；错误不显示 Key、请求 / 响应正文或音频数据，服务 URL 路径隐藏。
 
-实际验证和未验证项见 [PR15 验证记录](verification/PR15.md)。
+实际验证和未验证项见 [PR15 验证记录](../verification/PR15.md)。
 
 ### PR16：编辑 AI 问题与重新生成
 
@@ -335,7 +339,7 @@ SeleVox 标题行右侧的“服务检测”可打开独立窗口，分别检查
 
 “LLM 服务”行紧接“重新生成”按钮下方，底部保留原有隐私与费用说明。复制回答、重新朗读、Stop、关闭和 OCR 截图隐藏/恢复保持可用，不增加额外窗口或多轮问答历史。
 
-Release 构建通过；相关自动测试 122 项、Windows 音频/OCR 回归 5 项、最终布局复验 4 项全部通过。用户已在新版完整程序中确认真实中文输入法、重新生成、无效输入、取消/朗读及 Auto Ask/OCR 来源检查通过。详情见 [PR16 验证记录](verification/AiRegenerate.md) 和 [PR #16](https://github.com/787x/SeleVox/pull/16)。
+Release 构建通过；相关自动测试 122 项、Windows 音频/OCR 回归 5 项、最终布局复验 4 项全部通过。用户已在新版完整程序中确认真实中文输入法、重新生成、无效输入、取消/朗读及 Auto Ask/OCR 来源检查通过。详情见 [PR16 验证记录](../verification/AiRegenerate.md) 和 [PR #16](https://github.com/787x/SeleVox/pull/16)。
 
 ## PR17：虚拟麦克风
 
@@ -347,7 +351,7 @@ Release 构建通过；相关自动测试 122 项、Windows 音频/OCR 回归 5 
 
 普通朗读、LLM 逐句语音、MiMo 流式和工作台试听复用相同多设备 WASAPI；重复 Render 去重，虚拟故障跳过且保留其他有效输出，虚拟唯一目标失效则失败，不转向扬声器。关闭或更换已启用路由并保存会停止当前朗读；后续普通朗读排除此已选虚拟端点，普通物理输出设置保留。CLI / MCP 未指定 `devices` 时继承有效配置；默认值 / 预设 / 单次请求显式指定 `devices`（包括 `[]` / `null`）时严格覆盖，独立于虚拟开关，不额外追加。合成文件、导出及服务检测不播放。
 
-真实 Capture、FFmpeg 第三方录音、签名审计、复跑命令及用户六项人工验收通过反馈见 [PR17 验证记录](verification/PR17.md)。反馈涵盖用户实际使用的第三方接收、常用语音功能、配置保留、睡眠唤醒及端点禁用 / 恢复，不代表所有设备和软件组合。当前仅识别普通 VB-CABLE。
+真实 Capture、FFmpeg 第三方录音、签名审计、复跑命令及用户六项人工验收通过反馈见 [PR17 验证记录](../verification/PR17.md)。反馈涵盖用户实际使用的第三方接收、常用语音功能、配置保留、睡眠唤醒及端点禁用 / 恢复，不代表所有设备和软件组合。当前仅识别普通 VB-CABLE。
 
 ## CI 与便携发布
 
@@ -371,4 +375,4 @@ dotnet build SeleVox.slnx -c Release --no-restore
 
 下载 [Releases](https://github.com/787x/SeleVox/releases) 中的 ZIP 与校验文件，用 `Get-FileHash -Algorithm SHA256` 核对后完整解压，启动 `SeleVox/SeleVox.App.exe`；CLI 入口为同目录 `SeleVox.Cli.exe`。不需另外安装 .NET，不包含 VB-CABLE。目前未代码签名，SHA-256 只是文件完整性校验。Portable 表示免安装，现有 LocalAppData 配置和 Credential Manager 凭据行为不变。
 
-Tag 创建、RC/Stable、Actions/资产核对、失败 Draft 与重复发布处理，以及仍需人工完成的验收见 [发布说明](docs/Releases.md)。
+Tag 创建、RC/Stable、Actions/资产核对、失败 Draft 与重复发布处理，以及仍需人工完成的验收见 [发布说明](Releases.md)。
