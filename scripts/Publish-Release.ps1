@@ -12,7 +12,7 @@ function Invoke-Gh([string[]]$Arguments) {
 & (Join-Path $PSScriptRoot 'Test-ReleaseTag.ps1') -VersionTag $VersionTag -ExpectedCommit $ExpectedCommit
 & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') -Directory $AssetDirectory -VersionTag $VersionTag
 # Listing is fail-closed: authorization/network errors are never treated as 'not found'.
-$pages = (Invoke-Gh @('api', "repos/$Repository/releases?per_page=100", '--paginate', '--slurp')) -join "`n" | ConvertFrom-Json
+$pages = (Invoke-Gh -Arguments @('api', "repos/$Repository/releases?per_page=100", '--paginate', '--slurp')) -join "`n" | ConvertFrom-Json
 foreach ($page in $pages) {
     foreach ($release in $page) {
         if ($release.tag_name -ceq $VersionTag) { throw 'This tag already has a Release or Draft. Inspect it manually; no assets were changed.' }
@@ -25,11 +25,11 @@ try {
     [IO.File]::WriteAllText($notesPath, $notes, [Text.UTF8Encoding]::new($false))
     $arguments = @('release', 'create', $VersionTag, '--repo', $Repository, '--verify-tag', '--target', $ExpectedCommit, '--draft', '--latest=false', '--title', "SeleVox $VersionTag", '--notes-file', $notesPath)
     if ($version.Prerelease) { $arguments += '--prerelease' }
-    Invoke-Gh $arguments | Out-Null
+    Invoke-Gh -Arguments $arguments | Out-Null
 } finally { if (Test-Path -LiteralPath $notesPath) { Remove-Item -LiteralPath $notesPath } }
 # Upload without --clobber; any failure leaves a non-public draft for inspection.
-Invoke-Gh @('release', 'upload', $VersionTag, (Join-Path $AssetDirectory $version.ZipName), (Join-Path $AssetDirectory 'SHA256SUMS.txt'), '--repo', $Repository) | Out-Null
-$release = (Invoke-Gh @('api', "repos/$Repository/releases/tags/$VersionTag")) -join "`n" | ConvertFrom-Json
+Invoke-Gh -Arguments @('release', 'upload', $VersionTag, (Join-Path $AssetDirectory $version.ZipName), (Join-Path $AssetDirectory 'SHA256SUMS.txt'), '--repo', $Repository) | Out-Null
+$release = (Invoke-Gh -Arguments @('api', "repos/$Repository/releases/tags/$VersionTag")) -join "`n" | ConvertFrom-Json
 if (-not $release.draft -or $release.tag_name -cne $VersionTag -or $release.prerelease -ne $version.Prerelease -or $release.target_commitish -cne $ExpectedCommit -or $release.assets.Count -ne 2) { throw 'Draft identity/assets mismatch; refusing to publish.' }
 foreach ($name in @($version.ZipName, 'SHA256SUMS.txt')) {
     $asset = @($release.assets | Where-Object { $_.name -ceq $name })
@@ -40,4 +40,4 @@ foreach ($name in @($version.ZipName, 'SHA256SUMS.txt')) {
 # Recheck remote identity immediately before publication.
 & (Join-Path $PSScriptRoot 'Test-ReleaseTag.ps1') -VersionTag $VersionTag -ExpectedCommit $ExpectedCommit
 $latest = if ($version.Prerelease) { '--latest=false' } else { '--latest' }
-Invoke-Gh @('release', 'edit', $VersionTag, '--repo', $Repository, '--verify-tag', '--draft=false', $latest) | Out-Null
+Invoke-Gh -Arguments @('release', 'edit', $VersionTag, '--repo', $Repository, '--verify-tag', '--draft=false', $latest) | Out-Null
