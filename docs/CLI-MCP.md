@@ -21,7 +21,7 @@ $cli = './artifacts/win-x64/SeleVox.Cli.exe'
 & $cli voices list --provider Windows
 & $cli devices list
 & $cli speak --text '你好，这是 SeleVox。' --provider Windows --wait
-& $cli synthesize --file './script.txt' --provider Windows --output './result.wav' --wait
+& $cli synthesize --text '这是一段语音合成测试。' --provider Windows --output './result.wav' --wait
 '这是标准输入中的文本。' | & $cli speak --stdin --provider Windows --wait
 ```
 
