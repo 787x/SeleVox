@@ -9,15 +9,23 @@ function Invoke-Gh([string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "GitHub CLI failed: $($Arguments[0])" }
     $result
 }
+function Get-TagReleases {
+    $pages = (Invoke-Gh -Arguments @('api', "repos/$Repository/releases?per_page=100", '--paginate', '--slurp')) -join "`n" | ConvertFrom-Json
+    foreach ($page in $pages) {
+        foreach ($release in $page) {
+            if ($release.tag_name -ceq $VersionTag) { $release }
+        }
+    }
+}
+function Assert-DraftIdentity($Release, [long]$ReleaseId) {
+    if ($ReleaseId -le 0 -or $Release.id -ne $ReleaseId -or $Release.draft -ne $true -or $Release.tag_name -cne $VersionTag -or $Release.prerelease -ne $version.Prerelease -or $Release.target_commitish -cne $ExpectedCommit) {
+        throw 'Draft identity mismatch; refusing to publish.'
+    }
+}
 & (Join-Path $PSScriptRoot 'Test-ReleaseTag.ps1') -VersionTag $VersionTag -ExpectedCommit $ExpectedCommit
 & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') -Directory $AssetDirectory -VersionTag $VersionTag
 # Listing is fail-closed: authorization/network errors are never treated as 'not found'.
-$pages = (Invoke-Gh -Arguments @('api', "repos/$Repository/releases?per_page=100", '--paginate', '--slurp')) -join "`n" | ConvertFrom-Json
-foreach ($page in $pages) {
-    foreach ($release in $page) {
-        if ($release.tag_name -ceq $VersionTag) { throw 'This tag already has a Release or Draft. Inspect it manually; no assets were changed.' }
-    }
-}
+if (@(Get-TagReleases).Count -ne 0) { throw 'This tag already has a Release or Draft. Inspect it manually; no assets were changed.' }
 $notes = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\docs\Release-Notes.md') -Raw
 $notes = $notes.Replace('{{TAG}}', $VersionTag).Replace('{{COMMIT}}', $ExpectedCommit)
 $notesPath = Join-Path $AssetDirectory 'release-notes.md'
@@ -27,10 +35,18 @@ try {
     if ($version.Prerelease) { $arguments += '--prerelease' }
     Invoke-Gh -Arguments $arguments | Out-Null
 } finally { if (Test-Path -LiteralPath $notesPath) { Remove-Item -LiteralPath $notesPath } }
+# gh release create outputs a URL, not a JSON ID. Locate exactly one matching
+# draft in the authenticated list and validate its identity before retaining its ID.
+$created = @(Get-TagReleases)
+if ($created.Count -ne 1) { throw 'Created draft not uniquely found; inspect the retained draft manually.' }
+$releaseId = [long]$created[0].id
+Assert-DraftIdentity $created[0] $releaseId
+if ($created[0].assets.Count -ne 0) { throw 'Created draft already has assets; refusing to upload or replace them.' }
 # Upload without --clobber; any failure leaves a non-public draft for inspection.
 Invoke-Gh -Arguments @('release', 'upload', $VersionTag, (Join-Path $AssetDirectory $version.ZipName), (Join-Path $AssetDirectory 'SHA256SUMS.txt'), '--repo', $Repository) | Out-Null
-$release = (Invoke-Gh -Arguments @('api', "repos/$Repository/releases/tags/$VersionTag")) -join "`n" | ConvertFrom-Json
-if (-not $release.draft -or $release.tag_name -cne $VersionTag -or $release.prerelease -ne $version.Prerelease -or $release.target_commitish -cne $ExpectedCommit -or $release.assets.Count -ne 2) { throw 'Draft identity/assets mismatch; refusing to publish.' }
+$release = (Invoke-Gh -Arguments @('api', "repos/$Repository/releases/$releaseId")) -join "`n" | ConvertFrom-Json
+Assert-DraftIdentity $release $releaseId
+if ($release.assets.Count -ne 2) { throw 'Draft assets count mismatch; refusing to publish.' }
 foreach ($name in @($version.ZipName, 'SHA256SUMS.txt')) {
     $asset = @($release.assets | Where-Object { $_.name -ceq $name })
     $file = Get-Item -LiteralPath (Join-Path $AssetDirectory $name)
@@ -39,5 +55,7 @@ foreach ($name in @($version.ZipName, 'SHA256SUMS.txt')) {
 }
 # Recheck remote identity immediately before publication.
 & (Join-Path $PSScriptRoot 'Test-ReleaseTag.ps1') -VersionTag $VersionTag -ExpectedCommit $ExpectedCommit
-$latest = if ($version.Prerelease) { '--latest=false' } else { '--latest' }
-Invoke-Gh -Arguments @('release', 'edit', $VersionTag, '--repo', $Repository, '--verify-tag', '--draft=false', $latest) | Out-Null
+# PATCH the same validated ID: tag-based lookup cannot retrieve an unpublished draft.
+$latest = if ($version.Prerelease) { 'false' } else { 'true' }
+$published = (Invoke-Gh -Arguments @('api', "repos/$Repository/releases/$releaseId", '--method', 'PATCH', '-F', 'draft=false', '-F', "prerelease=$($version.Prerelease.ToString().ToLowerInvariant())", '-f', "make_latest=$latest")) -join "`n" | ConvertFrom-Json
+if ($published.id -ne $releaseId -or $published.draft -ne $false -or $published.tag_name -cne $VersionTag -or $published.target_commitish -cne $ExpectedCommit -or $published.prerelease -ne $version.Prerelease) { throw 'Published release response identity mismatch; inspect remote state before retrying.' }
