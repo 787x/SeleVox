@@ -10,6 +10,7 @@ function Assert-File([string]$relative) {
     }
 }
 foreach ($file in @(
+    'LICENSE',
     'SeleVox.App.exe', 'SeleVox.Cli.exe', 'SeleVox.Core.dll',
     'hostfxr.dll', 'hostpolicy.dll', 'coreclr.dll', 'clrjit.dll', 'System.Private.CoreLib.dll',
     'PresentationFramework.dll', 'PresentationCore.dll', 'WindowsBase.dll', 'wpfgfx_cor3.dll',
