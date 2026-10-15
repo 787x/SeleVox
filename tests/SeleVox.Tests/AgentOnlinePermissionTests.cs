@@ -4,6 +4,7 @@ using SeleVox.App;
 using SeleVox.Cli;
 using SeleVox.Core;
 namespace SeleVox.Tests;
+[Trait("Category", "Offline")]
 public sealed class AgentOnlinePermissionTests
 {
     private sealed class Speech(Func<string, Settings, CancellationToken, Task<Stream>> synthesize) : ISpeechSynthesis

@@ -6,6 +6,7 @@ using SeleVox.Core;
 namespace SeleVox.Tests;
 
 // Real loopback HTTP, fixed synthetic content, no external service or paid credentials.
+[Trait("Category", "Offline")]
 public sealed class ChatNetworkTests
 {
     internal sealed class Server : IDisposable

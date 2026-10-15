@@ -4,6 +4,7 @@ using SeleVox.App;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class CloneLibraryTests
 {
     private static CloneAudio Audio(int seconds = 6) => new(AudioGenerationTests.Wave(frames: 24000 * seconds), ".wav");

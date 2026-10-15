@@ -4,6 +4,7 @@ using SeleVox.Core;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class AudioGenerationTests
 {
     internal static byte[] Wave(bool floating = false, int frames = 2400)

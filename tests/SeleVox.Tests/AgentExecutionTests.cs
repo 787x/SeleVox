@@ -4,6 +4,7 @@ using SeleVox.Core;
 using SeleVox.Cli;
 using NAudio.Wave;
 namespace SeleVox.Tests;
+[Trait("Category", "Offline")]
 public sealed class AgentExecutionTests
 {
     private sealed class Speech(Func<CancellationToken, Task<Stream>> run) : ISpeechSynthesis

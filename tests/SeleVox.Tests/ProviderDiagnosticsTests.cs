@@ -6,6 +6,7 @@ using SeleVox.Core;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class ProviderDiagnosticsTests
 {
     internal static DiagnosticSnapshot Snapshot(DiagnosticService service, Settings? settings = null, string? key = "fixture") =>
@@ -193,7 +194,7 @@ public sealed class ProviderDiagnosticsTests
         var result = await diag.RunAsync(Snapshot(service), default);
         Assert.Equal(ServiceFailure.Connection, result.Failure); Assert.DoesNotContain("private", result.Message); Assert.Equal(1, calls);
     }
-    [Fact] public void ActualCredentialManagerKeepsAddressAndServiceNamespacesSeparate()
+    [Fact, Trait("Category", "WindowsCredentials")] public void ActualCredentialManagerKeepsAddressAndServiceNamespacesSeparate()
     {
         var address = "http://127.0.0.1/pr15-" + Guid.NewGuid().ToString("N"); var other = address + "-other";
         var tts = AzureCredentials.OpenAi(address); var llm = AzureCredentials.Llm(address); var second = AzureCredentials.OpenAi(other);

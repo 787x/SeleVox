@@ -4,6 +4,7 @@ using SeleVox.Core;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class MiMoLargeEventTests
 {
     internal static string Event(byte[] pcm) => "data: {\"choices\":[{\"delta\":{\"audio\":{\"data\":\"" + Convert.ToBase64String(pcm) + "\"}}}]}\r\n\r\n";

@@ -1,5 +1,6 @@
 using SeleVox.Core;
 namespace SeleVox.Tests;
+[Trait("Category", "Offline")]
 public sealed class SettingsTests : IDisposable
 {
     private readonly string directory = Path.Combine(Path.GetTempPath(), "SeleVox-tests-" + Guid.NewGuid());

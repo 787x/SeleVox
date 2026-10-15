@@ -1,5 +1,6 @@
 using SeleVox.Core;
 namespace SeleVox.Tests;
+[Trait("Category", "Offline")]
 public sealed class ReadingSessionTests
 {
     private static Task<string> Capture(CancellationToken _) => Task.FromResult("non-sensitive fixture");

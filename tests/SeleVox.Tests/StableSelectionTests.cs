@@ -2,6 +2,7 @@ using SeleVox.Core;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class StableSelectionTests
 {
     private static Task<SelectionSnapshot> Capture(params SelectionSnapshot[] samples)

@@ -6,6 +6,7 @@ using SeleVox.Core;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class MiMoStreamingTests
 {
     internal static string Event(byte[] bytes) => "data: " + JsonSerializer.Serialize(new { choices = new[] { new { delta = new { audio = new { data = Convert.ToBase64String(bytes) } } } } }) + "\r\n\r\n";

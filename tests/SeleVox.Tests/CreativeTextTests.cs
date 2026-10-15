@@ -8,6 +8,7 @@ using SeleVox.Core;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class CreativeTextTests
 {
     [Theory]
