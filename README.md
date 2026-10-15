@@ -9,7 +9,7 @@ SeleVox 是一款面向 **Windows 11 x64** 的桌面文字朗读、AI 语音问�
 ![Windows 11 x64](https://img.shields.io/badge/Windows-11%20x64-0078D4)
 ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)
 
-**[下载](https://github.com/787x/SeleVox/releases)** · **[快速开始](#快速开始)** · **[CLI / MCP 文档](docs/CLI-MCP.md)** · **[反馈问题](https://github.com/787x/SeleVox/issues)**
+**[下载](https://github.com/787x/SeleVox/releases)** · **[CLI / MCP 文档](docs/CLI-MCP.md)** · **[反馈问题](https://github.com/787x/SeleVox/issues)**
 
 > **适合做什么？** 阅读网页或文档时直接听选中的文字；框选无法复制的图片文字进行 OCR；选中问题让 AI 回答并逐句朗读；通过 MiMo 生成角色配音、设计/克隆音色；把声音同时输出到耳机和虚拟麦克风，或让 AI Agent 直接调用语音能力。
 
@@ -28,7 +28,7 @@ SeleVox 是一款面向 **Windows 11 x64** 的桌面文字朗读、AI 语音问�
 
 ## 📦 下载与安装
 
-**最新正式版：** [SeleVox — GitHub Releases](https://github.com/787x/SeleVox/releases)
+**最新正式版：** [SeleVox — GitHub Releases](https://github.com/787x/SeleVox/releases/latest)
 
 安装步骤：
 
