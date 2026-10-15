@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows10.0.26100.0</TargetFramework><SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion><UseWPF>true</UseWPF><AssemblyName>SeleVox.Tests</AssemblyName><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+ <ItemGroup><ProjectReference Include="../../src/SeleVox.App/SeleVox.App.csproj"/></ItemGroup>
+</Project>
