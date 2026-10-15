@@ -1,5 +1,5 @@
 #requires -Version 7.2
-param([Parameter(Mandatory)][string]$VersionTag, [Parameter(Mandatory)][string]$PublishDirectory, [Parameter(Mandatory)][string]$OutputDirectory, [ValidateSet('None', 'Fail', 'Interrupt')][string]$TestFault = 'None')
+param([Parameter(Mandatory)][string]$VersionTag, [Parameter(Mandatory)][string]$PublishDirectory, [Parameter(Mandatory)][string]$OutputDirectory, [ValidateSet('None', 'Fail', 'Interrupt', 'Verify')][string]$TestFault = 'None')
 $ErrorActionPreference = 'Stop'
 if ($TestFault -ne 'None' -and ($env:GITHUB_ACTIONS -ne 'true' -or $env:SELEVOX_INSTALLER_DISPOSABLE -ne '1')) { throw 'Fault fixtures require a disposable Actions VM' }
 . (Join-Path $PSScriptRoot 'Release-Version.ps1')
@@ -39,13 +39,16 @@ try {
         $text = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\installer\SeleVox.iss'))
         $include = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\installer\UpgradeSafety.iss'))
         $text = $text.Replace('#include "UpgradeSafety.iss"', ('#include "' + $include + '"'))
-        $extra = 'Source: "{#PublishDirectory}\UpgradeFixture\current-component.dll"; DestDir: "{app}\UpgradeFixture"; Flags: ignoreversion; BeforeInstall: InjectUpgradeFault'
-        $text = $text.Replace('[Icons]', "$extra`n`n[Icons]")
-        $action = if ($TestFault -eq 'Fail') { "RaiseException('TEST injected installation failure');" } else { "Log('TEST interruption checkpoint'); Sleep(60000);" }
+        $trigger = $verification + '.trigger'
+        [IO.File]::WriteAllText($trigger, 'Test-only fault checkpoint; never a product payload file.')
+        $extra = 'Source: "' + $trigger + '"; DestDir: "{tmp}"; DestName: "SeleVox-fault-trigger.tmp"; Flags: deleteafterinstall; BeforeInstall: InjectUpgradeFault'
+        if ($TestFault -eq 'Verify') { $text = $text.Replace('    VerifyPayload;', "    VerifyPayload;`n    InjectUpgradeFault;") }
+        else { $text = $text.Replace('[Icons]', "$extra`n`n[Icons]") }
+        $action = if ($TestFault -eq 'Interrupt') { "Log('TEST interruption checkpoint'); Sleep(60000);" } elseif ($TestFault -eq 'Fail') { "Log('TEST injected installation failure'); Abort;" } else { "RaiseException('TEST injected installation failure');" }
         $text += "`nprocedure InjectUpgradeFault;`nbegin`n  $action`nend;`n"
         [IO.File]::WriteAllText($definition, $text, [Text.UTF8Encoding]::new($true))
     }
     & $compiler "/DVersion=$($version.SemVer)" "/DNumericVersion=$($version.Numeric)" "/DVersionTag=$VersionTag" "/DPublishDirectory=$source" "/DOutputDirectory=$output" "/DPayloadVerification=$verification" "/DPayloadManifest=$manifest" "/DPayloadHash=$manifestHash" $definition
     if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed' }
-} finally { foreach ($path in @($verification, ($verification + '.manifest'), ($verification + '.fixture.iss'))) { if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path } } }
+} finally { foreach ($path in @($verification, ($verification + '.manifest'), ($verification + '.fixture.iss'), ($verification + '.trigger'))) { if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path } } }
 & (Join-Path $PSScriptRoot 'Test-Installer.ps1') -SetupPath (Join-Path $output $version.SetupName) -VersionTag $VersionTag

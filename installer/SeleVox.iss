@@ -40,7 +40,7 @@ Name: "{userprograms}\SeleVox\Uninstall SeleVox"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\SeleVox"; Filename: "{app}\SeleVox.App.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\SeleVox.App.exe"; Description: "Run SeleVox"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\SeleVox.App.exe"; Description: "Run SeleVox"; Flags: nowait postinstall skipifsilent unchecked; Check: UpgradeIsCommitted
 
 [Code]
 const

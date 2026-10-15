@@ -66,6 +66,7 @@ function Uninstall {
 }
 function Assert-PendingAppBlocked {
     if (-not (Test-Path -LiteralPath (Join-Path $target '.selevox-upgrade-pending'))) { throw 'Interrupted installation lost recovery marker' }
+    if (-not (Test-Path -LiteralPath (Join-Path $target 'SeleVox.App.exe'))) { Write-Host 'Pending installation has no runnable desktop; repair required.'; return }
     $app = Start-Process -FilePath (Join-Path $target 'SeleVox.App.exe') -ArgumentList '--agent-background' -WindowStyle Hidden -PassThru
     try { if (-not $app.WaitForExit(15000)) { throw 'Incomplete installation started a resident desktop instance' } }
     finally { if (-not $app.HasExited) { $app.Kill($true); $app.WaitForExit() }; $app.Dispose() }
@@ -147,6 +148,18 @@ public static class SeleVoxUpgradeAcl {
     & (Join-Path $PSScriptRoot 'Test-Publish.ps1') -PublishDirectory $target
     Uninstall
     if ([IO.File]::ReadAllText((Join-Path $target 'user-owned.txt')) -cne 'user-owned-keep') { throw 'Uninstall removed unknown file after upgrade' }
+    # ssPostInstall exceptions are handled as warnings by stock Inno. The
+    # product's committed flag must turn them into nonzero exit and no launch.
+    $target = Join-Path $root 'late failure install'
+    Invoke-Setup 'v0.0.2'
+    [IO.File]::WriteAllText((Join-Path $target 'user-owned.txt'), 'user-owned-keep')
+    Set-ItemProperty -LiteralPath $runKey -Name SeleVox -Value ('"'+(Join-Path $target 'SeleVox.App.exe')+'" --background')
+    $failed = $false
+    try { Invoke-Setup 'v0.0.3-rc.1' '' 'Verify' } catch { $failed = $true }
+    if (-not $failed -or [IO.File]::ReadAllText((Join-Path $root "setup-$script:operation.log")) -notmatch 'TEST injected installation failure') { throw 'Late verification failure incorrectly reported success or missed its checkpoint' }
+    Assert-PendingAppBlocked
+    Invoke-Setup 'v0.0.3-rc.1'; Assert-Installed 'v0.0.3-rc.1'
+    Uninstall
     # A separate clean directory exercises an actual forced Setup interruption.
     $target = Join-Path $root 'interrupted install'
     Invoke-Setup 'v0.0.2'

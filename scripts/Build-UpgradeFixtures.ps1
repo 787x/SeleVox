@@ -16,7 +16,7 @@ foreach ($tag in $tags) {
     if ($tag -eq 'v0.0.2') { Copy-Item -LiteralPath (Join-Path $source 'SeleVox.Core.dll') -Destination (Join-Path $components 'stable-only.dll') }
     & (Join-Path $PSScriptRoot 'Build-Installer.ps1') -VersionTag $tag -PublishDirectory $source -OutputDirectory (Join-Path $root "$tag/setup")
 }
-foreach ($fault in @('Fail', 'Interrupt')) {
+foreach ($fault in @('Fail', 'Interrupt', 'Verify')) {
     & (Join-Path $PSScriptRoot 'Build-Installer.ps1') -VersionTag 'v0.0.3-rc.1' -PublishDirectory (Join-Path $root 'v0.0.3-rc.1/publish') -OutputDirectory (Join-Path $root $fault) -TestFault $fault
 }
-Write-Host 'Five actual versioned Setup payloads and two isolated fault variants built.'
+Write-Host 'Five actual versioned Setup payloads and three isolated fault variants built.'

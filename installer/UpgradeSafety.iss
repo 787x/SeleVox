@@ -12,7 +12,7 @@ type
 var
   NewFiles, OldFiles: TStringList;
   BaseVersion, OldHash: String;
-  Repairing, Completing, UpgradeStarted: Boolean;
+  Repairing, Completing, UpgradeStarted, UpgradeCommitted: Boolean;
 
 function VersionSize(FileName: String; var Handle: Cardinal): Cardinal;
   external 'GetFileVersionInfoSizeW@version.dll stdcall';
@@ -190,7 +190,9 @@ begin
   State := ExpandConstant('{app}\')+StateName;
   if FileExists(Marker) then begin
     Repairing := True;
-    if GetIniString('Upgrade', 'Target', '', Marker) <> '{#Version}' then begin Result := 'An unfinished installation must first be repaired using Setup '+GetIniString('Upgrade', 'Target', 'unknown', Marker)+'. Attempted: {#Version}. Keep recovery files.'; Exit; end;
+    Version := GetIniString('Upgrade', 'Target', '', Marker);
+    if not ParseRelease(Version, Current) then begin Result := 'Recovery target version is unrecognized. Keep recovery files for manual inspection; attempted {#Version}.'; Exit; end;
+    if Version <> '{#Version}' then begin Result := 'An unfinished installation must first be repaired using Setup '+Version+'. Attempted: {#Version}. Keep recovery files.'; Exit; end;
     if GetIniString('Upgrade', 'NewHash', '', Marker) <> '{#PayloadHash}' then begin Result := 'Recovery payload differs. Use the original target version Setup and keep recovery files.'; Exit; end;
     Completing := GetIniString('Upgrade', 'Complete', '', Marker) = '1';
     ParseRelease('{#Version}', Target);
@@ -309,7 +311,30 @@ begin
     if (GetSHA256OfFile(State+'\previous.manifest') <> OldHash) or not DeleteFile(State+'\previous.manifest') then RaiseException('Recovery record cleanup failed; repair with this same Setup.');
   if not RemoveEmptyRecoveryDirectories(State) then RaiseException('Unknown recovery files remain. Keep them and repair with this same Setup; no unknown files were deleted.');
   if not DeleteFile(Marker) then RaiseException('Cannot clear incomplete-install marker. Repair with this same Setup.');
+  UpgradeCommitted := True;
   Log('Payload verified; upgrade committed.');
+end;
+
+function UpgradeIsCommitted: Boolean;
+begin
+  Result := UpgradeCommitted;
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  { Inno handles ssPostInstall exceptions as warnings by default. An uncommitted
+    payload must never return success, including late verification/cleanup errors. }
+  Result := 0;
+  if UpgradeStarted and not UpgradeCommitted then Result := 1;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and UpgradeStarted and not UpgradeCommitted then begin
+    WizardForm.FinishedHeadingLabel.Caption := 'SeleVox installation is incomplete';
+    WizardForm.FinishedLabel.Caption := 'Do not run SeleVox. Keep recovery files and re-run the original Setup {#Version} to repair.';
+    WizardForm.RunList.Visible := False;
+  end;
 end;
 
 procedure DeinitializeSetup;
