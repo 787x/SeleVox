@@ -9,6 +9,8 @@
     <AssemblyName>SeleVox.Cli</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Combined portable publish must resolve the same desktop runtime pack as the WPF app. -->
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" Condition="'$(SeleVoxCombinedPublish)' == 'true'" />
     <ProjectReference Include="../SeleVox.Core/SeleVox.Core.csproj" />
     <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />

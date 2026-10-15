@@ -5,6 +5,7 @@ using SeleVox.Core;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class Pr9Tests
 {
     internal static Settings Incremental => ChatCompletionTests.Options with { LlmReadingStrategy = AnswerReadingStrategy.Incremental };

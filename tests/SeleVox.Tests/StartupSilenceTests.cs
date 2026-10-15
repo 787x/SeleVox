@@ -3,6 +3,7 @@ using SeleVox.App;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class StartupSilenceTests
 {
     [Theory]

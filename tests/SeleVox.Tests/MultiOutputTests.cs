@@ -4,6 +4,7 @@ using SeleVox.Core;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class MultiOutputTests
 {
     [Fact] public void StrictAgentDeviceFailureDisposesPartialOutputsWithoutFallback()

@@ -304,8 +304,8 @@ MiMo“音频标签脚本”模式提供“AI 添加标签”：在完整原文�
 
 ```powershell
 ./scripts/Publish-Windows.ps1
-./artifacts/pr14-portable/SeleVox.Cli.exe speak --provider Windows --text '你好，SeleVox。' --wait
-./artifacts/pr14-portable/SeleVox.Cli.exe mcp
+./artifacts/win-x64/SeleVox.Cli.exe speak --provider Windows --text '你好，SeleVox。' --wait
+./artifacts/win-x64/SeleVox.Cli.exe mcp
 ```
 
 主界面配置好在线 TTS 服务及凭据后，CLI/MCP 可直接使用，无需额外 Agent 授权；Auto Speak、Auto Ask 的独立自动上传授权不变。服务地址和 Key 仍仅在主界面管理，Agent 不能覆盖地址或读取、导出凭据。MCP 默认不暴露修改持久默认值和删除预设，可由 CLI 单独开启。实际参数、MiMo 三模式、MCP 客户端配置、任务语义及文件权限边界见 [CLI / MCP 使用说明](docs/CLI-MCP.md)，构建、真实服务和未验证项见 [PR14 验证记录](verification/PR14.md)。
@@ -348,3 +348,19 @@ Release 构建通过；相关自动测试 122 项、Windows 音频/OCR 回归 5 
 普通朗读、LLM 逐句语音、MiMo 流式和工作台试听复用相同多设备 WASAPI；重复 Render 去重，虚拟故障跳过且保留其他有效输出，虚拟唯一目标失效则失败，不转向扬声器。关闭或更换已启用路由并保存会停止当前朗读；后续普通朗读排除此已选虚拟端点，普通物理输出设置保留。CLI / MCP 未指定 `devices` 时继承有效配置；默认值 / 预设 / 单次请求显式指定 `devices`（包括 `[]` / `null`）时严格覆盖，独立于虚拟开关，不额外追加。合成文件、导出及服务检测不播放。
 
 真实 Capture、FFmpeg 第三方录音、签名审计、复跑命令及用户六项人工验收通过反馈见 [PR17 验证记录](verification/PR17.md)。反馈涵盖用户实际使用的第三方接收、常用语音功能、配置保留、睡眠唤醒及端点禁用 / 恢复，不代表所有设备和软件组合。当前仅识别普通 VB-CABLE。
+
+## CI 与便携发布
+
+针对 main 的 PR、main 更新和手动触发运行 [Windows CI](https://github.com/787x/SeleVox/actions/workflows/ci.yml)：Windows x64 / .NET 10 Release 构建、离线自动测试、self-contained 发布和产物完整性检查。测试页摘要显示实际通过 / 失败 / 跳过数量，非空测试集合及成功结果是硬性要求；失败也上传已有 TRX。Actions 页面提供保留 7 天的测试报告和便携目录 Artifact，下载后完整解压使用；它不是正式 Release。
+
+离线集合以 `Category=Offline&Category!=WindowsCredentials` 选择：设置与 Provider / 地址隔离、模拟 TTS HTTP 与 MiMo SSE / Unicode / 创作、LLM / Thinking、会话取消与逐句队列、PCM/WAVE / 缓冲 / 文件、Agent / CLI / MCP 执行层与安全边界、虚拟设备配置与模拟路由。脚本清除继承的 `SELEVOX_*` 测试开关；集合内真实 VB-CABLE Capture 用例保持默认跳过。Credential Manager 实测、WPF 窗口 / 热键 / Hook、真实选区 / OCR 桌面、音频设备、发布 MCP stdio 连接桌面及在线服务继续按现有本地验收流程运行，不是 CI 通过的含义。新增适合无人值守的测试时应添加 Offline 分类；不得给依赖桌面、设备或付费网络的用例添加此分类。
+
+```powershell
+dotnet restore SeleVox.slnx
+dotnet build SeleVox.slnx -c Release --no-restore
+./scripts/Test-CI.ps1
+./scripts/Publish-Windows.ps1
+./scripts/Test-Publish.ps1 -PublishDirectory ./artifacts/win-x64
+```
+
+脚本要求 PowerShell 7.2+（`pwsh`，CI 已提供）。发布默认输出 `artifacts/win-x64`，要求目录为空（复跑时选择新的 `-OutputDirectory`，或自行清理旧产物）。正式 Release 也应复用此脚本。两端分别在临时目录发布；组合发布使 CLI 使用与 WPF 相同的 WindowsDesktop 运行时包，逐文件哈希一致才允许合并共享依赖。保留 OCR 中英文模型、x64 原生 DLL、VC 运行库与 LICENSE/NOTICE；检查两端依赖清单、self-contained/RID、禁止的配置 / 凭据 / 样本 / 驱动文件，并在独立工作目录实际执行 CLI `--help`。不启动交互式 WPF、不安装 VB-CABLE、不探测收费服务。

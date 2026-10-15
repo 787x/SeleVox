@@ -7,6 +7,7 @@ using SeleVox.Core;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class HttpSpeechTests
 {
     private static byte[] Wave(int rate = 24000, byte value = 1)

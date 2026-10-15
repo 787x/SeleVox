@@ -23,7 +23,8 @@
     <None Update="OcrRuntime/*.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="EdgeTTS.DotNet" Version="0.4.0" />
     <PackageReference Include="NAudio.WinMM" Version="3.1.0" />
-    <None Update="EdgeTransport/LICENSE" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="EdgeTransport/LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="EdgeTransport/NOTICE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="Tesseract" Version="5.2.0" />
     <ProjectReference Include="../SeleVox.Core/SeleVox.Core.csproj" />
     <PackageReference Include="NAudio.Wasapi" Version="3.1.0" />

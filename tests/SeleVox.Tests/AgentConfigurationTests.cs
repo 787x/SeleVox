@@ -3,6 +3,7 @@ using SeleVox.App;
 using SeleVox.Core;
 using SeleVox.Cli;
 namespace SeleVox.Tests;
+[Trait("Category", "Offline")]
 public sealed class AgentConfigurationTests
 {
     private static JsonElement J(string value) => JsonDocument.Parse(value).RootElement.Clone();

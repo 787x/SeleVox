@@ -5,6 +5,7 @@ using SeleVox.Core;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class ChatCompletionTests
 {
     internal static Settings Options => new(LlmModel: "test-model", LlmSystemPrompt: "system only");

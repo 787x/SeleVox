@@ -8,6 +8,7 @@ using SeleVox.Core;
 
 namespace SeleVox.Tests;
 
+[Trait("Category", "Offline")]
 public sealed class EdgeSpeechTests
 {
     private static readonly Settings Edge = new(Provider: TtsProvider.Edge, EdgeVoice: "zh-CN-XiaoxiaoNeural");

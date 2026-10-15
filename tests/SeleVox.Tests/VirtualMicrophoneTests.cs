@@ -8,6 +8,7 @@ using Xunit.Abstractions;
 namespace SeleVox.Tests;
 
 [Collection("WPF desktop")]
+[Trait("Category", "Offline")]
 public sealed class VirtualMicrophoneTests(ITestOutputHelper log)
 {
     private const string Driver = @"ROOT\VBAUDIOVACWDM\0000";
