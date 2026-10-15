@@ -28,6 +28,13 @@ $migratedCommand = '"' + (Join-Path $target 'SeleVox.App.exe') + '" --background
 $portableCommand = '"C:\SeleVox old portable\SeleVox.App.exe" --background'
 $settingsFixture = Join-Path $data 'settings.json'
 try {
+    # Never install into the preserved user-data directory, even via an alias.
+    $dataLog = Join-Path $root 'data-rejection.log'
+    Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $data + '"'), ('/LOG="' + $dataLog + '"')) $true
+    if ([IO.File]::ReadAllText($dataLog) -notmatch 'Choose an empty program directory outside user data') { throw 'User-data directory rejection failed for an unexpected reason' }
+    $fileSystem = New-Object -ComObject Scripting.FileSystemObject
+    $shortData = $fileSystem.GetFolder($data).ShortPath
+    Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $shortData + '\nested-app"')) $true
     Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $target + '"'), ('/LOG="' + (Join-Path $root 'install.log') + '"'))
     if (-not (Test-Path -LiteralPath $uninstallKey)) { throw 'Missing current-user uninstall registration' }
     if ((Get-ItemPropertyValue -LiteralPath $uninstallKey -Name DisplayVersion) -cne $version.SemVer) { throw 'Installed version mismatch' }
@@ -40,7 +47,9 @@ try {
         if (-not (Test-Path -LiteralPath (Join-Path $shortcut $name))) { throw 'Missing start menu shortcut' }
     }
     $shell = New-Object -ComObject WScript.Shell
-    if ($shell.CreateShortcut((Join-Path $shortcut 'SeleVox.lnk')).TargetPath -ine (Join-Path $target 'SeleVox.App.exe')) { throw 'Shortcut does not target installed app' }
+    $shortcutTarget = $shell.CreateShortcut((Join-Path $shortcut 'SeleVox.lnk')).TargetPath
+    $expectedTarget = Join-Path $target 'SeleVox.App.exe'
+    if (-not (Test-Path -LiteralPath $shortcutTarget -PathType Leaf) -or $fileSystem.GetFile($shortcutTarget).ShortPath -ine $fileSystem.GetFile($expectedTarget).ShortPath) { throw "Shortcut does not target installed app: '$shortcutTarget' expected '$expectedTarget'" }
     if (Test-Path -LiteralPath $desktopShortcut) { throw 'Default installation created optional desktop shortcut' }
     if (Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox -ErrorAction SilentlyContinue) { throw 'Installation enabled startup without consent' }
     if (Get-Process -Name SeleVox.App -ErrorAction SilentlyContinue) { throw 'Silent installation started desktop/services' }

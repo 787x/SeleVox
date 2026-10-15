@@ -143,23 +143,36 @@ begin
   end;
 end;
 
+function DirectoryIdentity(Path: String): String;
+begin
+  { Compare existing prefixes through their 8.3 identity, including when the
+    final directory does not exist yet. This prevents short-name data aliases. }
+  if DirExists(Path) then Result := GetShortName(Path)
+  else if Length(Path) > 3 then
+    Result := AddBackslash(DirectoryIdentity(ExtractFileDir(Path))) + ExtractFileName(Path)
+  else Result := Path;
+end;
+
 function SafeDirectory: Boolean;
-var Directory, DataDir, Parent, Previous: String; Find: TFindRec;
+var Directory, DataDir, Parent, Previous, ProgramIdentity, DataIdentity: String; Find: TFindRec;
 begin
   Directory := RemoveBackslashUnlessRoot(ExpandFileName(ExpandConstant('{app}')));
   DataDir := ExpandConstant('{localappdata}\SeleVox');
+  ProgramIdentity := DirectoryIdentity(Directory);
+  DataIdentity := DirectoryIdentity(DataDir);
   Result := False;
   if (Length(Directory) < 4) or (Copy(Directory, 1, 2) = '\\') or
-    (Pos(AddBackslash(Lowercase(Directory)), AddBackslash(Lowercase(DataDir))) = 1) or
-    (Pos(AddBackslash(Lowercase(DataDir)), AddBackslash(Lowercase(Directory))) = 1) then Exit;
+    (Pos(AddBackslash(Lowercase(ProgramIdentity)), AddBackslash(Lowercase(DataIdentity))) = 1) or
+    (Pos(AddBackslash(Lowercase(DataIdentity)), AddBackslash(Lowercase(ProgramIdentity))) = 1) then Exit;
   Parent := Directory;
   while Length(Parent) > 3 do begin
+    if (Copy(Parent, Length(Parent), 1) = '.') or (Copy(Parent, Length(Parent), 1) = ' ') then Exit;
     if DirExists(Parent) and ((GetFileAttributes(Parent) and $400) <> 0) then Exit;
     Parent := ExtractFileDir(Parent);
   end;
   if DirExists(Directory) then begin
     if not RegQueryStringValue(HKCU, UninstallKey, 'InstallLocation', Previous) or
-      (CompareText(RemoveBackslashUnlessRoot(Previous), Directory) <> 0) then begin
+      (CompareText(DirectoryIdentity(RemoveBackslashUnlessRoot(Previous)), ProgramIdentity) <> 0) then begin
       if FindFirst(AddBackslash(Directory) + '*', Find) then begin
         try
           repeat
