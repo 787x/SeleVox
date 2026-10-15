@@ -234,7 +234,7 @@ pwsh ./scripts/Test-Publish.ps1 -PublishDirectory ./artifacts/win-x64
 
 - [MiMo TTS 技术与风格说明](docs/MiMoTTS.md)
 - [CLI / MCP 使用说明](docs/CLI-MCP.md)
-- [Windows Portable 发布与版本流程](docs/Releases.md)
+- [Windows Setup / Portable 发布与版本流程](docs/Releases.md)
 - [Release Notes](https://github.com/787x/SeleVox/releases)
 - [各阶段验证记录](verification/)
 - [历史 README 技术与开发记录归档](docs/README_ARCHIVE.md)
