@@ -33,6 +33,10 @@ try {
             }
         }
     }
+    # Keep the project's GPL license alongside the published binaries.
+    $license = Join-Path $PSScriptRoot '..\LICENSE'
+    if (-not (Test-Path -LiteralPath $license -PathType Leaf)) { throw 'Missing project LICENSE.' }
+    Copy-Item -LiteralPath $license -Destination (Join-Path $merged 'LICENSE')
     & (Join-Path $PSScriptRoot 'Test-Publish.ps1') -PublishDirectory $merged
     if ($VersionTag) { Assert-PublishVersion $merged $version }
     New-Item -ItemType Directory -Path $output -Force | Out-Null
