@@ -185,6 +185,8 @@ begin
   Result := True;
 end;
 
+#include PayloadVerification
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
@@ -198,6 +200,8 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var Existing: String;
 begin
   if CurStep = ssPostInstall then begin
+    { A user must never get a successful install after ignoring a file error. }
+    VerifyPayload;
     if RegQueryStringValue(HKCU, RunKey, 'SeleVox', Existing) and IsSeleVoxCommand(Existing) and
       (Existing <> AppCommand) then
       if not RegWriteStringValue(HKCU, RunKey, 'SeleVox', AppCommand) then

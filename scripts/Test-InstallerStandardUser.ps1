@@ -24,6 +24,8 @@ try {
     Set-Acl -LiteralPath $root -AclObject $acl
     @'
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$PSStyle.OutputRendering = 'PlainText'
 $env:GITHUB_ACTIONS = 'true'
 $env:SELEVOX_INSTALLER_DISPOSABLE = '1'
 # CreateProcessWithLogon inherits the parent environment. Resolve the loaded

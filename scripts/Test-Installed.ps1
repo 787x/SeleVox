@@ -46,8 +46,31 @@ try {
     foreach ($name in @('SeleVox.lnk', 'Uninstall SeleVox.lnk')) {
         if (-not (Test-Path -LiteralPath (Join-Path $shortcut $name))) { throw 'Missing start menu shortcut' }
     }
-    $shell = New-Object -ComObject WScript.Shell
-    $shortcutTarget = $shell.CreateShortcut((Join-Path $shortcut 'SeleVox.lnk')).TargetPath
+    # Read Unicode shell links directly; WScript.Shell can expose an ANSI target.
+    Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+namespace SeleVoxInstallerTests {
+    [ComImport, Guid("000214F9-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IShellLinkW {
+        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder path, int count, IntPtr data, uint flags);
+    }
+    public static class Shortcut {
+        public static string Target(string file) {
+            var link = Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("00021401-0000-0000-C000-000000000046")));
+            try {
+                ((IPersistFile)link).Load(file, 0);
+                var path = new StringBuilder(260);
+                ((IShellLinkW)link).GetPath(path, path.Capacity, IntPtr.Zero, 0);
+                return Environment.ExpandEnvironmentVariables(path.ToString());
+            } finally { Marshal.FinalReleaseComObject(link); }
+        }
+    }
+}
+'@
+    $shortcutTarget = [SeleVoxInstallerTests.Shortcut]::Target((Join-Path $shortcut 'SeleVox.lnk'))
     $expectedTarget = Join-Path $target 'SeleVox.App.exe'
     if (-not (Test-Path -LiteralPath $shortcutTarget -PathType Leaf) -or $fileSystem.GetFile($shortcutTarget).ShortPath -ine $fileSystem.GetFile($expectedTarget).ShortPath) { throw "Shortcut does not target installed app: '$shortcutTarget' expected '$expectedTarget'" }
     if (Test-Path -LiteralPath $desktopShortcut) { throw 'Default installation created optional desktop shortcut' }
