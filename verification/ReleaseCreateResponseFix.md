@@ -37,7 +37,7 @@ Windows x64 / .NET SDK 10.0.401 / PowerShell 7。
 
 ## 恢复与真实验收边界
 
-现有 RC2 是空 Draft，不能直接公开。维护者另行明确授权后，应按 ID 核对身份/空资产、验证原 RC2 运行的 ZIP/checksum 与解压 CLI/版本，才人工将两个原文件上传到同 ID；远端 digest/长度/数量及 Tag 再验成功后，才公开同 ID 为非 Latest 的 Prerelease。中途失败保留已有资产，先只读检查，不重传、覆盖或删除。RC1 已有完整资产，沿用其无需再上传的同 ID 恢复步骤。见 [发布说明](../docs/Releases.md#rc2-两次失败与安全恢复)。
+现有 RC2 是空 Draft，不能直接公开。维护者另行明确授权后，应按 ID 核对身份/空资产、验证原 RC2 运行的 ZIP/checksum 与解压 CLI/版本，才人工将两个原文件上传到同 ID；远端 digest/长度/数量及 Tag 再验成功后，才公开同 ID 为非 Latest 的 Prerelease。中途失败保留已有资产，先只读检查，不重传、覆盖或删除。RC1 已有完整资产，沿用其无需再上传的同 ID 恢复步骤。见 [发布说明](../docs/Releases.md#案例二rc2创建后的-release-列表尚不可见)。
 
 旧 RC1/RC2 Tag 重跑不会执行修复后的源码。修复合并后，由用户在包含修复的已审核 main commit 创建新的 v0.1.0-rc.3，验证 POST 响应 ID、同 ID 原始资产上传/GET/PATCH、远端 digest、非 Latest/Prerelease 与实际下载文件。Windows 11 桌面/音频/OCR/MCP/虚拟 Capture 与在线服务仍需人工验收。
 
