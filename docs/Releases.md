@@ -1,75 +1,146 @@
-# 发布 Windows Portable
+# Windows Portable 发布指南与历史记录
 
-PR19 合并后，维护者在已审核的 main 提交上手动创建 Tag。自动化不会替你创建版本 Tag：
+> 文档更新日期：**2026-10-15（UTC）**。本页前半部分描述**未来版本**的操作流程，后半部分是 **v0.1.0 首次发布期间的历史事故与恢复案例**，不可将历史示例当作待执行命令。状态快照均以相应记录日期为准。
+
+## 当前基线（记录于 2026-10-15）
+
+- **最新正式版：** [v0.1.0](https://github.com/787x/SeleVox/releases/tag/v0.1.0)，已于 **2026-10-15 03:02:33 UTC** 发布，非 Draft、非 Prerelease，GitHub `/releases/latest` 指向该版本。
+- **已验证预发布：** [v0.1.0-rc.3](https://github.com/787x/SeleVox/releases/tag/v0.1.0-rc.3)，于 **2026-10-15 02:34:18 UTC** 发布为 Prerelease。RC3 的真实发布工作流与下载后 Windows 11 人工验收已完成。
+- **源码基线：** v0.1.0 与 RC3 均指向 `be9786c864d10d9c462d35ee7c46cb07731e42d2`；Stable 是从同一源码重新注入正式版本号并构建的独立产物。
+- **历史失败：** RC1 与 RC2 的失败过程、当时 Draft 状态及后续可选恢复方式见文末。**截至本次复查，两份历史 Draft 的 Release ID 均返回 404**；对应 Git Tag 和 Actions 失败记录仍存在。不要根据历史 Draft ID 执行写入操作。
+
+> 后续发布请使用尚未占用的新版本 Tag；**不要再创建、移动或复用 `v0.1.0-rc.1`、`v0.1.0-rc.2`、`v0.1.0-rc.3` 或 `v0.1.0`**。
+
+## 未来版本：创建 Tag 并发布
+
+维护者先审核并确定要发布的 `main` Commit，确认对应 CI 通过。推荐先创建新的 RC、完成真实下载与 Windows 11 验收；如无代码变更，再针对**同一个已验收 Commit** 创建对应 Stable Tag。**不会自动替你创建 Tag，也不会在 RC 通过后自动推送 Stable。**
+
+有效格式为 `vMAJOR.MINOR.PATCH` 或 `vMAJOR.MINOR.PATCH-rc.N`；不允许前导零，`N` 从 1 开始，MAJOR/MINOR/PATCH 均不得超过 65534（程序集版本限制）。以下命令**交互输入新的 Tag**，没有硬编码曾发布过的版本号：
 
 ```powershell
-git fetch origin main
+git fetch origin main --tags
 git switch main
 git pull --ff-only
-# 先完成 Windows 11 桌面人工验收，确认 HEAD 为要发布的审核提交
-git tag -a v0.1.0-rc.1 -m 'SeleVox RC 1'
-git push origin v0.1.0-rc.1
-# RC 下载验收通过后，由维护者决定在相应 main 提交创建 Stable：
-git tag -a v0.1.0 -m 'SeleVox 0.1.0'
-git push origin v0.1.0
+
+# 核实 HEAD 是已经审核且 CI 通过的待发布提交
+$target = (git rev-parse HEAD).Trim()
+$tag = Read-Host '输入新的未使用版本 Tag（例如 v0.1.1-rc.1 或 v0.1.1）'
+
+# 复用仓库真实版本验证规则；已有 Tag 不得覆盖
+. ./scripts/Release-Version.ps1
+Get-ReleaseVersion $tag | Out-Null
+if (git tag --list $tag) { throw "本地 Tag 已存在：$tag" }
+if (git ls-remote --tags origin "refs/tags/$tag") { throw "远端 Tag 已存在：$tag" }
+if ($LASTEXITCODE -ne 0) { throw '无法检查远端 Tag' }
+
+git tag -a $tag $target -m "SeleVox $tag"
+git rev-parse "$tag^{commit}"  # 应等于 $target
+git push origin $tag           # 真正触发 Windows Release
 ```
 
-有效格式为 vMAJOR.MINOR.PATCH 或 vMAJOR.MINOR.PATCH-rc.N；不允许前导零，RC N 从 1 开始。数值组件最多 65534（程序集版本限制）。Tag 必须在远端存在且其提交属于当前 main 历史。注解 Tag 会解析到实际 commit，构建准确 Tag 提交，随后再次检查远端 Tag，避免构建期间 Tag 被移动。不要移动或重复使用已经发布的 Tag。
+确认 `git rev-parse` 的结果正确后再执行 Push。推送后查看 [Windows Release 工作流](https://github.com/787x/SeleVox/actions/workflows/release.yml)。**不要移动、强推或复用已发布的 Tag**；如果 RC 需要代码修复，先合并修复并发布**新 RC Tag**，不得把旧 RC Tag 改指向新提交。正式版优先使用最后一个验收通过的 RC 的同一源码提交。
 
-查看 GitHub Actions 的 Windows Release：build 必须完成 .NET 10 restore、Release build、非空离线测试/TRX 检查、PR18 self-contained 发布完整性检查、版本校验、ZIP 实际解压和逐文件 SHA-256 检查。publish 仅在 build 成功后运行，是唯一拥有 contents: write 的 Job。它创建 Draft，上传两个资产，核对 Tag/commit、RC 标记、资产名称/数量/大小及 GitHub SHA-256，再公开。RC 不标记 Latest；Stable 标记正常 Release/Latest。同 Tag 不取消正在执行的运行。已有正式 Release 或 Draft 一律明确拒绝，无覆盖、无自动删除。
+### 自动化的验证和权限
 
-分页 Release 列表仅在创建前用于拒绝已有目标版本。创建 Draft 使用 `POST /repos/{owner}/{repo}/releases`，直接从成功响应获取正整数 ID，严格验证 Tag、目标提交、Draft/Prerelease 和空资产；不再依赖新 Draft 立即在列表可见。再次按 ID 查询空 Draft 后，ZIP/checksum 通过 `uploads.github.com/repos/{owner}/{repo}/releases/{id}/assets` 上传二进制文件，传递精确 Content-Length 和 Content-Type，无 Tag 查找、覆盖或重试。随后通过 `GET /repos/{owner}/{repo}/releases/{id}` 核对详情和两项资产，验证成功后用 `PATCH` 同一个 ID 公开；RC 设置 `make_latest` 字符串为 `false`。任何创建响应 ID/身份错误、既有资产、摘要不符或 API 失败都会停止；不会自动删除或重传。
+`build` Job 从远端版本 Tag 解析准确的提交，并要求该提交属于 `main` 可达历史；执行 .NET 10 Restore / Release 构建、离线测试和 TRX 计数、Windows x64 self-contained 发布与资源完整性检查。生成 ZIP 后**实际解压**，比对路径及文件 SHA-256、App/CLI/Core 版本并运行 CLI `--help`，再生成 ZIP 对应的 `SHA256SUMS.txt`。
 
-发布成功后应看到 `SeleVox-v0.1.0[-rc.1]-win-x64-portable.zip` 和 `SHA256SUMS.txt`。下载两者到同一目录：
+`publish` 仅在 `build` 成功后运行，是唯一具有 `contents: write` 的 Job。它在创建前拒绝同 Tag 已有 Draft 或 Release；通过 REST `POST /repos/{owner}/{repo}/releases` 创建 Draft，**直接从创建响应获得 Release ID**，再通过同一 ID 验证身份、上传 ZIP 与 checksum 原始二进制文件、核对远端名称/数量/大小/`uploaded` 状态和 SHA-256，最后对同一 ID 执行 PATCH 公开。**不依赖刚创建的 Draft 立即出现在列表中**，也不通过按 Tag 的接口查询尚未公开的 Draft。
+
+RC 应为 `draft=false, prerelease=true` 且非 Latest Stable；Stable 应为 `draft=false, prerelease=false`，正常成为 Latest。普通 PR/main CI 不创建 Release，也不获得发布写权限；同 Tag 不会自动取消正在进行的发布。
+
+### 下载、校验与实机验收
+
+成功发布后应有且仅有两个 Release 资产：
+
+- `SeleVox-vMAJOR.MINOR.PATCH[-rc.N]-win-x64-portable.zip`（实际文件名使用完整 Tag）
+- `SHA256SUMS.txt`
+
+在**新建的空目录**中下载本次版本（`$tag` 为实际已经发布的 Tag）：
 
 ```powershell
-Get-FileHash ./SeleVox-v0.1.0-rc.1-win-x64-portable.zip -Algorithm SHA256
-Get-Content ./SHA256SUMS.txt
-Expand-Archive ./SeleVox-v0.1.0-rc.1-win-x64-portable.zip -DestinationPath ./SeleVox-RC
-./SeleVox-RC/SeleVox/SeleVox.Cli.exe --help
-./SeleVox-RC/SeleVox/SeleVox.App.exe
+$tag = Read-Host '输入要验收的已发布 Tag'
+$dir = Join-Path (Get-Location) "download-$tag"
+if (Test-Path -LiteralPath $dir) { throw "目标目录已存在：$dir" }
+gh release download $tag --repo 787x/SeleVox --dir $dir
+
+$zipName = "SeleVox-$tag-win-x64-portable.zip"
+$zip = Join-Path $dir $zipName
+$sum = Join-Path $dir 'SHA256SUMS.txt'
+$actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+$matching = @(Get-Content -LiteralPath $sum | Where-Object {
+    $_ -match "^[0-9a-fA-F]{64}  $([regex]::Escape($zipName))$"
+})
+if ($matching.Count -ne 1) { throw '校验文件缺失或包含重复的 ZIP 条目' }
+$expected = ($matching[0] -split '\s+')[0].ToLowerInvariant()
+if ($actual -ne $expected) { throw 'ZIP SHA-256 不一致' }
+
+$extract = Join-Path (Get-Location) "extracted-$tag"
+if (Test-Path -LiteralPath $extract) { throw "解压目录已存在：$extract" }
+Expand-Archive -LiteralPath $zip -DestinationPath $extract
+& (Join-Path $extract 'SeleVox/SeleVox.Cli.exe') --help
+& (Join-Path $extract 'SeleVox/SeleVox.App.exe')
 ```
 
-哈希应与校验文件中同名 ZIP 的值一致。SHA-256 是完整性校验，不是数字签名或身份认证。目前没有代码签名，Windows 可能提示未知发布者；无需关闭系统安全机制。完整解压所有文件，免装 .NET，不捆绑 VB-CABLE。
+还应确认 GitHub Release 的 Tag、Commit、Draft/Prerelease/Latest 状态与预期一致，并在 Windows 11 x64 上按变更范围人工验收桌面、托盘/热键、选区与 OCR、真实 TTS/LLM、音频播放与工作台、CLI/MCP，以及按需验证虚拟麦克风。
 
-Portable 仅表示免安装；用户设置、Agent 配置与克隆样本继续位于当前用户 LocalAppData，API Key 使用 Windows Credential Manager。在线 Provider 需要用户自行配置，可能收费。CLI/MCP 见 [使用说明](CLI-MCP.md)。
+Portable 需完整解压，可免装 .NET Runtime，但并非所有数据都存放在程序旁边：用户设置、Agent 配置、相关样本仍按应用现有逻辑存于当前用户的 LocalAppData，API Key 使用 Windows Credential Manager。在线 Provider 需用户自行配置且可能收费；**VB-CABLE 需另行安装，发布包不附带驱动**。本版本未进行代码签名，Windows 可能提示未知发布者；SHA-256 是完整性校验，不是发布者身份认证。CLI/MCP 配置见 [CLI / MCP 使用说明](CLI-MCP.md)。
 
-失败时查看对应 Job 日志。上传/校验失败只留下 Draft；核查来源、Tag、commit 和资产后，由维护者决定手动处理自己的失败 Draft。脚本不会恢复或删除不明 Draft。若确认属于本次失败尝试，可以手动删除该 Draft，再在 Actions 重跑失败运行（Tag 必须仍指向原提交）；正式 Release 禁止删除/替换资产来重发，修复应使用新版本 Tag。网络错误或 API 无权限会中止，不当成版本不存在。若公开请求已成功但客户端网络响应丢失，先检查远端完整 Release，重复运行会拒绝覆盖。
+### 失败后的通用处理原则
 
-### 首次 RC1 的安全恢复
+先查看失败的 `build` / `publish` 日志，再**只读**核对远端 Tag、对应 Commit、Release ID、Draft 状态、资产及原运行的 `release-assets` Artifact。创建或上传请求失败、超时后，服务器可能已经完成部分操作；**不要未经核对就重跑同 Tag**。
 
-`v0.1.0-rc.1` 的 [首次运行](https://github.com/787x/SeleVox/actions/runs/38665605569) 已成功构建/验证并上传两个资产，因错误使用 Draft 的按 Tag 查询而失败。现有 Draft ID 为 `413328848`，Tag 对应 commit 为 `b4a291c9cb33b475297f27273eb278177cfb4cc3`。本修复不操作它，也不移动 Tag。
+自动脚本遇到已有 Draft/Release、身份错误、网络或 digest 不一致时会停止，不自动覆盖、删除、重传或公开不完整资产。只有在维护者确认原始产物、远端身份及摘要，并**另行授权**后，才考虑对仍然存在的失败 Draft 进行人工恢复；网络响应丢失时先检查远端实际状态。已公开版本不可通过替换资产静默重发。若无法安全恢复，应使用新版本 Tag 重新发布，而不是改写旧 Tag。
 
-不要直接重跑 RC1 期待使用新代码：Tag 仍指向修复前的源码，且已有 Draft 会触发重复发布保护。不要删除 Draft 或重新打包/上传来恢复这一次已完整上传的产物。维护者可在另行明确授权后按以下流程人工恢复同一个 Draft：
+## 历史事故与恢复案例（记录日期：2026-10-15，UTC）
 
-1. 只读查询 `gh api repos/787x/SeleVox/releases/413328848`，核对 ID、`tag_name=v0.1.0-rc.1`、上述完整 `target_commitish`、`draft=true`、`prerelease=true`。重新 fetch/解析远端 Tag，确认仍为同一 commit 且在 main 历史中。
-2. 下载原运行的 `release-assets` Artifact 到新的空目录，不能使用修复后构建的 RC1 文件：`gh run download 38665605569 --name release-assets --dir artifacts/rc1-original-assets`。执行 `Test-ReleaseAssets.ps1 -Directory artifacts/rc1-original-assets -VersionTag v0.1.0-rc.1`；完整解压 ZIP，在解压出的 SeleVox 目录运行 `Test-Publish.ps1`（含实际 CLI --help），并用 `Release-Version.ps1` 的 `Assert-PublishVersion` 核对 RC1 版本。
-3. 按 ID 再查询 Draft，必须正好两项：`SeleVox-v0.1.0-rc.1-win-x64-portable.zip` 与 `SHA256SUMS.txt`，均为 `uploaded`。逐个将远端 `size` 与本地文件长度比较、`digest` 与本地 `sha256:` 加 SHA-256 比较，ZIP 还须与 checksum 文本一致。任何一项不符，停止并保留 Draft；不替换或重传。
-4. 再确认身份及远端 Tag 未变化，由维护者明确决定公开后，才执行同 ID 的 `PATCH /repos/787x/SeleVox/releases/413328848`，请求体为 `{"draft":false,"prerelease":true,"make_latest":"false"}`。随后按 ID 核对公开状态/Prerelease/资产，再下载公开 ZIP 校验。网络响应丢失时先只读核对远端，不重复创建或替换。
+以下描述的是 **v0.1.0 首次发布期间的历史事实和事故后快照**，不是当前待办操作。链接到当时的真实 Actions/PR，可供排查同类事故时参考。
 
-上述步骤是恢复说明，没有在代码修复中执行公开请求。PR20 合并后的 RC2 又暴露了下一节的列表可见性问题；当前修复后的新流程应使用新 RC3 Tag 验证，不移动 RC1/RC2。普通 PR CI 的命令模拟不代表真实 GitHub 写入已验证。
+| 版本与记录 | 当时结果 | 当时 Draft / Release 状态 |
+| --- | --- | --- |
+| [RC1 运行](https://github.com/787x/SeleVox/actions/runs/38665605569)，2026-10-15 01:25–01:29 UTC | Build 成功，Publish 失败 | Draft ID `413328848`，未公开，两个资产已上传 |
+| [RC2 运行](https://github.com/787x/SeleVox/actions/runs/38668692467)，2026-10-15 02:00–02:04 UTC | Build 成功，Publish 两次尝试均失败 | Draft ID `413345174`，未公开，0 个资产 |
+| [RC3 运行](https://github.com/787x/SeleVox/actions/runs/38671454772)，2026-10-15 02:31–02:34 UTC | Build / Publish 首次均成功 | Release ID `413361427`，已公开 Prerelease，两个资产 |
+| [v0.1.0 正式版运行](https://github.com/787x/SeleVox/actions/runs/38673911189)，2026-10-15 02:59–03:02 UTC | Build / Publish 首次均成功 | Release ID `413375806`，已公开 Stable / Latest，两个资产 |
 
-### RC2 两次失败与安全恢复
+### 案例一：RC1——不能按 Tag 查询未公开 Draft
 
-[RC2 运行 38668692467](https://github.com/787x/SeleVox/actions/runs/38668692467) 的第一次 publish Job `116207082379`：构建、457 项离线测试和 541 文件 ZIP 验证成功，Draft 创建成功，但随后列表未返回唯一新 Draft，报 `Created draft not uniquely found`，资产上传尚未执行。第二次 publish Job `116207408289`：创建前列表已看见该 Draft，重复发布保护正确拒绝，不能把它当作一次新的上传失败。
+**记录日期：2026-10-15；事故版本：`v0.1.0-rc.1`；事故时目标提交：`b4a291c9cb33b475297f27273eb278177cfb4cc3`。**
 
-现有 RC2 Draft ID `413345174`，Tag `v0.1.0-rc.2`，commit `dc42ba7f4ce92db83644d10a0da52bb21bfa3b6b`，Draft/Prerelease 均 true，资产 0。本修复不修改它或 RC1，也不移动 Tag。旧 RC2 Tag 指向修复前代码；重跑不能获得新修复，而且会继续触发已有 Draft 保护。
+最初的发布脚本在创建 Draft 并上传两个资产后，使用 `GET /repos/{owner}/{repo}/releases/tags/{tag}` 校验尚未公开的 Draft，返回 HTTP 404，故停在最终资产验证前。**当时** Draft `413328848` 仍为 `draft=true, prerelease=true`，已有 ZIP 和 `SHA256SUMS.txt`，没有公开；构建、457 项离线测试及解压文件检查已经成功。[PR #20](https://github.com/787x/SeleVox/pull/20) 将后续验证与公开改为按 Release ID 操作。
 
-恢复 RC2 需要维护者另行明确授权，人工操作同 ID：只读核对上述身份、当前资产仍为 0、远端 Tag/main 祖先不变；下载原运行的 `release-assets` Artifact（如本地目录为空，可用 `gh run download 38668692467 --name release-assets --dir artifacts/rc2-original-assets`），对原 ZIP/checksum 执行 Test-ReleaseAssets、解压 Test-Publish / CLI --help 与 RC2 版本校验。然后才可将这两个原文件通过同 ID 的 uploads API 各上传一次；不使用重建的新文件。每次先确认没有同名资产，上传后按 ID 校验两项名称、数量、长度及远端 SHA-256 与本地完全一致，重新核对身份和 Tag，再由维护者决定 PATCH 同 ID 公开，`draft=false`、`prerelease=true`、`make_latest="false"`。
+**当时讨论的安全恢复方案（仅作案例）：** 核实原 Tag、提交和 Draft ID；下载**原工作流**的 `release-assets`，解压验证版本、CLI 和文件哈希，再将本地两个原始文件的长度及 SHA-256 与同 ID 的远端资产逐项比对。全部一致且维护者另行授权时，才可以对**仍存在的同一 Draft ID** PATCH 为 `draft=false, prerelease=true, make_latest="false"`。不重建/替换资产，不移动 Tag。**上述恢复当时未执行。**
 
-如果恢复操作中途失败或网络响应丢失，保留 Draft，先按 ID 检查已经存在的资产；不自动重传、覆盖或删除。若存在不明资产/摘要不符，停止。RC1 继续使用前述已有完整资产的恢复流程，无需再次上传。
+### 案例二：RC2——创建后的 Release 列表尚不可见
 
-验证新自动流程应在本修复合并后，由用户在包含修复的已审核 main 提交创建新的 `v0.1.0-rc.3`。实测 POST 返回 ID、同 ID 上传/查询/PATCH、远端两项 digest、Prerelease 和非 Latest，下载公开 ZIP 再验收；本次 PR 的模拟不代表真实发布已成功。
+**记录日期：2026-10-15；事故版本：`v0.1.0-rc.2`；事故时目标提交：`dc42ba7f4ce92db83644d10a0da52bb21bfa3b6b`。**
 
-普通 Windows CI 始终只读，用 `v0.0.0-rc.1` 验证发布版本注入与包名，此值是测试输入，不是源码产品版本。CI 实际生成 ZIP、解压运行 CLI、检查版本/文件哈希/checksum，并拒绝非法版本、缺失文件、错误 ZIP 内容、篡改 DLL 与错误 checksum；不创建 Tag 或 Release。离线测试与原 PR18 人工边界保持一致。
+[第一次 publish Job](https://github.com/787x/SeleVox/actions/runs/38668692467/attempts/1) 创建 Draft 成功，却依赖分页列表立即找到新 Draft ID；实际返回 `Created draft not uniquely found`，尚未上传资产。[第二次 publish Job](https://github.com/787x/SeleVox/actions/runs/38668692467/attempts/2) 已能看到这份 Draft，重复发布保护正确拒绝重新创建。**当时** Draft `413345174` 为 `draft=true, prerelease=true`，**资产数为 0**，并非 ZIP 上传失败。
 
-第一次 RC 必须另行下载实际上传的 ZIP 在 Windows 11 验收 GUI、UIA、热键/托盘、真实 OCR、TTS、暂停/停止、多设备音频、工作台、CLI/MCP 与虚拟 Capture。在线服务和驱动由用户显式配置，不在 Runner 调用收费 API 或安装驱动。通过后再决定发布 Stable。
+[PR #21](https://github.com/787x/SeleVox/pull/21) 改为**直接读取 REST POST 创建响应的 ID**，同 ID 进行空资产校验、二进制上传、远端 digest 验证和公开，避免依赖列表的即时可见性。
 
-本地复跑（新建空输出目录，PowerShell 7.2+）：
+**当时讨论的安全恢复方案（仅作案例）：** 先核对原 Tag/Commit/空 Draft，下载并验证第一次工作流生成的原始 ZIP 与 checksum；只有确认远端仍为**同一空 Draft**并经维护者授权时，才能向该 ID 上传两个**原始**资产，逐项核对远端 digest、长度和状态后再 PATCH 公开；若中途仅上传了一个资产或响应丢失，应先查询远端，绝不能盲目重传。**上述恢复当时未执行。**
+
+### 案例三：RC3 与 Stable——首次完整自动发布成功
+
+**记录日期：2026-10-15。**
+
+- [RC3 `v0.1.0-rc.3`](https://github.com/787x/SeleVox/releases/tag/v0.1.0-rc.3) 于 **2026-10-15 02:34:18 UTC** 公开为 Prerelease，真实 REST 创建 ID、上传、digest 验证和 PATCH 发布流程跑通；用户随后完成下载与 Windows 11 人工验收。
+- [Stable `v0.1.0`](https://github.com/787x/SeleVox/releases/tag/v0.1.0) 于 **2026-10-15 03:02:33 UTC** 公开为 Latest Stable。RC3 与正式版指向同一源码提交 `be9786c864d10d9c462d35ee7c46cb07731e42d2`；Stable 重新注入正式版本并构建。两次工作流均通过构建、457 项离线测试（另 1 项 opt-in 跳过）、541 文件 ZIP/版本/CLI/哈希检查及 Publish。
+- 这两次成功已经完成了历史文档中“**下一步创建 RC3、验证自动发布、再发布 v0.1.0**”的工作，不应再次作为待办事项出现。
+
+### 历史 Draft 的后续状态与记录边界
+
+**复核日期：2026-10-15（UTC）。** 本次通过 GitHub REST 按 ID 查询，历史 RC1 Draft `413328848` 与 RC2 Draft `413345174` **均返回 HTTP 404**，公开 Release 列表中也不再列出这两份 Draft；`v0.1.0-rc.1` 和 `v0.1.0-rc.2` 的 Git Tag 以及失败的 Actions 运行记录仍存在。无法仅凭这些结果确定 Draft 是谁在什么时间清理的，故不作推断。
+
+因此，以上针对**当时存在的 Draft** 所写的恢复方案现在**不是可直接执行的命令**；不能向已经不存在的 Release ID 上传文件或 PATCH 公开，更不能为了恢复事故历史而移动旧 Tag。历史状态应当结合原运行日志和 [发布修复验证记录](../verification/ReleaseCreateResponseFix.md) 阅读。
+
+## 本地打包验证（不创建 Release）
+
+普通 Windows CI 始终使用 `v0.0.0-rc.1` 等**测试输入**核对版本注入、发布 ZIP、解压 CLI、资源与 SHA-256；这不是实际发布的 Tag。开发机可在 PowerShell 7.2+ 用**空输出目录**运行：
 
 ```powershell
 ./scripts/Publish-Windows.ps1 -VersionTag v0.0.0-rc.1 -OutputDirectory artifacts/local-rc
 ./scripts/Test-Packaging.ps1 -PublishDirectory artifacts/local-rc -OutputDirectory artifacts/local-package
 ```
 
-实现采用 [GitHub REST Release 创建/查询/更新](https://docs.github.com/en/rest/releases/releases) 和 [Release asset 上传/digest](https://docs.github.com/en/rest/releases/assets)，通过 `gh api --input` 发送 JSON 或原始二进制文件；创建前再次检查远端 Tag。若资产 digest 不可用，校验会失败并保留 Draft。
+实现参考 [GitHub REST Release 创建、查询与更新](https://docs.github.com/en/rest/releases/releases) 和 [Release Asset 上传与 digest](https://docs.github.com/en/rest/releases/assets)。上述离线检查不能代替首次真实 Tag 发布和 Windows 11 桌面/真实音频验收。
