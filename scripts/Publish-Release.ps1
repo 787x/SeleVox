@@ -28,22 +28,31 @@ function Assert-DraftIdentity($Release, [long]$ReleaseId) {
 if (@(Get-TagReleases).Count -ne 0) { throw 'This tag already has a Release or Draft. Inspect it manually; no assets were changed.' }
 $notes = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\docs\Release-Notes.md') -Raw
 $notes = $notes.Replace('{{TAG}}', $VersionTag).Replace('{{COMMIT}}', $ExpectedCommit)
-$notesPath = Join-Path $AssetDirectory 'release-notes.md'
+$requestPath = [IO.Path]::GetTempFileName()
 try {
-    [IO.File]::WriteAllText($notesPath, $notes, [Text.UTF8Encoding]::new($false))
-    $arguments = @('release', 'create', $VersionTag, '--repo', $Repository, '--verify-tag', '--target', $ExpectedCommit, '--draft', '--latest=false', '--title', "SeleVox $VersionTag", '--notes-file', $notesPath)
-    if ($version.Prerelease) { $arguments += '--prerelease' }
-    Invoke-Gh -Arguments $arguments | Out-Null
-} finally { if (Test-Path -LiteralPath $notesPath) { Remove-Item -LiteralPath $notesPath } }
-# gh release create outputs a URL, not a JSON ID. Locate exactly one matching
-# draft in the authenticated list and validate its identity before retaining its ID.
-$created = @(Get-TagReleases)
-if ($created.Count -ne 1) { throw 'Created draft not uniquely found; inspect the retained draft manually.' }
-$releaseId = [long]$created[0].id
-Assert-DraftIdentity $created[0] $releaseId
-if ($created[0].assets.Count -ne 0) { throw 'Created draft already has assets; refusing to upload or replace them.' }
-# Upload without --clobber; any failure leaves a non-public draft for inspection.
-Invoke-Gh -Arguments @('release', 'upload', $VersionTag, (Join-Path $AssetDirectory $version.ZipName), (Join-Path $AssetDirectory 'SHA256SUMS.txt'), '--repo', $Repository) | Out-Null
+    $payload = @{ tag_name = $VersionTag; target_commitish = $ExpectedCommit; name = "SeleVox $VersionTag"; body = $notes; draft = $true; prerelease = $version.Prerelease; make_latest = 'false' } | ConvertTo-Json
+    [IO.File]::WriteAllText($requestPath, $payload, [Text.UTF8Encoding]::new($false))
+    # Recheck immediately before POST: the REST endpoint can create a missing tag.
+    & (Join-Path $PSScriptRoot 'Test-ReleaseTag.ps1') -VersionTag $VersionTag -ExpectedCommit $ExpectedCommit
+    $created = (Invoke-Gh -Arguments @('api', "repos/$Repository/releases", '--method', 'POST', '--input', $requestPath)) -join "`n" | ConvertFrom-Json
+} finally { Remove-Item -LiteralPath $requestPath }
+# The successful POST response is authoritative; a fresh Draft may not yet be
+# visible in the list endpoint. Never rediscover this ID by tag or list.
+$idProperty = $created.PSObject.Properties['id']
+if (-not $idProperty -or ($idProperty.Value -isnot [int] -and $idProperty.Value -isnot [long]) -or $idProperty.Value -le 0) { throw 'Created draft response has no valid positive integer ID; inspect the retained draft manually.' }
+$releaseId = [long]$idProperty.Value
+Assert-DraftIdentity $created $releaseId
+if ($created.assets.Count -ne 0) { throw 'Created draft already has assets; refusing to upload or replace them.' }
+$release = (Invoke-Gh -Arguments @('api', "repos/$Repository/releases/$releaseId")) -join "`n" | ConvertFrom-Json
+Assert-DraftIdentity $release $releaseId
+if ($release.assets.Count -ne 0) { throw 'Draft already has assets; refusing to upload or replace them.' }
+foreach ($name in @($version.ZipName, 'SHA256SUMS.txt')) {
+    $file = Get-Item -LiteralPath (Join-Path $AssetDirectory $name)
+    $mime = if ($name.EndsWith('.zip')) { 'application/zip' } else { 'text/plain' }
+    $upload = "https://uploads.github.com/repos/$Repository/releases/$releaseId/assets?name=$([Uri]::EscapeDataString($name))"
+    # Binary input, exact length, same ID; no tag lookup, overwrite or retry.
+    Invoke-Gh -Arguments @('api', $upload, '--method', 'POST', '--header', "Content-Type:$mime", '--header', "Content-Length:$($file.Length)", '--input', $file.FullName) | Out-Null
+}
 $release = (Invoke-Gh -Arguments @('api', "repos/$Repository/releases/$releaseId")) -join "`n" | ConvertFrom-Json
 Assert-DraftIdentity $release $releaseId
 if ($release.assets.Count -ne 2) { throw 'Draft assets count mismatch; refusing to publish.' }

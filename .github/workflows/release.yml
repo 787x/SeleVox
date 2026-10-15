@@ -88,7 +88,7 @@ jobs:
         with:
           name: release-assets
           path: artifacts/release
-      - name: Validate assets, upload draft, verify remote digests, publish
+      - name: Validate assets, create draft via REST, upload and publish by ID
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./scripts/Publish-Release.ps1 -VersionTag $env:RELEASE_TAG -ExpectedCommit $env:RELEASE_COMMIT -AssetDirectory artifacts/release -Repository $env:RELEASE_REPOSITORY
