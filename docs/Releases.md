@@ -42,6 +42,8 @@ git push origin $tag           # 真正触发 Windows Release
 
 ### 自动化的验证和权限
 
+在 .NET Restore / 构建前，`build` 使用 Node.js 24 LTS 和 `npm ci` 安装锁定的开发依赖，执行链接检查器回归测试及 `scripts/Test-DocsLinks.ps1`，离线检查所有 Git 跟踪的 Markdown 相对链接与章节。断链会使 `build` 失败，`publish` 因 `needs: build` 不会运行；Node.js 工具不进入 Windows 发布 ZIP。本地命令见 [源码构建说明](../README.md#️-从源码构建)。
+
 `build` Job 从远端版本 Tag 解析准确的提交，并要求该提交属于 `main` 可达历史；执行 .NET 10 Restore / Release 构建、离线测试和 TRX 计数、Windows x64 self-contained 发布与资源完整性检查。生成 ZIP 后**实际解压**，比对路径及文件 SHA-256、App/CLI/Core 版本并运行 CLI `--help`，再生成 ZIP 对应的 `SHA256SUMS.txt`。
 
 `publish` 仅在 `build` 成功后运行，是唯一具有 `contents: write` 的 Job。它在创建前拒绝同 Tag 已有 Draft 或 Release；通过 REST `POST /repos/{owner}/{repo}/releases` 创建 Draft，**直接从创建响应获得 Release ID**，再通过同一 ID 验证身份、上传 ZIP 与 checksum 原始二进制文件、核对远端名称/数量/大小/`uploaded` 状态和 SHA-256，最后对同一 ID 执行 PATCH 公开。**不依赖刚创建的 Draft 立即出现在列表中**，也不通过按 Tag 的接口查询尚未公开的 Draft。
