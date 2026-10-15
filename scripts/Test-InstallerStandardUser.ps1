@@ -26,11 +26,21 @@ try {
 $ErrorActionPreference = 'Stop'
 $env:GITHUB_ACTIONS = 'true'
 $env:SELEVOX_INSTALLER_DISPOSABLE = '1'
-$env:LOCALAPPDATA = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData, [Environment+SpecialFolderOption]::Create)
-if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) { throw 'Standard-user LocalAppData could not be created' }
+# CreateProcessWithLogon inherits the parent environment. Resolve the loaded
+# profile by the new token SID before any known-folder expansion.
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$profileKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\' + $identity.User.Value
+$profilePath = Get-ItemPropertyValue -LiteralPath $profileKey -Name ProfileImagePath
+$env:USERPROFILE = [Environment]::ExpandEnvironmentVariables($profilePath)
+$env:USERNAME = $identity.Name.Split('\')[-1]
+$env:USERDOMAIN = $env:COMPUTERNAME
+$env:HOMEDRIVE = [IO.Path]::GetPathRoot($env:USERPROFILE).TrimEnd('\')
+$env:HOMEPATH = $env:USERPROFILE.Substring($env:HOMEDRIVE.Length)
+$env:APPDATA = Join-Path $env:USERPROFILE 'AppData\Roaming'
+$env:LOCALAPPDATA = Join-Path $env:USERPROFILE 'AppData\Local'
 $env:TEMP = Join-Path $env:LOCALAPPDATA 'Temp'
 $env:TMP = $env:TEMP
-New-Item -ItemType Directory -Path $env:TEMP -Force | Out-Null
+New-Item -ItemType Directory -Path $env:APPDATA,$env:LOCALAPPDATA,$env:TEMP -Force | Out-Null
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Smoke must run without administrator privileges' }
 & (Join-Path $PSScriptRoot 'scripts\Test-Installed.ps1') -VersionTag ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'version.txt'))) -SetupDirectory (Join-Path $PSScriptRoot 'setup') -PublishDirectory (Join-Path $PSScriptRoot 'publish')

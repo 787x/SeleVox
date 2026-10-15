@@ -11,6 +11,7 @@ $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{BDC7
 $data = Join-Path $env:LOCALAPPDATA 'SeleVox'
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $shortcut = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::Programs, [Environment+SpecialFolderOption]::Create)) 'SeleVox'
+$desktopShortcut = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory, [Environment+SpecialFolderOption]::Create)) 'SeleVox.lnk'
 if ((Test-Path -LiteralPath $data) -or (Test-Path -LiteralPath $uninstallKey) -or (Test-Path -LiteralPath $shortcut) -or (Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox -ErrorAction SilentlyContinue)) { throw 'Account is not clean; refusing to touch existing state' }
 $root = Join-Path ([IO.Path]::GetTempPath()) ('SeleVox-install-' + [guid]::NewGuid().ToString('N'))
 $target = Join-Path $root '中文 installed app'
@@ -29,6 +30,7 @@ $settingsFixture = Join-Path $data 'settings.json'
 try {
     Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $target + '"'), ('/LOG="' + (Join-Path $root 'install.log') + '"'))
     if (-not (Test-Path -LiteralPath $uninstallKey)) { throw 'Missing current-user uninstall registration' }
+    if ((Get-ItemPropertyValue -LiteralPath $uninstallKey -Name DisplayVersion) -cne $version.SemVer) { throw 'Installed version mismatch' }
     foreach ($file in Get-ChildItem -LiteralPath $source -File -Recurse) {
         $installed = Join-Path $target ([IO.Path]::GetRelativePath($source, $file.FullName))
         if (-not (Test-Path -LiteralPath $installed) -or (Get-FileHash -LiteralPath $installed).Hash -ne (Get-FileHash -LiteralPath $file.FullName).Hash) { throw 'Installed file missing or hash mismatch' }
@@ -37,13 +39,18 @@ try {
     foreach ($name in @('SeleVox.lnk', 'Uninstall SeleVox.lnk')) {
         if (-not (Test-Path -LiteralPath (Join-Path $shortcut $name))) { throw 'Missing start menu shortcut' }
     }
+    $shell = New-Object -ComObject WScript.Shell
+    if ($shell.CreateShortcut((Join-Path $shortcut 'SeleVox.lnk')).TargetPath -ine (Join-Path $target 'SeleVox.App.exe')) { throw 'Shortcut does not target installed app' }
+    if (Test-Path -LiteralPath $desktopShortcut) { throw 'Default installation created optional desktop shortcut' }
     if (Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox -ErrorAction SilentlyContinue) { throw 'Installation enabled startup without consent' }
     if (Get-Process -Name SeleVox.App -ErrorAction SilentlyContinue) { throw 'Silent installation started desktop/services' }
     $lockedPath = Join-Path $target 'SeleVox.Core.dll'
     $before = (Get-FileHash -LiteralPath $lockedPath).Hash
     $lock = [IO.File]::Open($lockedPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
-    try { Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-') $true }
+    $lockedLog = Join-Path $root 'locked.log'
+    try { Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/LOG="' + $lockedLog + '"')) $true }
     finally { $lock.Dispose() }
+    if ([IO.File]::ReadAllText($lockedLog) -notmatch 'Installation files are in use or inaccessible') { throw 'Upgrade failed for a reason other than the held file lock' }
     if ((Get-FileHash -LiteralPath $lockedPath).Hash -ne $before) { throw 'Rejected upgrade changed locked payload' }
     # Synthetic Portable startup and settings belong only to this clean test account.
     $settingsText = '{"StartWithWindows":true}'
@@ -56,12 +63,17 @@ try {
     if ([IO.File]::ReadAllText($settingsFixture) -cne $settingsText) { throw 'Upgrade changed saved startup preference' }
     Run-Setup (Join-Path $target 'unins000.exe') @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
     if ((Test-Path -LiteralPath (Join-Path $target 'SeleVox.App.exe')) -or (Test-Path -LiteralPath $uninstallKey) -or (Test-Path -LiteralPath $shortcut)) { throw 'Uninstall left program or shortcut/registration' }
+    foreach ($file in Get-ChildItem -LiteralPath $source -File -Recurse) {
+        if (Test-Path -LiteralPath (Join-Path $target ([IO.Path]::GetRelativePath($source, $file.FullName)))) { throw 'Uninstall left a managed payload file' }
+    }
     if ([IO.File]::ReadAllText($sentinel) -cne 'preserve-me') { throw 'Uninstall deleted user data' }
     if (Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox -ErrorAction SilentlyContinue) { throw 'Uninstall left owned startup value' }
-    Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $target + '"'))
+    Run-Setup $setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/TASKS=desktopicon', ('/DIR="' + $target + '"'))
+    if (-not (Test-Path -LiteralPath $desktopShortcut)) { throw 'Explicit desktop shortcut task was not honored' }
     Set-ItemProperty -LiteralPath $runKey -Name SeleVox -Value $portableCommand
     Run-Setup (Join-Path $target 'unins000.exe') @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
     if ((Get-ItemPropertyValue -LiteralPath $runKey -Name SeleVox) -cne $portableCommand) { throw 'Uninstall removed a different Portable startup value' }
+    if (Test-Path -LiteralPath $desktopShortcut) { throw 'Uninstall left the optional desktop shortcut' }
     Write-Host 'Actual current-user install, payload hashes, installed CLI, locked upgrade rejection, startup migration, owned/foreign Run cleanup, reinstallation, uninstall and data preservation passed.'
 } finally {
     if (Test-Path -LiteralPath (Join-Path $root 'install.log')) { Get-Content -LiteralPath (Join-Path $root 'install.log') -Tail 45 }

@@ -21,8 +21,13 @@ public sealed class StartupRegistrationTests
             Assert.True(StartupRegistration.IsSeleVoxCommand(command));
             StartupRegistration.Apply(key, true, path);
             Assert.Equal(command, key.GetValue("SeleVox"));
+            // A matching value must succeed even when the handle cannot write.
+            using (var readOnly = Registry.CurrentUser.OpenSubKey(subkey, writable: false)!)
+                StartupRegistration.Apply(readOnly, true, path);
             StartupRegistration.Apply(key, false, path);
             Assert.Null(key.GetValue("SeleVox"));
+            using (var readOnly = Registry.CurrentUser.OpenSubKey(subkey, writable: false)!)
+                StartupRegistration.Apply(readOnly, false, path);
             key.SetValue("SeleVox", "other.exe --do-not-touch");
             Assert.Throws<StartupRegistrationException>(() => StartupRegistration.Apply(key, true, path));
             StartupRegistration.Apply(key, false, path);
@@ -47,5 +52,14 @@ public sealed class StartupRegistrationTests
         using var second = new SingleInstance(scope, showExisting: !SingleInstance.IsBackground([argument]));
         Assert.False(second.IsFirst);
         Assert.False(shown.Wait(TimeSpan.FromMilliseconds(150)));
+    }
+    [Fact] public void ManualSecondInstanceSignalsShow()
+    {
+        var scope = "SeleVox-test-" + Guid.NewGuid();
+        using var shown = new ManualResetEventSlim();
+        using var first = new SingleInstance(scope); first.Listen(() => shown.Set());
+        using var second = new SingleInstance(scope, showExisting: !SingleInstance.IsBackground([]));
+        Assert.False(second.IsFirst);
+        Assert.True(shown.Wait(TimeSpan.FromSeconds(3)));
     }
 }
