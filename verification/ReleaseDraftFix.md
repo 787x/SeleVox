@@ -29,11 +29,15 @@ Windows x64 / .NET SDK 10.0.401 / PowerShell 7。
 - Test-CI：458 total / 457 passed / 0 failed / 1 skipped（VB-CABLE Capture opt-in）；不安装驱动、不调用在线 Provider 或播放设备。
 - 重新 self-contained publish、Test-Packaging：541 文件解压后相对路径和 SHA-256 一致；App/CLI/Core 版本、解压后的 Test-Publish / 实际 CLI --help、最终 ZIP checksum 通过。旧非法版本、坏 checksum、错误根目录、缺模型、篡改 DLL、错误版本拒绝检查全部通过。
 - RC 与 Stable 分别执行 21 个离线发布命令场景，共 42 个通过。成功路径在按 Tag 404 的条件下通过 ID 公开模拟版本；已有 Release/Draft、列表请求失败、创建后缺少/重复 Draft、列表/详情 commit 不符、上传失败、按 ID 不存在/GET 失败、ID/Tag/Draft/Prerelease 不符、资产数量/名称/长度/状态/digest 不符、PATCH 失败全部未执行成功公开。错误路径核对具体拒绝原因，不把任意异常当成通过。
+- 用原 main 发布脚本运行新的模拟，实际被 Draft-incompatible tag endpoint 回归断言拒绝；修复版通过同一成功场景。
 - 两个修改脚本的 PowerShell AST 语法检查通过；git diff --check 通过。
 
 ## GitHub PR CI
 
-待创建修复 PR 后补充真实运行结果。普通 CI workflow 和权限不变，仍只读执行打包和命令模拟；模拟公开不代表真实公开。
+- [修复 PR #20](https://github.com/787x/SeleVox/pull/20) 的 [运行 38666906970](https://github.com/787x/SeleVox/actions/runs/38666906970)，代码提交 `655b835`，全部步骤 success。实际日志确认 build 0 warning / 0 error，458 total / 457 passed / 0 failed / 1 skipped，541 文件解压/哈希/版本/CLI 通过，旧失败输入拒绝及 21 个 RC 发布模拟通过；ZIP/checksum 与发布目录 Artifact 上传成功。
+- 首轮 [运行 38666648048](https://github.com/787x/SeleVox/actions/runs/38666648048) 的应用测试、发布与 ZIP 检查及模拟断言均完成，但最后模拟 PATCH 失败的 LASTEXITCODE=1 泄漏到 Actions wrapper，导致整个步骤失败、产物上传 skipped。随后仅在全部断言通过后重置测试退出码，并在本地复现 Actions wrapper 的退出检查成功；最终远端运行成功。没有放松生产失败检查。
+- 普通 CI workflow 和权限不变，仍只读执行打包和命令模拟；模拟公开不代表真实公开。CI 完成后再次只读查询原 Draft，仍 draft=true/prerelease=true，ID、Tag、目标 commit、两个资产大小/digest 均与开始时一致。
+- 此后的记录提交只更新文档，最终 PR Checks 以页面为准。
 
 ## 真实发布边界与恢复
 
