@@ -176,6 +176,9 @@ begin
     if DirExists(Parent) and ((GetFileAttributes(Parent) and $400) <> 0) then Exit;
     Parent := ExtractFileDir(Parent);
   end;
+  { An upgrade stays in place so that there is only one owned uninstall log. }
+  if RegQueryStringValue(HKCU, UninstallKey, 'InstallLocation', Previous) and
+    (CompareText(DirectoryIdentity(RemoveBackslashUnlessRoot(Previous)), ProgramIdentity) <> 0) then Exit;
   if DirExists(Directory) then begin
     if not RegQueryStringValue(HKCU, UninstallKey, 'InstallLocation', Previous) or
       (CompareText(DirectoryIdentity(RemoveBackslashUnlessRoot(Previous)), ProgramIdentity) <> 0) then begin
@@ -196,7 +199,7 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
-  if not SafeDirectory then Result := 'Choose an empty program directory outside user data (no junctions), or the existing SeleVox installation.'
+  if not SafeDirectory then Result := 'Choose an empty program directory outside user data (no junctions). For upgrades, use the existing SeleVox installation directory.'
   else if Length(AppCommand) > 260 then Result := 'Installation path exceeds the Windows startup command limit.'
   else if not ProcessesStopped then Result := 'Exit SeleVox from its tray menu and close CLI/MCP tasks before continuing. No process will be terminated. Process ownership must be verifiable.'
   else if not FilesUnlocked(ExpandConstant('{app}'), False) then Result := 'Installation files are in use or inaccessible. Close applications and retry.';
