@@ -43,7 +43,7 @@ Windows x64 / .NET SDK 10.0.401 / PowerShell 7。
 
 真实 GET ID/列表已只读确认；新脚本的创建后 ID 发现、上传后的 GET/PATCH 及 Latest 行为尚未在新 Tag 上实际写入验证。本次不会直接公开现有 RC1。
 
-现有 RC1 的安全恢复见 [发布说明](../docs/Releases.md#首次-rc1-的安全恢复)：原运行 assets 下载/校验/解压、远端同 ID/Tag/commit/Prerelease 及两项资产尺寸/摘要复验后，由维护者另行明确授权才公开同 ID；不删除 Draft、不改 Tag、不重传。不要重跑原 Tag 以期待执行新代码。
+现有 RC1 的安全恢复见 [发布说明](../docs/Releases.md#案例一rc1不能按-tag-查询未公开-draft)：原运行 assets 下载/校验/解压、远端同 ID/Tag/commit/Prerelease 及两项资产尺寸/摘要复验后，由维护者另行明确授权才公开同 ID；不删除 Draft、不改 Tag、不重传。不要重跑原 Tag 以期待执行新代码。
 
 修复合并后，由用户在包含修复的已审核 main commit 创建新的 `v0.1.0-rc.2`，真实验证创建、ID 查询、两项资产 digest、PATCH 同 ID 公开、Prerelease 与非 Latest、下载校验。Windows 11 桌面/音频/OCR/MCP/虚拟 Capture 和在线服务仍按人工流程验收。
 

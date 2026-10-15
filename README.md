@@ -201,11 +201,18 @@ MCP 客户端配置示例（根据客户端要求填入自己的绝对路径）�
 
 ## 🛠️ 从源码构建
 
-项目使用 **C#、.NET 10、WPF、Win32 / UI Automation、WinRT、NAudio / WASAPI**，主要面向 Windows 11 x64。开发需要安装 .NET 10 SDK，发布脚本需要 PowerShell 7.2+。
+项目使用 **C#、.NET 10、WPF、Win32 / UI Automation、WinRT、NAudio / WASAPI**，主要面向 Windows 11 x64。开发需要安装 .NET 10 SDK，发布脚本需要 PowerShell 7.2+。文档验证另需 Node.js 24 LTS，仅用于开发和 CI，不进入便携发布包。
 
-在仓库根目录执行：
+在仓库根目录执行（安装工具后，链接检查本身完全离线）：
 
 ```powershell
+# 首次或 lockfile 更新后安装锁定的文档工具（此步需要网络）
+npm ci --ignore-scripts --no-audit --no-fund
+# 检查所有 Git 跟踪的 Markdown；新增文档请先 git add
+pwsh ./scripts/Test-DocsLinks.ps1
+# 在临时 Git 仓库运行链接检查器的回归测试
+npm run test:docs
+
 dotnet restore SeleVox.slnx
 dotnet build SeleVox.slnx -c Release --no-restore
 
@@ -217,7 +224,9 @@ pwsh ./scripts/Publish-Windows.ps1
 pwsh ./scripts/Test-Publish.ps1 -PublishDirectory ./artifacts/win-x64
 ```
 
-构建完成后，便携目录位于 `artifacts/win-x64/`。GitHub Actions 的 [Windows CI](https://github.com/787x/SeleVox/actions/workflows/ci.yml) 负责离线构建、测试和发布完整性检查；真实桌面交互、音频硬件、虚拟麦克风和收费云服务的验证仍需合适的 Windows 环境。
+链接检查也可运行 `npm run check:docs`，会汇总源文件位置、原始链接及缺失文件或章节。路径相对于源文档目录解析；目录导航及其章节使用 GitHub 展示的 README。外部 URL、非文件协议、代码块和行内代码中的示例不检查；不会自动修改文档。
+
+构建完成后，便携目录位于 `artifacts/win-x64/`。GitHub Actions 的 [Windows CI](https://github.com/787x/SeleVox/actions/workflows/ci.yml) 和 Release 构建阶段在 .NET 构建、打包前运行相同的文档链接检查；失败会阻止后续构建及发布。真实桌面交互、音频硬件、虚拟麦克风和收费云服务的验证仍需合适的 Windows 环境。
 
 ## 📚 文档与反馈
 

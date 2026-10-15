@@ -1,0 +1,17 @@
+{
+  "name": "selevox-docs-checks",
+  "private": true,
+  "scripts": {
+    "check:docs": "node scripts/docs-links/check.mjs",
+    "test:docs": "node --test scripts/docs-links/check.test.mjs"
+  },
+  "engines": { "node": ">=24 <25" },
+  "devDependencies": {
+    "remark": "15.0.1",
+    "remark-gfm": "4.0.1",
+    "remark-validate-links": "13.1.0",
+    "unified-engine": "11.2.2",
+    "unist-util-visit": "5.1.0",
+    "vfile": "6.0.3"
+  }
+}
