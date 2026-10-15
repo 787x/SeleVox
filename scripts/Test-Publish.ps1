@@ -48,7 +48,7 @@ foreach ($app in @('SeleVox.App', 'SeleVox.Cli')) {
 # User state, audio, test output, secrets and driver packages never belong in a release.
 foreach ($item in Get-ChildItem -LiteralPath $root -Recurse -Force) {
     if ($item.Name -match '^(settings|agent|samples|workbench|audio-workbench|secrets)\.json|^\.env($|\.)|^appsettings\.(Local|Development)\.json$|(^|[._-])(secrets?|credentials?|api[-_]?key)([._-]|$)|^(clones?|clone-library|clone-samples|driver-audit|TestResults)$|vbcable|vbaudio' -or
-        $item.Extension -in @('.wav', '.mp3', '.pcm', '.trx', '.binlog', '.tmp', '.sys', '.inf', '.cat', '.zip')) {
+        $item.Extension -in @('.wav', '.mp3', '.pcm', '.trx', '.binlog', '.tmp', '.dmp', '.mdmp', '.sys', '.inf', '.cat', '.zip')) {
         throw 'Publish contains a forbidden user-data, test-output, or driver file (name withheld).'
     }
 }
