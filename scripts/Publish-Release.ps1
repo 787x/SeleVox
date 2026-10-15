@@ -46,17 +46,17 @@ if ($created.assets.Count -ne 0) { throw 'Created draft already has assets; refu
 $release = (Invoke-Gh -Arguments @('api', "repos/$Repository/releases/$releaseId")) -join "`n" | ConvertFrom-Json
 Assert-DraftIdentity $release $releaseId
 if ($release.assets.Count -ne 0) { throw 'Draft already has assets; refusing to upload or replace them.' }
-foreach ($name in @($version.ZipName, 'SHA256SUMS.txt')) {
+foreach ($name in @($version.ZipName, $version.SetupName, 'SHA256SUMS.txt')) {
     $file = Get-Item -LiteralPath (Join-Path $AssetDirectory $name)
-    $mime = if ($name.EndsWith('.zip')) { 'application/zip' } else { 'text/plain' }
+    $mime = if ($name.EndsWith('.zip')) { 'application/zip' } elseif ($name.EndsWith('.exe')) { 'application/vnd.microsoft.portable-executable' } else { 'text/plain' }
     $upload = "https://uploads.github.com/repos/$Repository/releases/$releaseId/assets?name=$([Uri]::EscapeDataString($name))"
     # Binary input, exact length, same ID; no tag lookup, overwrite or retry.
     Invoke-Gh -Arguments @('api', $upload, '--method', 'POST', '--header', "Content-Type:$mime", '--header', "Content-Length:$($file.Length)", '--input', $file.FullName) | Out-Null
 }
 $release = (Invoke-Gh -Arguments @('api', "repos/$Repository/releases/$releaseId")) -join "`n" | ConvertFrom-Json
 Assert-DraftIdentity $release $releaseId
-if ($release.assets.Count -ne 2) { throw 'Draft assets count mismatch; refusing to publish.' }
-foreach ($name in @($version.ZipName, 'SHA256SUMS.txt')) {
+if ($release.assets.Count -ne 3) { throw 'Draft assets count mismatch; refusing to publish.' }
+foreach ($name in @($version.ZipName, $version.SetupName, 'SHA256SUMS.txt')) {
     $asset = @($release.assets | Where-Object { $_.name -ceq $name })
     $file = Get-Item -LiteralPath (Join-Path $AssetDirectory $name)
     $digest = 'sha256:' + (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()

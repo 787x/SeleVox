@@ -18,7 +18,7 @@ jobs:
   windows:
     name: Windows x64 Release / offline tests / publish
     runs-on: windows-2025
-    timeout-minutes: 25
+    timeout-minutes: 40
     defaults:
       run:
         shell: pwsh
@@ -59,14 +59,22 @@ jobs:
           retention-days: 7
       - name: Publish self-contained and verify integrity
         run: ./scripts/Publish-Windows.ps1 -VersionTag v0.0.0-rc.1
-      - name: Portable ZIP extraction, versions, hashes and rejection checks (no release)
+      - name: Setup and ZIP versions, hashes and rejection checks (no release)
         run: |
           ./scripts/Test-Packaging.ps1 -VersionTag v0.0.0-rc.1
           ./scripts/Test-ReleasePublishing.ps1
-      - name: Upload validated portable ZIP and checksum
+      - name: Build independent upgrade versions and isolated failure fixtures
+        env:
+          SELEVOX_INSTALLER_DISPOSABLE: '1'
+        run: ./scripts/Build-UpgradeFixtures.ps1
+      - name: Standard-user install, installed CLI and uninstall smoke
+        env:
+          SELEVOX_INSTALLER_DISPOSABLE: '1'
+        run: ./scripts/Test-InstallerStandardUser.ps1 -VersionTag v0.0.0-rc.1 -SetupDirectory artifacts/release -PublishDirectory artifacts/win-x64 -UpgradeFixtureDirectory artifacts/upgrade-fixtures
+      - name: Upload validated Setup, portable ZIP and checksum
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: SeleVox-portable-check-${{ github.run_id }}-${{ github.run_attempt }}
+          name: SeleVox-package-check-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/release/
           if-no-files-found: error
           retention-days: 7

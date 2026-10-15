@@ -72,19 +72,21 @@ function gh {
     $uploadPrefix = "https://uploads.github.com/repos/$repository/releases/$global:SeleVoxReleaseTest_id/assets?name="
     if ($endpoint.StartsWith($uploadPrefix, [StringComparison]::Ordinal)) {
         $name = [Uri]::UnescapeDataString($endpoint.Substring($uploadPrefix.Length))
-        if (-not $global:SeleVoxReleaseTest_emptyVerified -or $name -cnotin @($version.ZipName, 'SHA256SUMS.txt') -or $global:SeleVoxReleaseTest_uploads.Contains($name) -or $args -notcontains 'POST' -or $args -notcontains '--input') { throw 'Unsafe/repeated upload arguments/order' }
+        if (-not $global:SeleVoxReleaseTest_emptyVerified -or $name -cnotin @($version.ZipName, $version.SetupName, 'SHA256SUMS.txt') -or $global:SeleVoxReleaseTest_uploads.Contains($name) -or $args -notcontains 'POST' -or $args -notcontains '--input') { throw 'Unsafe/repeated upload arguments/order' }
+        $order = @($version.ZipName, $version.SetupName, 'SHA256SUMS.txt')
+        if ($name -cne $order[$global:SeleVoxReleaseTest_uploads.Count]) { throw 'Incorrect upload order' }
         $file = Get-Item -LiteralPath $args[([array]::IndexOf($args, '--input') + 1)]
         $expectedFile = Get-Item -LiteralPath (Join-Path $AssetDirectory $name)
-        $mime = if ($name.EndsWith('.zip')) { 'application/zip' } else { 'text/plain' }
+        $mime = if ($name.EndsWith('.zip')) { 'application/zip' } elseif ($name.EndsWith('.exe')) { 'application/vnd.microsoft.portable-executable' } else { 'text/plain' }
         if ($file.FullName -ne $expectedFile.FullName -or $args -notcontains "Content-Length:$($file.Length)" -or $args -notcontains "Content-Type:$mime") { throw 'Incorrect upload binary path/length/type' }
-        if ($global:SeleVoxReleaseTest_scenario -eq 'upload-error' -or ($global:SeleVoxReleaseTest_scenario -eq 'second-upload-error' -and $global:SeleVoxReleaseTest_uploads.Count -eq 1)) { $global:LASTEXITCODE = 1; return }
+        if ($global:SeleVoxReleaseTest_scenario -eq 'upload-error' -or ($global:SeleVoxReleaseTest_scenario -eq 'third-upload-error' -and $global:SeleVoxReleaseTest_uploads.Count -eq 2) -or ($global:SeleVoxReleaseTest_scenario -eq 'second-upload-error' -and $global:SeleVoxReleaseTest_uploads.Count -eq 1)) { $global:LASTEXITCODE = 1; return }
         $global:SeleVoxReleaseTest_uploads.Add($name)
         '{"state":"uploaded"}'
         return
     }
     if ($endpoint -ne "repos/$repository/releases/$global:SeleVoxReleaseTest_id") { throw 'Unexpected API command/ID' }
     if ($args -contains 'PATCH') {
-        if ($global:SeleVoxReleaseTest_uploads.Count -ne 2 -or -not $global:SeleVoxReleaseTest_verified -or $args -notcontains 'draft=false' -or $args -notcontains "prerelease=$($version.Prerelease.ToString().ToLowerInvariant())") { throw 'Unsafe publish arguments/order' }
+        if ($global:SeleVoxReleaseTest_uploads.Count -ne 3 -or -not $global:SeleVoxReleaseTest_verified -or $args -notcontains 'draft=false' -or $args -notcontains "prerelease=$($version.Prerelease.ToString().ToLowerInvariant())") { throw 'Unsafe publish arguments/order' }
         $expectedLatest = if ($version.Prerelease) { 'make_latest=false' } else { 'make_latest=true' }
         if ($args -notcontains $expectedLatest -or $args -notcontains '-f') { throw 'Incorrect latest flag' }
         if ($global:SeleVoxReleaseTest_scenario -eq 'patch-error') { $global:LASTEXITCODE = 1; return }
@@ -94,13 +96,13 @@ function gh {
         $release | ConvertTo-Json -Depth 5 -Compress
         return
     }
-    if ($global:SeleVoxReleaseTest_scenario -in @('missing-id-draft', 'get-error') -or ($global:SeleVoxReleaseTest_scenario -eq 'postupload-get-error' -and $global:SeleVoxReleaseTest_uploads.Count -eq 2)) { $global:LASTEXITCODE = 1; return }
+    if ($global:SeleVoxReleaseTest_scenario -in @('missing-id-draft', 'get-error') -or ($global:SeleVoxReleaseTest_scenario -eq 'postupload-get-error' -and $global:SeleVoxReleaseTest_uploads.Count -eq 3)) { $global:LASTEXITCODE = 1; return }
     $release = New-MockRelease $true
     if ($global:SeleVoxReleaseTest_uploads.Count -eq 0) {
         if ($global:SeleVoxReleaseTest_scenario -eq 'preupload-existing-assets') { $release.assets = @(@{ name = 'unexpected.zip' }) }
         $global:SeleVoxReleaseTest_emptyVerified = $true
     } else {
-        if ($global:SeleVoxReleaseTest_uploads.Count -ne 2) { throw 'Unexpected query after incomplete upload' }
+        if ($global:SeleVoxReleaseTest_uploads.Count -ne 3) { throw 'Unexpected query after incomplete upload' }
         switch ($global:SeleVoxReleaseTest_scenario) {
             'wrong-id' { $release.id++ }
             'changed-commit' { $release.target_commitish = 'b' * 40 }
@@ -135,6 +137,7 @@ $cases = [ordered]@{
     'create-existing-assets' = 'already has assets'
     'preupload-existing-assets' = 'already has assets'
     'upload-error' = 'GitHub CLI failed: api'
+    'third-upload-error' = 'GitHub CLI failed: api'
     'second-upload-error' = 'GitHub CLI failed: api'
     'missing-id-draft' = 'GitHub CLI failed: api'
     'get-error' = 'GitHub CLI failed: api'
@@ -173,6 +176,7 @@ foreach ($scenario in $cases.Keys) {
         if (-not $failure -or $failure.Exception.Message -notmatch $cases[$scenario] -or $global:SeleVoxReleaseTest_published) { throw "Failure scenario published or rejected for unexpected reason: $scenario ($failure)" }
         if ($scenario -in @('existing-draft', 'existing-public', 'list-error', 'create-error') -and $global:SeleVoxReleaseTest_draftCreated) { throw 'Preflight/create failure mutated release' }
         if ($scenario -notin @('existing-draft', 'existing-public', 'list-error', 'create-error') -and -not $global:SeleVoxReleaseTest_draftCreated) { throw 'Expected retained draft after failure' }
+        if ($scenario -eq 'third-upload-error' -and $global:SeleVoxReleaseTest_uploads.Count -ne 2) { throw 'Both binary uploads should remain intact after checksum upload failure' }
         if ($scenario -eq 'second-upload-error' -and $global:SeleVoxReleaseTest_uploads.Count -ne 1) { throw 'First upload should remain intact after second upload failure' }
     }
     if ($global:SeleVoxReleaseTest_listCalls -ne 1) { throw 'Publisher must only list for preflight, never to discover created ID' }

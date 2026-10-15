@@ -13,6 +13,8 @@ pwsh ./scripts/Publish-Windows.ps1
 
 所有 TTS 请求均由当前用户的桌面实例执行，CLI 和 MCP 共享参数解析、配置、任务和合成实现。桌面端未运行时自动以 `--agent-background` 启动；已有实例直接复用。旧版本桌面端没有此 IPC，需先退出并启动新版本；连接失败返回明确错误，不自动结束旧进程。
 
+Setup 默认 CLI 为 `%LOCALAPPDATA%\Programs\SeleVox\SeleVox.Cli.exe`；MCP `command` 需填写实际绝对路径，例如 `C:\Users\YourName\AppData\Local\Programs\SeleVox\SeleVox.Cli.exe`。安装器不会改写客户端配置。迁移时先退出旧 Portable，见 [安装与迁移说明](Installation.md)。
+
 ## CLI 入门
 
 ```powershell

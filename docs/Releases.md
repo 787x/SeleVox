@@ -1,4 +1,4 @@
-# Windows Portable 发布指南与历史记录
+# Windows Setup / Portable 发布指南与历史记录
 
 > 文档更新日期：**2026-10-15（UTC）**。本页前半部分描述**未来版本**的操作流程，后半部分是 **v0.1.0 首次发布期间的历史事故与恢复案例**，不可将历史示例当作待执行命令。状态快照均以相应记录日期为准。
 
@@ -44,18 +44,19 @@ git push origin $tag           # 真正触发 Windows Release
 
 在 .NET Restore / 构建前，`build` 使用 Node.js 24 LTS 和 `npm ci` 安装锁定的开发依赖，执行链接检查器回归测试及 `scripts/Test-DocsLinks.ps1`，离线检查所有 Git 跟踪的 Markdown 相对链接与章节。断链会使 `build` 失败，`publish` 因 `needs: build` 不会运行；Node.js 工具不进入 Windows 发布 ZIP。本地命令见 [源码构建说明](../README.md#️-从源码构建)。
 
-`build` Job 从远端版本 Tag 解析准确的提交，并要求该提交属于 `main` 可达历史；执行 .NET 10 Restore / Release 构建、离线测试和 TRX 计数、Windows x64 self-contained 发布与资源完整性检查。生成 ZIP 后**实际解压**，比对路径及文件 SHA-256、App/CLI/Core 版本并运行 CLI `--help`，再生成 ZIP 对应的 `SHA256SUMS.txt`。
+`build` Job 从远端版本 Tag 解析准确的提交，并要求该提交属于 `main` 可达历史；执行 .NET 10 Restore / Release 构建、离线测试和 TRX 计数、Windows x64 self-contained 发布与资源完整性检查。生成 ZIP 后**实际解压**，比对路径及文件 SHA-256、App/CLI/Core 版本并运行 CLI `--help`，再使用固定 Inno Setup 6.7.3 从同一发布目录生成 Setup，生成两个产物共同的 `SHA256SUMS.txt`。
 
-`publish` 仅在 `build` 成功后运行，是唯一具有 `contents: write` 的 Job。它在创建前拒绝同 Tag 已有 Draft 或 Release；通过 REST `POST /repos/{owner}/{repo}/releases` 创建 Draft，**直接从创建响应获得 Release ID**，再通过同一 ID 验证身份、上传 ZIP 与 checksum 原始二进制文件、核对远端名称/数量/大小/`uploaded` 状态和 SHA-256，最后对同一 ID 执行 PATCH 公开。**不依赖刚创建的 Draft 立即出现在列表中**，也不通过按 Tag 的接口查询尚未公开的 Draft。
+`publish` 仅在 `build` 成功后运行，是唯一具有 `contents: write` 的 Job。它在创建前拒绝同 Tag 已有 Draft 或 Release；通过 REST `POST /repos/{owner}/{repo}/releases` 创建 Draft，**直接从创建响应获得 Release ID**，再通过同一 ID 验证身份、依次上传 ZIP、Setup 与 checksum 原始二进制文件、核对远端名称/数量/大小/`uploaded` 状态和 SHA-256，最后对同一 ID 执行 PATCH 公开。**不依赖刚创建的 Draft 立即出现在列表中**，也不通过按 Tag 的接口查询尚未公开的 Draft。
 
 RC 应为 `draft=false, prerelease=true` 且非 Latest Stable；Stable 应为 `draft=false, prerelease=false`，正常成为 Latest。普通 PR/main CI 不创建 Release，也不获得发布写权限；同 Tag 不会自动取消正在进行的发布。
 
 ### 下载、校验与实机验收
 
-成功发布后应有且仅有两个 Release 资产：
+后续版本成功发布后应有且仅有三个 Release 资产（v0.1.0 历史资产不变）：
 
 - `SeleVox-vMAJOR.MINOR.PATCH[-rc.N]-win-x64-portable.zip`（实际文件名使用完整 Tag）
-- `SHA256SUMS.txt`
+- `SeleVox-vMAJOR.MINOR.PATCH[-rc.N]-win-x64-setup.exe`
+- `SHA256SUMS.txt`（ZIP 与 Setup 各一行 SHA-256）
 
 在**新建的空目录**中下载本次版本（`$tag` 为实际已经发布的 Tag）：
 
@@ -135,6 +136,12 @@ Portable 需完整解压，可免装 .NET Runtime，但并非所有数据都存�
 **复核日期：2026-10-15（UTC）。** 本次通过 GitHub REST 按 ID 查询，历史 RC1 Draft `413328848` 与 RC2 Draft `413345174` **均返回 HTTP 404**，公开 Release 列表中也不再列出这两份 Draft；`v0.1.0-rc.1` 和 `v0.1.0-rc.2` 的 Git Tag 以及失败的 Actions 运行记录仍存在。无法仅凭这些结果确定 Draft 是谁在什么时间清理的，故不作推断。
 
 因此，以上针对**当时存在的 Draft** 所写的恢复方案现在**不是可直接执行的命令**；不能向已经不存在的 Release ID 上传文件或 PATCH 公开，更不能为了恢复事故历史而移动旧 Tag。历史状态应当结合原运行日志和 [发布修复验证记录](../verification/ReleaseCreateResponseFix.md) 阅读。
+
+## 安装器工具与验收
+
+`Install-InnoSetup.ps1` 从 [Inno Setup 官方固定 Release](https://github.com/jrsoftware/issrc/releases/tag/is-6_7_3) 获取 6.7.3，执行前核对仓库固定 SHA-256，不执行下载脚本。安装定义为 `installer/SeleVox.iss`；CI 和 Release 均经 `Package-Windows.ps1` 调用 `Build-Installer.ps1`，发布目录为唯一程序源。AppId 跨版本不变，RC 文本版本与 Stable 文本版本均由 `Release-Version.ps1` 注入。
+
+普通 PR CI 只构建测试版，不创建 Tag 或 Release。一次性 Actions VM 通过 `Test-InstallerStandardUser.ps1` 创建仅属于 Users 的测试账户，以该账户执行 `Test-Installed.ps1`：静默当前用户安装、逐文件哈希、已安装 CLI `--help`、文件占用升级拒绝、重复安装、合成旧 Portable 自启迁移、卸载自启归属与用户数据哨兵保留。该脚本要求显式 disposable 环境且拒绝已有配置/安装/启动项；不可在开发机伪造环境运行。测试子进程断言没有管理员权限；Actions Windows Server runner 仍只能证明内核兼容的自动安装路径，不能代表 Windows 11 GUI 验收。Windows 11 非管理员安装、GUI、实际版本升级、Portable 迁移、登录自启与带音频任务卸载须单独验收，见 [安装说明](Installation.md) 和 [PR29 记录](../verification/PR29.md)。
 
 ## 本地打包验证（不创建 Release）
 

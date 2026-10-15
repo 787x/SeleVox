@@ -32,7 +32,17 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        instance = new SingleInstance(showExisting: !e.Args.Contains("--agent-background"));
+        if (System.IO.File.Exists(System.IO.Path.Combine(AppContext.BaseDirectory, ".selevox-upgrade-pending")))
+        {
+            if (!SingleInstance.IsBackground(e.Args)) MessageBox.Show("SeleVox 安装未完成，请先重新运行上次目标版本的 Setup 修复安装；请保留安装目录中的恢复文件。");
+            Shutdown(); return;
+        }
+        if (SingleInstance.MaintenanceInProgress())
+        {
+            if (!SingleInstance.IsBackground(e.Args)) MessageBox.Show("安装或卸载正在进行，请完成后再启动 SeleVox。");
+            Shutdown(); return;
+        }
+        instance = new SingleInstance(showExisting: !SingleInstance.IsBackground(e.Args));
         if (!instance.IsFirst) { Shutdown(); return; }
         var loaded = store.Load(); settings = loaded.Settings;
         var speech = new SpeechAudio();
@@ -97,8 +107,8 @@ public partial class App : System.Windows.Application
         notices.AddRange(hotkeys.Conflicts);
         if (settingsWindow.VoiceWarning is not null) notices.Add(settingsWindow.VoiceWarning);
         try { StartupRegistration.Apply(settings.StartWithWindows); }
-        catch (Exception ex) { notices.Add($"开机启动设置不可用（{ex.GetType().Name}）。"); }
-        if (!e.Args.Contains("--background") && !e.Args.Contains("--agent-background")) ShowSettings();
+        catch (Exception ex) { notices.Add(ex is StartupRegistrationException ? ex.Message : $"开机启动设置不可用（{ex.GetType().Name}）。"); }
+        if (!SingleInstance.IsBackground(e.Args)) ShowSettings();
         if (notices.Count > 0) { var notice = string.Join(Environment.NewLine, notices); settingsWindow.SetNotice(notice); Notify(notice); }
     }
     private static string StateName(ReadingState state) => state switch
@@ -160,7 +170,7 @@ public partial class App : System.Windows.Application
         catch (Exception ex)
         {
             try { StartupRegistration.Apply(settings.StartWithWindows); } catch { /* Keep the original failure; never log provider text. */ }
-            return $"设置保存失败（{ex.GetType().Name}），请检查用户目录及开机启动权限。";
+            return ex is StartupRegistrationException ? ex.Message : $"设置保存失败（{ex.GetType().Name}），请检查用户目录及开机启动权限。";
         }
     }
     private string? ApplyAutomatic()
