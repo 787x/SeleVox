@@ -142,7 +142,7 @@ SeleVox 可以将同一段朗读发送到多个 Windows **播放端点**。提�
 .\SeleVox.Cli.exe speak --provider Windows --text '你好，SeleVox。' --wait
 
 # 合成 WAV，不播放
-.\SeleVox.Cli.exe synthesize --provider Windows --file .\script.txt --output .\speech.wav --wait
+.\SeleVox.Cli.exe synthesize --provider Windows --text '这是一段语音合成测试。' --output .\speech.wav --wait
 
 # 保存一个 MiMo 语音预设（需要先在主界面配置好服务和 Key）
 .\SeleVox.Cli.exe presets save narrator --provider MiMo --mode Preset --voice 冰糖 --style '自然、清晰'
