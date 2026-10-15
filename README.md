@@ -235,6 +235,7 @@ pwsh ./scripts/Test-Publish.ps1 -PublishDirectory ./artifacts/win-x64
 - [Windows Portable 发布与版本流程](docs/Releases.md)
 - [Release Notes](https://github.com/787x/SeleVox/releases)
 - [各阶段验证记录](verification/)
+- [历史 README 技术与开发记录归档](docs/README_ARCHIVE.md)
 - [提交 Bug 或功能建议](https://github.com/787x/SeleVox/issues)
 
 ---

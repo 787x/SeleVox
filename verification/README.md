@@ -30,6 +30,10 @@
 | [PR20](https://github.com/787x/SeleVox/pull/20) | 首次 RC Draft 查询 / 发布修复 | [ReleaseDraftFix.md](ReleaseDraftFix.md) |
 | [PR21](https://github.com/787x/SeleVox/pull/21) | RC2 Draft 创建响应 ID 与资产上传修复 | [ReleaseCreateResponseFix.md](ReleaseCreateResponseFix.md) |
 | [PR22](https://github.com/787x/SeleVox/pull/22) | 历史 README 归档链接修复 | 本目录无独立验证文件；核查记录见 [PR22 说明](https://github.com/787x/SeleVox/pull/22)，归档见 [README_ARCHIVE.md](../docs/README_ARCHIVE.md) |
+| [PR23](https://github.com/787x/SeleVox/pull/23) | 建立验证记录索引 | 本目录无独立验证文件；见 [PR23 说明](https://github.com/787x/SeleVox/pull/23)（本索引为其成果） |
+| [PR24](https://github.com/787x/SeleVox/pull/24) | 更新发布指南及 RC 事故历史 | 本目录无独立验证文件；见 [PR24 说明](https://github.com/787x/SeleVox/pull/24) 与 [发布指南](../docs/Releases.md) |
+| [PR25](https://github.com/787x/SeleVox/pull/25) | Windows 便携发布包加入 GPL 许可证 | 本目录无独立验证文件；见 [PR25 说明](https://github.com/787x/SeleVox/pull/25) 与 [发布脚本](../scripts/Publish-Windows.ps1) |
+| [PR26](https://github.com/787x/SeleVox/pull/26) | 修复 CLI WAV 合成示例 | 本目录无独立验证文件；见 [PR26 说明](https://github.com/787x/SeleVox/pull/26) 与 [CLI/MCP 指南](../docs/CLI-MCP.md) |
 | [PR27](https://github.com/787x/SeleVox/pull/27) | CI 离线 Markdown 相对链接及章节检查 | [DocsLinks.md](DocsLinks.md) |
 
 ## 测试辅助材料

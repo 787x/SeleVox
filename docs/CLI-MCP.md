@@ -1,4 +1,4 @@
-# CLI / MCP 使用说明（PR14）
+# SeleVox CLI / MCP 使用指南
 
 发布目录中的 `SeleVox.Cli.exe` 提供 CLI 和 MCP stdio 两种入口。保留整个发布目录，桌面端 `SeleVox.App.exe` 必须与 CLI 位于同一目录；使用已发布的 self-contained 便携包无需安装 .NET、Python、Node.js 或开发环境。
 
@@ -107,7 +107,7 @@ GUI 暂停/继续、Stop 与 Agent 使用同一个播放器；GUI 新朗读替�
 
 输出使用 `devices list` 的实际 ID，不修改系统默认设备。多个 ID 使用已有 WASAPI 多设备输出。任何显式/有效预设选中的设备失效都会失败，释放已经打开的输出，不静默跳过或回退。未指定设备时继续按配置层级继承；空数组使用系统默认端点。现有音量及前导静音只用于播放，WAV 保存不包含起音补偿。
 
-PR17：若 Agent 默认值、预设和本次请求都未包含 `devices`，使用主设置的虚拟麦克风开关及已验证路由，同时保留物理输出；此情况下虚拟端点不可用会明确跳过，其他可用输出继续。仅虚拟目标失效时失败，不回退扬声器。关闭后缺省朗读排除已配置的虚拟端点。任何层级明确给出 `devices`（含 `[]` / `null`）都属于严格覆盖，不追加虚拟端点，也不受此开关排除；显式选择仍须提供完整 Render ID。CLI/MCP 没有安装、卸载或修改驱动的接口。`synthesize` 始终不播放。
+若 Agent 默认值、预设和本次请求都未包含 `devices`，使用主设置的虚拟麦克风开关及已验证路由，同时保留物理输出；此情况下虚拟端点不可用会明确跳过，其他可用输出继续。仅虚拟目标失效时失败，不回退扬声器。关闭后缺省朗读排除已配置的虚拟端点。任何层级明确给出 `devices`（含 `[]` / `null`）都属于严格覆盖，不追加虚拟端点，也不受此开关排除；显式选择仍须提供完整 Render ID。CLI/MCP 没有安装、卸载或修改驱动的接口。`synthesize` 始终不播放。
 
 ```powershell
 & $cli speak --text '双设备朗读。' --devices '["实际设备ID-1","实际设备ID-2"]' --wait
@@ -126,9 +126,9 @@ PR17：若 Agent 默认值、预设和本次请求都未包含 `devices`，使�
 
 VoiceDesign 复用已有描述与导演指令，不发送预置 `voice`；VoiceClone 只接受本地库 ID，在请求时加载、验证并编码参考音频，预设/响应不包含音频。样本须符合现有 WAV/MP3、5–30 秒和大小限制。样本导入、录制、编辑与删除继续在工作台完成，MCP 不暴露任意文件读取或样本删除。
 
-MiMo 创作参数沿用既有模型差异：整体风格前缀用于 Preset，设计与克隆模式保留既有规则；句内脚本原样交给现有分段器，不自动调用 LLM 改写。自然语言及导演控制保持原有规则，唱歌使用已有独占标签规则。使用 `--auto-segment false` 禁止自动分段；超限明确失败。Unicode 文本元素边界、UTF-8 字节预算及长标签限制沿用 PR12。
+MiMo 创作参数沿用既有模型差异：整体风格前缀用于 Preset，设计与克隆模式保留既有规则；句内脚本原样交给现有分段器，不自动调用 LLM 改写。自然语言及导演控制保持原有规则，唱歌使用已有独占标签规则。使用 `--auto-segment false` 禁止自动分段；超限明确失败。Unicode 文本元素边界、UTF-8 字节预算及长标签限制保持现有行为。
 
-所有 Agent 合成都使用非流式完整 WAV；没有重写 SSE、请求协议或播放引擎。模型能力参考 [MiMo 官方说明](https://mimo.xiaomi.com/mimo-v2-5-tts/index-zh)、[MiMo API文档](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)，实际行为及验证以 [PR14 记录](../verification/PR14.md) 为准。
+所有 Agent 合成都使用非流式完整 WAV；没有重写 SSE、请求协议或播放引擎。模型能力参考 [MiMo 官方说明](https://mimo.xiaomi.com/mimo-v2-5-tts/index-zh)、[MiMo API文档](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)，历史实现及验证证据见文末「历史实现与验证记录」。
 
 ## MCP stdio
 
@@ -185,3 +185,11 @@ CLI `synthesize --output` 允许用户显式指定的完整/相对路径。默�
 IPC 使用版本化、长度前缀 JSON，仅支持固定命令，最大消息 1 MiB，最多 4 个连接；请求读取超时 5 秒，任务/调用上限 20 分钟，完整音频最多 256 MiB。客户端与服务端使用 `CurrentUserOnly` 检查用户和 Windows 权限级别，服务端另核验本机客户端；不会接受远程机器的任务。相关 OS 身份行为见 [Microsoft PipeOptions 文档](https://learn.microsoft.com/en-us/dotnet/api/system.io.pipes.pipeoptions?view=net-10.0)。
 
 本地 MCP Server 是以当前 Windows 用户身份运行的程序。预设、工具暴露和导出目录均是应用级约束，不能构成对同用户恶意进程的完整安全隔离；同用户有权限直接修改自己的配置文件或编写其他 IPC 客户端。本工具不提供系统命令执行、系统设备修改、任意文件读取/删除或 Key 访问能力。
+
+## 历史实现与验证记录
+
+以下为功能演进与验证证据，正文使用说明以当前实现为准：
+
+- [PR12 验证记录](../verification/PR12.md)：MiMo 高级创作、Unicode 文本分段及请求安全边界。
+- [PR14 验证记录](../verification/PR14.md)：CLI、MCP 与 Agent 预设的实现及验收。
+- [PR17 验证记录](../verification/PR17.md)：CLI/MCP 缺省设备路由与 VB-CABLE 虚拟麦克风集成。
