@@ -30,6 +30,38 @@ internal static class StartupRegistration
         using var key = Registry.CurrentUser.CreateSubKey(RunKey, true);
         Apply(key, enabled, Environment.ProcessPath);
     }
+    internal static void ApplyAndSave(bool enabled, Action save)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey(RunKey, true);
+        ApplyAndSave(key, enabled, Environment.ProcessPath, save);
+    }
+    internal static void ApplyAndSave(RegistryKey key, bool enabled, string? executable, Action save)
+    {
+        var previous = key.GetValue("SeleVox", null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+        var kind = previous is null ? RegistryValueKind.String : key.GetValueKind("SeleVox");
+        Apply(key, enabled, executable);
+        var changed = enabled ? !string.Equals(previous as string, Command(executable), StringComparison.Ordinal) :
+            previous is string old && IsSeleVoxCommand(old);
+        try { save(); }
+        catch
+        {
+            if (!changed) throw;
+            try
+            {
+                // Restore the exact prior path and value kind, including a migrated Portable command.
+                var current = key.GetValue("SeleVox", null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+                if (!Equals(current, previous))
+                {
+                    if (current is not null && (current is not string text || !IsSeleVoxCommand(text)))
+                        throw new InvalidOperationException();
+                    if (previous is null) key.DeleteValue("SeleVox", false);
+                    else key.SetValue("SeleVox", previous, kind);
+                }
+            }
+            catch { throw new StartupRegistrationException("设置保存失败，且启动项恢复失败；配置未更新，请检查 Windows 启动设置后重试。"); }
+            throw;
+        }
+    }
     internal static void Apply(RegistryKey key, bool enabled, string? executable)
     {
         var existing = key.GetValue("SeleVox", null, RegistryValueOptions.DoNotExpandEnvironmentNames);

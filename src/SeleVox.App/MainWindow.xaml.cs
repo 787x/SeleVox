@@ -76,9 +76,15 @@ public partial class MainWindow : Window
     public void SetNotice(string message) => Notice.Text = message;
     public void SetStatus(Status status) { StatusText.Text = status.Message; if (status.State != ReadingState.Idle) virtualTest?.Cancel(); }
     public void SetAutomaticStatus(string message) => AutomaticStatus.Text = message;
+    public void SetStartupSettings(bool enabled)
+    {
+        savedSettings = savedSettings with { StartWithWindows = enabled };
+        AutoStart.IsChecked = enabled;
+    }
     public void SetAutomaticSettings(Settings settings)
     {
         savedSettings = settings; AutoSpeak.IsChecked = settings.AutoSpeak; AutoAsk.IsChecked = settings.AutoAsk;
+        SetStartupSettings(settings.StartWithWindows);
         if (virtualTimer is not null) UpdateVirtualStatus();
         diagnosticsWindow?.Refresh();
         AutomaticLlm.IsChecked = settings.AllowsAutomaticLlm;

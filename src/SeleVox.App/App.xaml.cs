@@ -16,7 +16,7 @@ public partial class App : System.Windows.Application
     private bool exiting;
     private readonly AutomaticSelection automaticSelection = new();
     private AutomaticMouseMonitor? mouse;
-    private Forms.ToolStripMenuItem? autoMenu, autoAskMenu;
+    private Forms.ToolStripMenuItem? autoMenu, autoAskMenu, startupMenu;
     private long mouseEpoch;
     private readonly TextCaptureOperation ocrOperation = new();
     private readonly LocalOcr ocr = new();
@@ -74,6 +74,13 @@ public partial class App : System.Windows.Application
         autoAskMenu = new Forms.ToolStripMenuItem("Auto Ask · 自动选中问 AI") { Checked = settings.AutoAsk };
         autoAskMenu.Click += (_, _) => { var error = SaveSettings(settings with { AutoAsk = !settings.AutoAsk }); if (error is not null) settingsWindow.SetNotice(error); };
         menu.Items.Add(autoAskMenu);
+        startupMenu = new Forms.ToolStripMenuItem("登录 Windows 时自动启动") { Checked = settings.StartWithWindows };
+        startupMenu.Click += (_, _) =>
+        {
+            var error = SaveSettings(settings with { StartWithWindows = !settings.StartWithWindows });
+            if (error is not null) { settingsWindow.SetNotice(error); Notify(error); }
+        };
+        menu.Items.Add(startupMenu);
         menu.Items.Add("暂停 / 继续", null, (_, _) => reading.TogglePause());
         menu.Items.Add("停止", null, (_, _) => StopReading());
         menu.Items.Add(new Forms.ToolStripSeparator());
@@ -146,6 +153,15 @@ public partial class App : System.Windows.Application
     {
         try
         {
+            // Startup-only saves must not cancel work or refresh unrelated unsaved controls.
+            if (OnlyStartupChanged(settings, updated))
+            {
+                StartupRegistration.ApplyAndSave(updated.StartWithWindows, () => store.Save(updated));
+                settings = updated;
+                settingsWindow?.SetStartupSettings(settings.StartWithWindows);
+                if (startupMenu is not null) startupMenu.Checked = settings.StartWithWindows;
+                return null;
+            }
             if (Settings.NormalizeServiceUrl(updated.LlmBaseUrl) != Settings.NormalizeServiceUrl(settings.LlmBaseUrl))
                 updated = updated with { AllowAutomaticLlm = false, LlmAuthorizedBaseUrl = null };
             var invalidateAutomaticQuestion = !updated.AutoAsk || !updated.AllowsAutomaticLlm ||
@@ -154,7 +170,7 @@ public partial class App : System.Windows.Application
                 updated.Provider != settings.Provider || Settings.NormalizeServiceUrl(updated.LlmBaseUrl) != Settings.NormalizeServiceUrl(settings.LlmBaseUrl);
             var virtualRouteChanged = settings.VirtualMicrophoneEnabled &&
                 (!updated.VirtualMicrophoneEnabled || updated.VirtualMicrophone != settings.VirtualMicrophone);
-            StartupRegistration.Apply(updated.StartWithWindows); store.Save(updated); settings = updated;
+            StartupRegistration.ApplyAndSave(updated.StartWithWindows, () => store.Save(updated)); settings = updated;
             // Do not leave a previously enabled route injecting old audio after saving Disable.
             if (virtualRouteChanged) StopReading();
             InvalidateSelectionAction(); if (invalidateAutomaticQuestion) questionSession?.CancelAutomatic();
@@ -163,16 +179,24 @@ public partial class App : System.Windows.Application
             ocrResult?.RefreshProviderNotice();
             if (autoMenu is not null) autoMenu.Checked = settings.AutoSpeak;
             if (autoAskMenu is not null) autoAskMenu.Checked = settings.AutoAsk;
+            if (startupMenu is not null) startupMenu.Checked = settings.StartWithWindows;
             var warning = ApplyAutomatic();
             if (warning is not null) settingsWindow?.SetAutomaticStatus(warning);
             return null;
         }
         catch (Exception ex)
         {
-            try { StartupRegistration.Apply(settings.StartWithWindows); } catch { /* Keep the original failure; never log provider text. */ }
+            settingsWindow?.SetStartupSettings(settings.StartWithWindows);
             return ex is StartupRegistrationException ? ex.Message : $"设置保存失败（{ex.GetType().Name}），请检查用户目录及开机启动权限。";
         }
     }
+    internal static bool OnlyStartupChanged(Settings saved, Settings updated) =>
+        (saved.Applications ?? []).SequenceEqual(updated.Applications ?? []) &&
+        (saved.OutputDeviceIds ?? []).SequenceEqual(updated.OutputDeviceIds ?? []) &&
+        (saved.MiMoOverallStyles ?? []).SequenceEqual(updated.MiMoOverallStyles ?? []) &&
+        (saved.CustomPrompts ?? []).SequenceEqual(updated.CustomPrompts ?? []) &&
+        saved == updated with { StartWithWindows = saved.StartWithWindows, Applications = saved.Applications,
+            OutputDeviceIds = saved.OutputDeviceIds, MiMoOverallStyles = saved.MiMoOverallStyles, CustomPrompts = saved.CustomPrompts };
     private string? ApplyAutomatic()
     {
         if (!(settings.AutoSpeak || settings.AutoAsk) || ocrOperation.IsActive)
