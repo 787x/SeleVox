@@ -176,6 +176,7 @@ public sealed class OcrDesktopTests(ITestOutputHelper output)
                         await Task.Delay(150);
                         foreach (var overlay in selection.Overlays)
                         {
+                            Assert.NotSame(System.Windows.Input.Cursors.Cross, overlay.Cursor);
                             var hwnd = new WindowInteropHelper(overlay).Handle; GetWindowRect(hwnd, out var physical);
                             var expected = snapshots[selection.Overlays.ToList().IndexOf(overlay)].Bounds;
                             Assert.Equal(expected, Drawing.Rectangle.FromLTRB(physical.Left, physical.Top, physical.Right, physical.Bottom));

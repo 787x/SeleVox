@@ -78,11 +78,12 @@ internal sealed class SelectionOverlay : Window
     private readonly Canvas canvas = new();
     private readonly System.Windows.Shapes.Rectangle rectangle = new() { Stroke = Brushes.DeepSkyBlue, StrokeThickness = 2, Fill = new SolidColorBrush(Color.FromArgb(30, 0, 150, 255)) };
     private Drawing.Point? start;
+    private readonly Cursor selectionCursor;
     internal SelectionOverlay(ScreenSnapshot snapshot, Action<ScreenSnapshot, Drawing.Point, Drawing.Point> selected, Action cancel, Action focusChanged, Action<Exception> fail)
     {
         this.snapshot = snapshot; this.selected = selected; this.cancel = cancel; this.fail = fail;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; ShowInTaskbar = false; Topmost = true;
-        Cursor = Cursors.Cross; Background = Brushes.Black;
+        Background = Brushes.Black;
         var grid = new Grid();
         grid.Children.Add(new Image { Source = ToSource(snapshot.Image), Stretch = Stretch.Fill });
         grid.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(65, 0, 0, 0)) });
@@ -102,7 +103,14 @@ internal sealed class SelectionOverlay : Window
         MouseLeftButtonUp += (_, e) => Input(() => { if (start is { } from) { var end = CursorPosition(); start = null; ReleaseMouseCapture(); selected(snapshot, from, end); e.Handled = true; } });
         Deactivated += (_, _) => focusChanged();
         Closing += (_, _) => { start = null; ReleaseMouseCapture(); };
-        Closed += (_, _) => cancel();
+        selectionCursor = OcrSelectionCursor.Load();
+        Closed += (_, _) =>
+        {
+            Cursor = null;
+            if (!ReferenceEquals(selectionCursor, Cursors.Cross)) selectionCursor.Dispose();
+            cancel();
+        };
+        Cursor = selectionCursor;
     }
     private void Input(Action action) { try { action(); } catch (Exception ex) { fail(ex); } }
     private void UpdateRectangle()
