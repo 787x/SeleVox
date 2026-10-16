@@ -1,15 +1,15 @@
 # Windows Setup / Portable 发布指南与历史记录
 
-> 文档更新日期：**2026-10-15（UTC）**。本页前半部分描述**未来版本**的操作流程，后半部分是 **v0.1.0 首次发布期间的历史事故与恢复案例**，不可将历史示例当作待执行命令。状态快照均以相应记录日期为准。
+> 文档更新日期：**2026-10-16（UTC+8）**。本页前半部分描述**未来版本**的操作流程，后半部分是 **v0.1.0 首次发布期间的历史事故与恢复案例**，不可将历史示例当作待执行命令。状态快照均以相应记录日期为准。
 
-## 当前基线（记录于 2026-10-15）
+## 当前基线（记录于 2026-10-16）
 
-- **最新正式版：** [v0.1.0](https://github.com/787x/SeleVox/releases/tag/v0.1.0)，已于 **2026-10-15 03:02:33 UTC** 发布，非 Draft、非 Prerelease，GitHub `/releases/latest` 指向该版本。
-- **已验证预发布：** [v0.1.0-rc.3](https://github.com/787x/SeleVox/releases/tag/v0.1.0-rc.3)，于 **2026-10-15 02:34:18 UTC** 发布为 Prerelease。RC3 的真实发布工作流与下载后 Windows 11 人工验收已完成。
-- **源码基线：** v0.1.0 与 RC3 均指向 `be9786c864d10d9c462d35ee7c46cb07731e42d2`；Stable 是从同一源码重新注入正式版本号并构建的独立产物。
-- **历史失败：** RC1 与 RC2 的失败过程、当时 Draft 状态及后续可选恢复方式见文末。**截至本次复查，两份历史 Draft 的 Release ID 均返回 404**；对应 Git Tag 和 Actions 失败记录仍存在。不要根据历史 Draft ID 执行写入操作。
+- **最新正式版：** [v0.1.2](https://github.com/787x/SeleVox/releases/tag/v0.1.2)，已于 **2026-10-16 23:04:56 UTC+8** 发布，非 Draft、非 Prerelease，GitHub `/releases/latest` 指向该版本；提供 Setup、Portable ZIP 和 `SHA256SUMS.txt`。
+- **已验证预发布：** [v0.1.2-rc.2](https://github.com/787x/SeleVox/releases/tag/v0.1.2-rc.2)，于 **2026-10-16 21:40:51 UTC+8** 发布为 Prerelease。RC2 发布流程通过，用户已确认 RC 版检查通过。
+- **源码基线：** v0.1.2 与 v0.1.2-rc.2 均指向 `a0806456646637a2ebf4af904876c24e9b4ad318`；Stable 是从同一源码重新注入正式版本号并构建的独立产物。[正式版发布工作流](https://github.com/787x/SeleVox/actions/runs/38920157050)已成功。
+- **历史失败：** v0.1.0 RC1 与 RC2 的失败过程、当时 Draft 状态及后续可选恢复方式见文末。**截至 2026-10-15 复查，两份历史 Draft 的 Release ID 均返回 404**；对应 Git Tag 和 Actions 失败记录仍存在。不要根据历史 Draft ID 执行写入操作。
 
-> 后续发布请使用尚未占用的新版本 Tag；**不要再创建、移动或复用 `v0.1.0-rc.1`、`v0.1.0-rc.2`、`v0.1.0-rc.3` 或 `v0.1.0`**。
+> 后续发布请使用尚未占用的新版本 Tag；**不要移动或复用任何已发布版本的 Tag**。
 
 ## 未来版本：创建 Tag 并发布
 

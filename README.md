@@ -28,11 +28,11 @@ SeleVox 是一款面向 **Windows 11 x64** 的桌面文字朗读、AI 语音问�
 
 ## 📦 下载与安装
 
-**最新正式版：** [v0.1.1](https://github.com/787x/SeleVox/releases/tag/v0.1.1)（提供 Setup 安装版和 Portable 便携版）
+**最新正式版：** [v0.1.2](https://github.com/787x/SeleVox/releases/tag/v0.1.2)（提供 Setup 安装版和 Portable 便携版）
 
 自 **v0.1.1** 起同时提供当前用户 Setup 安装版和 Portable ZIP（v0.1.0 仅有 Portable ZIP）。Setup 默认安装到 `%LOCALAPPDATA%\Programs\SeleVox`，提供开始菜单、可选桌面快捷方式和卸载入口。Setup 与 Portable 的数据、自启、迁移及卸载说明见 [Windows 安装指南](docs/Installation.md)。Setup 尚未配置 Authenticode 签名，SHA-256 不能代替发布者身份签名。
 
-**安装版：** 下载 Release 中的 `SeleVox-v0.1.1-win-x64-setup.exe`，运行安装向导并从开始菜单启动 SeleVox；开机自启可在主设置中启用。
+**安装版：** 下载 Release 中的 `SeleVox-v0.1.2-win-x64-setup.exe`，运行安装向导并从开始菜单启动 SeleVox；开机自启可在主设置中启用。
 
 Portable 使用步骤：
 
@@ -61,7 +61,7 @@ Portable 使用步骤：
 
 ### 框选 OCR
 
-按 **`Ctrl+Alt+O`**，拖动选择屏幕区域。SeleVox 在本机识别简体中文和英文，并打开可编辑结果窗口，供你**复制、朗读或问 AI**；按 `Esc` 可取消框选。
+按 **`Ctrl+Alt+O`**，拖动选择屏幕区域。框选使用深浅双轮廓的高对比度十字光标，便于在浅色和深色背景上定位。SeleVox 在本机识别简体中文和英文，并打开可编辑结果窗口，供你**复制、朗读或问 AI**；按 `Esc` 可取消框选。
 
 OCR 区域可选择并保存识别后的互斥动作：**仅显示结果**（默认，旧配置保持此行为）、**自动朗读**或**自动问 AI**。每次仍须主动框选；先显示结果窗口，再执行一次所选动作，始终不自动复制。自动动作使用本次识别原文和已保存配置，随后编辑只影响手动按钮。多显示器下可在任一显示器内框选，单次不跨越多块屏幕。
 
