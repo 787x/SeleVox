@@ -19,6 +19,8 @@ public partial class App : System.Windows.Application
     private Forms.ToolStripMenuItem? autoMenu, autoAskMenu, startupMenu;
     private long mouseEpoch;
     private readonly TextCaptureOperation ocrOperation = new();
+    private OcrFollowUp? ocrFollowUp;
+    private long ocrEpoch;
     private readonly LocalOcr ocr = new();
     private readonly SemaphoreSlim ocrGate = new(1, 1);
     private OcrResultWindow? ocrResult;
@@ -50,7 +52,7 @@ public partial class App : System.Windows.Application
         agentExecution = new(reading, speech, () => settings,
             action => Dispatcher.InvokeAsync(action).Task.Unwrap(),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SeleVox"),
-            () => { InvalidateSelectionAction(); questionSession?.Cancel(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); });
+            () => { InvalidateOcrFollowUp(); InvalidateSelectionAction(); questionSession?.Cancel(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); });
         agentPipe = new(agentExecution);
         reading.Changed += agentExecution.PlaybackChanged;
         var chat = new ChatCompletionClient();
@@ -139,7 +141,7 @@ public partial class App : System.Windows.Application
         {
             var window = new AudioWorkbenchWindow(() => settings, ShowSettings, (audio, token) =>
             {
-                InvalidateSelectionAction(); questionSession?.Cancel();
+                InvalidateOcrFollowUp(); InvalidateSelectionAction(); questionSession?.Cancel();
                 mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
                 return reading!.PlayAudioAsync(audio.Open, settings, token);
             }, () => reading?.TogglePause(), StopReading,
@@ -151,8 +153,17 @@ public partial class App : System.Windows.Application
     }
     private string? SaveSettings(Settings updated)
     {
+        var autoReadOnly = OnlyLlmAutoReadChanged(settings, updated);
         try
         {
+            if (autoReadOnly)
+            {
+                store.Save(updated);
+                settings = updated;
+                settingsWindow?.SetLlmAutoRead(settings.LlmAutoRead);
+                aiAnswer?.Refresh();
+                return null;
+            }
             // Startup-only saves must not cancel work or refresh unrelated unsaved controls.
             if (OnlyStartupChanged(settings, updated))
             {
@@ -163,19 +174,24 @@ public partial class App : System.Windows.Application
                 return null;
             }
             if (Settings.NormalizeServiceUrl(updated.LlmBaseUrl) != Settings.NormalizeServiceUrl(settings.LlmBaseUrl))
-                updated = updated with { AllowAutomaticLlm = false, LlmAuthorizedBaseUrl = null };
+                updated = updated with { AllowAutomaticLlm = false, LlmAuthorizedBaseUrl = null, AllowOcrLlm = false, OcrLlmAuthorizedBaseUrl = null };
             var invalidateAutomaticQuestion = !updated.AutoAsk || !updated.AllowsAutomaticLlm ||
                 !(updated.Applications ?? []).SequenceEqual(settings.Applications ?? []) ||
                 settings.AllowsAutomaticProvider && !updated.AllowsAutomaticProvider ||
                 updated.Provider != settings.Provider || Settings.NormalizeServiceUrl(updated.LlmBaseUrl) != Settings.NormalizeServiceUrl(settings.LlmBaseUrl);
+            var invalidateOcrQuestion = !updated.AllowsOcrLlm ||
+                settings.AllowsAutomaticProvider && !updated.AllowsAutomaticProvider || updated.Provider != settings.Provider;
             var virtualRouteChanged = settings.VirtualMicrophoneEnabled &&
                 (!updated.VirtualMicrophoneEnabled || updated.VirtualMicrophone != settings.VirtualMicrophone);
             StartupRegistration.ApplyAndSave(updated.StartWithWindows, () => store.Save(updated)); settings = updated;
             // Do not leave a previously enabled route injecting old audio after saving Disable.
             if (virtualRouteChanged) StopReading();
-            InvalidateSelectionAction(); if (invalidateAutomaticQuestion) questionSession?.CancelAutomatic();
+            InvalidateSelectionAction(); if (invalidateAutomaticQuestion) questionSession?.CancelMouseAutomatic();
             CancelAutomaticReading();
             settingsWindow?.SetAutomaticSettings(settings);
+            settingsWindow?.SetLlmAutoRead(settings.LlmAutoRead);
+            aiAnswer?.Refresh();
+            if (invalidateOcrQuestion) questionSession?.CancelOcr();
             ocrResult?.RefreshProviderNotice();
             if (autoMenu is not null) autoMenu.Checked = settings.AutoSpeak;
             if (autoAskMenu is not null) autoAskMenu.Checked = settings.AutoAsk;
@@ -186,10 +202,13 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
-            settingsWindow?.SetStartupSettings(settings.StartWithWindows);
+            if (!autoReadOnly) settingsWindow?.SetStartupSettings(settings.StartWithWindows);
+            settingsWindow?.SetLlmAutoRead(settings.LlmAutoRead);
             return ex is StartupRegistrationException ? ex.Message : $"设置保存失败（{ex.GetType().Name}），请检查用户目录及开机启动权限。";
         }
     }
+    internal static bool OnlyLlmAutoReadChanged(Settings saved, Settings updated) =>
+        saved.StartWithWindows == updated.StartWithWindows && OnlyStartupChanged(saved, updated with { LlmAutoRead = saved.LlmAutoRead });
     internal static bool OnlyStartupChanged(Settings saved, Settings updated) =>
         (saved.Applications ?? []).SequenceEqual(updated.Applications ?? []) &&
         (saved.OutputDeviceIds ?? []).SequenceEqual(updated.OutputDeviceIds ?? []) &&
@@ -250,7 +269,7 @@ public partial class App : System.Windows.Application
         audioWorkbench?.CancelGeneration();
         if (ocrOperation.IsActive) settingsWindow?.SetNotice("屏幕 OCR 已取消。");
         InvalidateSelectionAction(); questionSession?.Cancel();
-        ocrOperation.Cancel(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); reading?.Stop();
+        InvalidateOcrFollowUp(); ocrOperation.Cancel(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); reading?.Stop();
     }
     private void InvalidateSelectionAction()
     { ++selectionEpoch; selectionAction?.Cancel(); selectionAction = null; }
@@ -265,7 +284,7 @@ public partial class App : System.Windows.Application
             if (exiting || epoch != selectionEpoch || request.IsCancellationRequested) return;
             if (string.IsNullOrWhiteSpace(text.Text)) throw new UserFeedbackException("没有选中文字。");
             if (ask) AskAi(text.Text);
-            else { questionSession?.Cancel(); _ = reading!.ReadCapturedTextAsync(text, settings); }
+            else { InvalidateOcrFollowUp(); questionSession?.Cancel(); _ = reading!.ReadCapturedTextAsync(text, settings); }
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -278,31 +297,33 @@ public partial class App : System.Windows.Application
         }
         finally { if (ReferenceEquals(selectionAction, request)) selectionAction = null; }
     }
-    private void AskAi(string text) => AskAi(text, false);
-    private void AskAi(string text, bool automatic)
+    private void AskAi(string text) => AskAi(text, QuestionSource.Manual);
+    private void AskAi(string text, bool automatic) => AskAi(text, automatic ? QuestionSource.MouseAutomatic : QuestionSource.Manual);
+    private void AskAi(string text, QuestionSource source)
     {
         if (exiting) return;
         var started = false;
         try
         {
             if (ocrOperation.IsActive) throw new UserFeedbackException("请先完成或取消当前 OCR 框选，再问 AI。");
-            if (automatic && (!settings.AutoAsk || !settings.AllowsAutomaticLlm)) { settingsWindow?.SetAutomaticStatus("Auto Ask 未获当前 LLM 地址上传授权，未发送。"); return; }
+            if (!QuestionSession.AllowsSource(settings, source)) throw new UserFeedbackException("当前自动问答入口未获 LLM 地址上传授权，未发送。请到对应自动上传设置授权。");
             if (!settings.HasValidLlmConfiguration) throw new UserFeedbackException("请在设置的 AI 问答区域保存合法地址和模型。");
             var key = AzureCredentials.Llm(settings.LlmBaseUrl).Read();
             ChatCompletionClient.Validate(text, settings, key);
+            if (source != QuestionSource.OcrAutomatic) InvalidateOcrFollowUp();
             InvalidateSelectionAction(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
-            var task = questionSession!.AskAsync(text, settings, key!, automatic);
+            var task = questionSession!.AskAsync(text, settings, key!, source);
             started = true;
             if (aiAnswer is null)
             {
                 var window = new AiAnswerWindow(questionSession, () => settings, () => reading!.Status.Message,
                     () => { InvalidateSelectionAction(); questionSession.Cancel(); },
-                    () => { InvalidateSelectionAction(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); _ = questionSession.ReadAnswerAsync(settings); },
-                    text => AskAi(text));
+                    () => { InvalidateOcrFollowUp(); InvalidateSelectionAction(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(); _ = questionSession.ReadAnswerAsync(settings); },
+                    text => AskAi(text), enabled => SaveSettings(settings with { LlmAutoRead = enabled }));
                 aiAnswer = window;
                 window.Closed += (_, _) => { InvalidateSelectionAction(); if (ReferenceEquals(aiAnswer, window)) aiAnswer = null; };
             }
-            aiAnswer.ShowAnswer(!automatic);
+            aiAnswer.ShowAnswer(source == QuestionSource.Manual);
             _ = task;
         }
         catch (Exception ex)
@@ -310,8 +331,15 @@ public partial class App : System.Windows.Application
             if (started) questionSession?.Cancel();
             var message = ex is UserFeedbackException ? ex.Message : "无法开始 AI 问答，请检查凭据和配置。";
             aiAnswer?.SetNotice(message);
+            if (source == QuestionSource.OcrAutomatic) ocrResult?.RefreshProviderNotice(message + " ");
             settingsWindow?.SetNotice(message); Notify(message);
         }
+    }
+    private void InvalidateOcrFollowUp()
+    {
+        ++ocrEpoch;
+        var old = ocrFollowUp; ocrFollowUp = null;
+        old?.Dispose();
     }
     private async void StartOcr()
     {
@@ -319,7 +347,12 @@ public partial class App : System.Windows.Application
         InvalidateSelectionAction();
         // Suppress overlay gestures and invalidate pending UIA capture without stopping current speech.
         mouse?.Dispose(); mouse = null; ++mouseEpoch; automaticSelection.Invalidate();
-        var language = settings.OcrLanguage;
+        InvalidateOcrFollowUp(); questionSession?.CancelOcr();
+        var snapshot = settings;
+        var followUp = new OcrFollowUp(snapshot); ocrFollowUp = followUp;
+        var epoch = ocrEpoch; var followUpToken = followUp.Cancellation;
+        CapturedText? completed = null;
+        var language = snapshot.OcrLanguage;
         settingsWindow?.SetNotice("正在准备屏幕框选；旧 OCR 计算尚未结束时需稍候。Ctrl+Alt+X 可取消。");
         try
         {
@@ -349,20 +382,21 @@ public partial class App : System.Windows.Application
                 finally { ocrGate.Release(); }
             }, text =>
             {
-                if (exiting) return;
+                if (exiting || epoch != ocrEpoch || string.IsNullOrWhiteSpace(text.Text)) return;
                 if (ocrResult is null)
                 {
                     var window = new OcrResultWindow(text, () => settings, result =>
                     {
                         mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
-                        InvalidateSelectionAction(); questionSession?.Cancel();
+                        InvalidateOcrFollowUp(); InvalidateSelectionAction(); questionSession?.Cancel();
                         return reading!.ReadCapturedTextAsync(result, settings);
                     }, text => AskAi(text));
                     ocrResult = window;
-                    window.Closed += (_, _) => { if (ReferenceEquals(ocrResult, window)) ocrResult = null; };
+                    window.Closed += (_, _) => { if (ReferenceEquals(ocrResult, window)) { ocrResult = null; InvalidateOcrFollowUp(); } };
                 }
                 PresentOcrResult(ocrResult, aiAnswer, text);
-                settingsWindow?.SetNotice("OCR 已完成，复制或朗读请在结果窗口主动操作。");
+                completed = text;
+                settingsWindow?.SetNotice("OCR 已完成，可编辑、复制、朗读或问 AI。");
             }, message => { if (!exiting) { settingsWindow?.SetNotice(message); Notify(message); } },
                 () => { if (!exiting) settingsWindow?.SetNotice("屏幕 OCR 已取消。"); });
         }
@@ -376,15 +410,50 @@ public partial class App : System.Windows.Application
         }
         finally
         {
-            if (!exiting && !ocrOperation.IsActive)
+            if (!exiting && !ocrOperation.IsActive && (epoch == ocrEpoch || ocrFollowUp is null))
             {
                 // A superseded request leaves the prior result hidden for its successor.
                 // Restore before reinstalling Auto Speak so focus changes cannot form gestures.
                 aiAnswer?.RestoreAfterCapture();
                 ocrResult?.RestoreAfterCapture();
-                ++mouseEpoch; var error = ApplyAutomatic();
-                if (error is not null) Notify(error);
+                if (completed is not null && epoch == ocrEpoch) await RunOcrFollowUpAsync(completed, followUp, epoch, followUpToken);
+                if (!exiting && !ocrOperation.IsActive && (epoch == ocrEpoch || ocrFollowUp is null))
+                {
+                    ++mouseEpoch; var error = ApplyAutomatic();
+                    if (error is not null) Notify(error);
+                }
             }
+        }
+    }
+    private async Task RunOcrFollowUpAsync(CapturedText result, OcrFollowUp followUp, long epoch, CancellationToken token)
+    {
+        var snapshot = followUp.Snapshot;
+        if (snapshot.OcrAction == OcrCompletionAction.ShowResult) return;
+        bool Current() => !exiting && epoch == ocrEpoch && !token.IsCancellationRequested && OnlyLlmAutoReadChanged(snapshot, settings);
+        try
+        {
+            if (!Current())
+            {
+                if (!exiting && epoch == ocrEpoch && !token.IsCancellationRequested)
+                    ocrResult?.RefreshProviderNotice("OCR 启动后设置已改变，未执行自动动作；请手动操作或重新框选。 ");
+                return;
+            }
+            await followUp.RunAsync(result, Current,
+                (text, options, cancellation) => Task.Run(() => SpeechAudio.PrecheckAutomatic(text, options), cancellation),
+                (text, options, cancellation) =>
+                {
+                    InvalidateSelectionAction(); questionSession?.Cancel();
+                    _ = reading!.ReadAsync(_ => Task.FromResult(text), options, isAutomatic: true, cancellation: cancellation);
+                }, text => AskAi(text, QuestionSource.OcrAutomatic));
+            if (!Current() && !exiting && epoch == ocrEpoch && !token.IsCancellationRequested)
+                ocrResult?.RefreshProviderNotice("OCR 启动后设置已改变，未执行自动动作；请手动操作或重新框选。 ");
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            if (!Current()) return;
+            var message = ex is UserFeedbackException ? ex.Message : "OCR 自动动作未能启动，请检查已保存配置、凭据和输出设备；可手动使用结果文字。";
+            ocrResult?.RefreshProviderNotice(message + " "); settingsWindow?.SetNotice(message); Notify(message);
         }
     }
     internal static void PresentOcrResult(OcrResultWindow result, AiAnswerWindow? answer, CapturedText text)
@@ -423,7 +492,7 @@ public partial class App : System.Windows.Application
     private void ExitApplication() { if (exiting) return; exiting = true; Shutdown(); }
     protected override void OnExit(ExitEventArgs e)
     {
-        exiting = true;
+        exiting = true; InvalidateOcrFollowUp();
         agentPipe?.Dispose(); agentExecution?.Dispose();
         audioWorkbench?.Close();
         exiting = true; InvalidateSelectionAction(); questionSession?.Dispose(); aiAnswer?.Close(); ocrOperation.Dispose(); ocrResult?.Close(); mouse?.Dispose(); automaticSelection.Dispose(); hotkeys?.Dispose(); reading?.Dispose();

@@ -18,6 +18,7 @@ internal sealed class AiAnswerWindow : Window
     private readonly TextBlock destination = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 8) };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 8) };
     private readonly TextBlock privacy = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 8) };
+    private readonly CheckBox autoRead = new() { Content = "自动朗读 AI 回答", Margin = new Thickness(0, 4, 0, 8), ToolTip = "立即保存，仅影响新启动的问答。当前播放请使用 Stop；手动朗读始终可用。" };
     private readonly Button readButton;
     private readonly DispatcherTimer timer;
     private bool hiddenForCapture;
@@ -26,7 +27,7 @@ internal sealed class AiAnswerWindow : Window
     private readonly QuestionSession session;
     private readonly Func<Settings> settings;
     private readonly Func<string> readingStatus;
-    internal AiAnswerWindow(QuestionSession session, Func<Settings> settings, Func<string> readingStatus, Action stop, Action read, Action<string>? ask = null)
+    internal AiAnswerWindow(QuestionSession session, Func<Settings> settings, Func<string> readingStatus, Action stop, Action read, Action<string>? ask = null, Func<bool, string?>? saveAutoRead = null)
     {
         this.session = session; this.settings = settings; this.readingStatus = readingStatus;
         Title = "SeleVox · AI 回答"; Width = 720; Height = 600; MinWidth = 460; MinHeight = 480;
@@ -42,6 +43,14 @@ internal sealed class AiAnswerWindow : Window
         canRegenerate = ask is not null;
         Grid.SetRow(answer, 1); grid.Children.Add(answer);
         var footer = new StackPanel(); footer.Children.Add(status); footer.Children.Add(privacy); Grid.SetRow(footer, 2); grid.Children.Add(footer);
+        footer.Children.Add(autoRead);
+        autoRead.IsEnabled = saveAutoRead is not null;
+        autoRead.Click += (_, _) =>
+        {
+            var error = saveAutoRead?.Invoke(autoRead.IsChecked == true);
+            autoRead.IsChecked = settings().LlmAutoRead;
+            SetNotice(error ?? "已保存，仅影响新启动的问答；当前播放请使用 Stop。");
+        };
         var actions = new WrapPanel(); footer.Children.Add(actions);
         AddButton(actions, "复制回答", () =>
         {
@@ -100,7 +109,8 @@ internal sealed class AiAnswerWindow : Window
         status.Text = snapshot.Message + " · 音频：" + readingStatus();
         readButton.IsEnabled = snapshot.AnswerComplete && snapshot.State is not (QuestionState.Generating or QuestionState.Speaking) && snapshot.Answer.Length > 0;
         var current = settings();
-        privacy.Text = "主动提问会将问题和 System Prompt 发送至所配置 LLM，可能收费。" +
+        autoRead.IsChecked = current.LlmAutoRead;
+        privacy.Text = "开关仅影响新启动的问答；当前播放请使用 Stop。主动提问会将问题和 System Prompt 发送至所配置 LLM，可能收费。" +
             (current.Provider == TtsProvider.Windows ? "回答朗读使用 Windows 本地 TTS。" : "回答朗读使用在线 TTS，将再次发送回答到当前 TTS 服务，可能另行收费。") +
             (current.LlmAutoRead ? current.LlmReadingStrategy == AnswerReadingStrategy.Incremental && current.LlmStreaming ? "逐句朗读已启用；自动问答须满足独立 TTS 授权。" : "完整回答将自动朗读；自动问答须满足独立 TTS 授权。" : "自动朗读已关闭。");
     }
