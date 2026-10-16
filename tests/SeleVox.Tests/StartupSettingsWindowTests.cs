@@ -49,4 +49,3 @@ public sealed class StartupSettingsWindowTests
         Assert.False(SeleVox.App.App.OnlyStartupChanged(saved, updated with { AllowAutomaticLlm = true }));
     }
 }
-
