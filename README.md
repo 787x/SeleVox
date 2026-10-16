@@ -28,9 +28,11 @@ SeleVox 是一款面向 **Windows 11 x64** 的桌面文字朗读、AI 语音问�
 
 ## 📦 下载与安装
 
-**最新正式版：** [SeleVox — GitHub Releases](https://github.com/787x/SeleVox/releases/latest)
+**最新正式版：** [v0.1.1](https://github.com/787x/SeleVox/releases/tag/v0.1.1)（提供 Setup 安装版和 Portable 便携版）
 
-v0.1.0 的历史发布仍为 Portable ZIP；PR29 为后续版本加入当前用户 Setup EXE，默认安装到 `%LOCALAPPDATA%\Programs\SeleVox`，提供开始菜单、可选桌面快捷方式和卸载入口。Setup 与 Portable 的数据、自启、迁移及卸载说明见 [Windows 安装指南](docs/Installation.md)。首期 Setup 未配置 Authenticode 签名，SHA-256 不能代替发布者身份签名。
+自 **v0.1.1** 起同时提供当前用户 Setup 安装版和 Portable ZIP（v0.1.0 仅有 Portable ZIP）。Setup 默认安装到 `%LOCALAPPDATA%\Programs\SeleVox`，提供开始菜单、可选桌面快捷方式和卸载入口。Setup 与 Portable 的数据、自启、迁移及卸载说明见 [Windows 安装指南](docs/Installation.md)。Setup 尚未配置 Authenticode 签名，SHA-256 不能代替发布者身份签名。
+
+**安装版：** 下载 Release 中的 `SeleVox-v0.1.1-win-x64-setup.exe`，运行安装向导并从开始菜单启动 SeleVox；开机自启可在主设置中启用。
 
 Portable 使用步骤：
 
