@@ -10,6 +10,62 @@ internal sealed record VoiceChoice(string Id, string Label);
 
 internal sealed class SpeechAudio : ISpeechSynthesis, IAudioPlaybackFactory, IStreamingSpeechSynthesis, IStreamingPlaybackFactory
 {
+    // Local checks only: reject an OCR automatic read before changing playback ownership.
+    internal static void PrecheckAutomatic(string text, Settings settings)
+    {
+        if (!settings.AllowsAutomaticProvider)
+            throw new UserFeedbackException("OCR 自动朗读未获当前在线 TTS 上传授权，未发送。请在设置中对应 TTS Provider 的自动上传选项授权。");
+        if (!settings.IsValid || string.IsNullOrWhiteSpace(text) || text.Length > HttpSpeech.MaxTextLength ||
+            text.Any(c => char.IsControl(c) && c is not ('\r' or '\n' or '\t')))
+            throw new UserFeedbackException("OCR 自动朗读的文字或已保存设置无效，请检查后手动重试。");
+        void Key(string? key)
+        {
+            if (string.IsNullOrWhiteSpace(key) || key.Length > 1280 || key.Any(char.IsControl))
+                throw new UserFeedbackException("当前 TTS 凭据缺失或无效，请到对应 Provider 保存 Key。");
+        }
+        switch (settings.Provider)
+        {
+            case TtsProvider.Windows:
+                var voices = GetVoices();
+                if (voices.Count == 0 || settings.VoiceId is not null && !voices.Any(v => v.Id == settings.VoiceId))
+                    throw new UserFeedbackException("已保存的 Windows 语音不可用，请在设置中重新选择语音。");
+                break;
+            case TtsProvider.Azure:
+                if (!Settings.IsRegionValid(settings.AzureRegion) || string.IsNullOrWhiteSpace(settings.AzureVoice))
+                    throw new UserFeedbackException("请先保存有效的 Azure Region 和 Voice。");
+                Key(new AzureCredentials().Read()); break;
+            case TtsProvider.Edge:
+                if (string.IsNullOrWhiteSpace(settings.EdgeVoice)) throw new UserFeedbackException("请先保存 Edge Voice。");
+                break;
+            case TtsProvider.MiMo:
+                MiMoSpeech.GetStyle(settings);
+                var parts = MiMoSpeech.SplitCreativeText(text, settings);
+                MiMoSpeech.CreateCreativeRequest(MiMoSpeech.CreativePrefix(settings) + parts[0], settings, MiMoSpeech.GetStyle(settings));
+                Key(AzureCredentials.MiMo().Read()); break;
+            case TtsProvider.OpenAiCompatible:
+                if (settings.OpenAiModel is "tts-1" or "tts-1-hd" && !string.IsNullOrWhiteSpace(settings.OpenAiInstructions))
+                    throw new UserFeedbackException("当前 TTS 模型不支持 Instructions，请清空后保存。");
+                Key(AzureCredentials.OpenAi(settings.OpenAiBaseUrl).Read()); break;
+        }
+        settings = VirtualMicrophones.Resolve(settings);
+        using var enumerator = new MMDeviceEnumerator();
+        var available = false;
+        foreach (var id in settings.OutputDeviceIds is { Length: > 0 } ids ? ids : [Settings.DefaultOutput])
+        {
+            try
+            {
+                using var device = id == Settings.DefaultOutput ? enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia) : enumerator.GetDevice(id);
+                available |= device.DataFlow == DataFlow.Render && device.State == DeviceState.Active && !settings.UnavailableOutputIds.Contains(device.ID);
+            }
+            catch { /* Preserve the existing physical-output fallback policy. */ }
+        }
+        if (!available && VirtualMicrophones.CanFallback(settings))
+        {
+            try { using var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia); available = device.State == DeviceState.Active; }
+            catch { }
+        }
+        if (!available) throw new UserFeedbackException("已保存输出设备不可用，请在设置中检查输出设备。");
+    }
     public bool UsesStreaming(Settings settings) => settings.UsesMiMoStreaming;
     public Task SynthesizeStreamingAsync(string text, Settings settings, StreamingPcmBuffer buffer, CancellationToken cancellation) =>
         new MiMoSpeech().SynthesizeStreamingAsync(text, settings, buffer, cancellation);

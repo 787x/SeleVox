@@ -21,7 +21,7 @@ internal sealed class OcrResultWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         var grid = new Grid { Margin = new Thickness(20) };
         grid.RowDefinitions.Add(new() { Height = GridLength.Auto }); grid.RowDefinitions.Add(new()); grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        var heading = new TextBlock { Text = "本地 OCR · 可编辑原文，复制与朗读均须主动点击", Margin = new Thickness(0, 0, 0, 12), TextWrapping = TextWrapping.Wrap };
+        var heading = new TextBlock { Text = "本地 OCR · 可编辑原文；手动按钮使用编辑后的文字", Margin = new Thickness(0, 0, 0, 12), TextWrapping = TextWrapping.Wrap };
         grid.Children.Add(heading);
         editor = new TextBox { Text = result.Text, AcceptsReturn = true, AcceptsTab = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, FontSize = 16, MaxLength = 32768 };
         Grid.SetRow(editor, 1); grid.Children.Add(editor);

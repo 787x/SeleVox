@@ -41,6 +41,7 @@ public partial class MainWindow : Window
         Rate.Value = settings.Rate; Volume.Value = settings.Volume; AutoStart.IsChecked = settings.StartWithWindows;
         StartupSilence.Value = settings.StartupSilenceMilliseconds;
         OcrLanguageChoice.SelectedIndex = (int)settings.OcrLanguage;
+        OcrActionChoice.SelectedIndex = (int)settings.OcrAction;
         Region.Text = settings.AzureRegion;
         if (settings.AzureVoice is { } cloudVoice)
         {
@@ -76,6 +77,26 @@ public partial class MainWindow : Window
     public void SetNotice(string message) => Notice.Text = message;
     public void SetStatus(Status status) { StatusText.Text = status.Message; if (status.State != ReadingState.Idle) virtualTest?.Cancel(); }
     public void SetAutomaticStatus(string message) => AutomaticStatus.Text = message;
+    public void SetLlmAutoRead(bool enabled)
+    {
+        savedSettings = savedSettings with { LlmAutoRead = enabled };
+        LlmAutoRead.IsChecked = enabled;
+    }
+    private void LlmAutoRead_Click(object sender, RoutedEventArgs e)
+    {
+        var previous = savedSettings.LlmAutoRead;
+        var enabled = LlmAutoRead.IsChecked == true;
+        var error = save(savedSettings with { LlmAutoRead = enabled });
+        SetLlmAutoRead(error is null ? enabled : previous);
+        SetNotice(error ?? "自动朗读设置已保存，仅影响新启动的问答；当前播放请使用 Stop。");
+    }
+    private void OcrLlmConsent_Click(object sender, RoutedEventArgs e)
+    {
+        if (OcrLlmConsent.IsChecked == true && Settings.NormalizeServiceUrl(LlmBaseUrl.Text) != Settings.NormalizeServiceUrl(savedSettings.LlmBaseUrl))
+        { OcrLlmConsent.IsChecked = savedSettings.AllowsOcrLlm; SetNotice("请先保存 LLM 地址，再单独授权 OCR 自动提交。"); return; }
+        SaveAutomatic(savedSettings with { AllowOcrLlm = OcrLlmConsent.IsChecked == true,
+            OcrLlmAuthorizedBaseUrl = OcrLlmConsent.IsChecked == true ? Settings.NormalizeServiceUrl(savedSettings.LlmBaseUrl) : null });
+    }
     public void SetStartupSettings(bool enabled)
     {
         savedSettings = savedSettings with { StartWithWindows = enabled };
@@ -87,6 +108,9 @@ public partial class MainWindow : Window
         SetStartupSettings(settings.StartWithWindows);
         if (virtualTimer is not null) UpdateVirtualStatus();
         diagnosticsWindow?.Refresh();
+        OcrLlmConsent.IsChecked = settings.AllowsOcrLlm;
+        OcrActionStatus.Text = $"OCR 自动问 AI 会发送识别原文和 Prompt，可能收费。当前 LLM：{Settings.NormalizeServiceUrl(settings.LlmBaseUrl)} · {(settings.AllowsOcrLlm ? "OCR 已授权" : "OCR 未授权")}。" +
+            (settings.AllowsAutomaticProvider ? "自动朗读使用已保存 TTS 与输出设备。" : "自动朗读未获当前在线 TTS 授权；请在下方对应 Provider 的自动上传设置中授权。");
         AutomaticLlm.IsChecked = settings.AllowsAutomaticLlm;
         AutomaticLlmStatus.Text = $"自动上传：{(settings.AllowsAutomaticLlm ? "已授权" : "未授权")} · {Settings.NormalizeServiceUrl(settings.LlmBaseUrl)}（可能产生费用）";
         AutomaticMiMo.IsChecked = settings.AllowAutomaticMiMo;
@@ -142,6 +166,9 @@ public partial class MainWindow : Window
             OutputDeviceIds = Outputs.SelectedItems.Cast<OutputChoice>().Select(d => d.Id).ToArray(),
             VirtualMicrophoneEnabled = VirtualMicEnabled.IsChecked == true, VirtualMicrophone = virtualRoute,
             StartWithWindows = AutoStart.IsChecked == true, OcrLanguage = (OcrLanguage)OcrLanguageChoice.SelectedIndex,
+            OcrAction = (OcrCompletionAction)OcrActionChoice.SelectedIndex,
+            AllowOcrLlm = savedSettings.AllowOcrLlm && llmAddress == Settings.NormalizeServiceUrl(savedSettings.LlmBaseUrl),
+            OcrLlmAuthorizedBaseUrl = llmAddress == Settings.NormalizeServiceUrl(savedSettings.LlmBaseUrl) ? savedSettings.OcrLlmAuthorizedBaseUrl : null,
             LlmBaseUrl = llmAddress, LlmModel = LlmModel.Text.Trim(), LlmSystemPrompt = LlmSystemPrompt.Text,
             LlmReadingStrategy = (AnswerReadingStrategy)LlmReadingStrategy.SelectedIndex,
             LlmThinkingProtocol = (ThinkingProtocol)ThinkingProtocolChoice.SelectedIndex,

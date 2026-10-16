@@ -3,6 +3,7 @@ using System.Threading.Channels;
 
 namespace SeleVox.Core;
 
+public enum QuestionSource { Manual, MouseAutomatic, OcrAutomatic }
 public enum QuestionState { Idle, Generating, Speaking, Completed, Cancelled, Error }
 public sealed record QuestionStatus(string Question, string Service, string Model, string Answer, QuestionState State, string Message, bool AnswerComplete = false, long RequestId = 0);
 
@@ -16,16 +17,21 @@ public sealed class QuestionSession(
     private CancellationTokenSource? current;
     private long generation;
     private long requestId;
-    private bool disposed, ownsSpeech, automatic, answerComplete;
+    private bool disposed, ownsSpeech, answerComplete;
+    private QuestionSource source;
+    public QuestionSource Source { get { lock (sync) return source; } }
     private readonly StringBuilder answer = new();
     private string question = "", service = "", model = "", message = "";
     private QuestionState state;
     public QuestionStatus Snapshot
     { get { lock (sync) return new(question, service, model, answer.ToString(), state, message, answerComplete, requestId); } }
 
-    public async Task AskAsync(string text, Settings settings, string key, bool isAutomatic = false)
+    public Task AskAsync(string text, Settings settings, string key, bool isAutomatic = false)
+        => AskAsync(text, settings, key, isAutomatic ? QuestionSource.MouseAutomatic : QuestionSource.Manual);
+
+    public async Task AskAsync(string text, Settings settings, string key, QuestionSource origin)
     {
-        if (isAutomatic && (!settings.AutoAsk || !settings.AllowsAutomaticLlm)) return;
+        if (!AllowsSource(settings, origin)) return;
         ChatCompletionClient.Validate(text, settings, key); // Invalid actions leave the current task/audio intact.
         CancellationTokenSource request; long id;
         lock (sync)
@@ -34,11 +40,11 @@ public sealed class QuestionSession(
             CancelCore(); stopSpeech(); ownsSpeech = false;
             request = current = new(); id = ++generation;
             ++requestId;
-            automatic = isAutomatic;
+            source = origin;
             question = text; service = Settings.NormalizeServiceUrl(settings.LlmBaseUrl)!; model = settings.LlmModel;
             answer.Clear(); answerComplete = false; state = QuestionState.Generating; message = "思考中 / 等待最终正文…";
         }
-        var canRead = settings.LlmAutoRead && (!isAutomatic || settings.AllowsAutomaticProvider);
+        var canRead = settings.LlmAutoRead && (origin == QuestionSource.Manual || settings.AllowsAutomaticProvider);
         var incremental = canRead && settings.LlmStreaming && settings.LlmReadingStrategy == AnswerReadingStrategy.Incremental && readSentence is not null;
         var queue = Channel.CreateBounded<string>(new BoundedChannelOptions(8) { SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
         using var voiceCancellation = CancellationTokenSource.CreateLinkedTokenSource(request.Token);
@@ -148,7 +154,7 @@ public sealed class QuestionSession(
             lock (sync)
             {
                 if (disposed || !answerComplete || state is QuestionState.Generating or QuestionState.Speaking || answer.Length == 0) return;
-                CancelCore(); automatic = false; ownsSpeech = true; id = generation; speech = read(answer.ToString(), settings);
+                CancelCore(); source = QuestionSource.Manual; ownsSpeech = true; id = generation; speech = read(answer.ToString(), settings);
             }
             await speech.ConfigureAwait(false);
         }
@@ -158,7 +164,16 @@ public sealed class QuestionSession(
             lock (sync) if (!disposed && id == generation) message = "回答朗读不完整，请检查 TTS 或设备后主动重读。";
         }
     }
-    public void CancelAutomatic() { lock (sync) { if (automatic) CancelCore(); } }
+    public void CancelAutomatic() { lock (sync) { if (source != QuestionSource.Manual) CancelCore(); } }
+    public void CancelMouseAutomatic() { lock (sync) { if (source == QuestionSource.MouseAutomatic) CancelCore(); } }
+    public static bool AllowsSource(Settings settings, QuestionSource origin) => origin switch
+    {
+        QuestionSource.Manual => true,
+        QuestionSource.MouseAutomatic => settings.AutoAsk && settings.AllowsAutomaticLlm,
+        QuestionSource.OcrAutomatic => settings.AllowsOcrLlm,
+        _ => false
+    };
+    public void CancelOcr() { lock (sync) { if (source == QuestionSource.OcrAutomatic) CancelCore(); } }
     public void Cancel()
     {
         lock (sync) { CancelCore(); }

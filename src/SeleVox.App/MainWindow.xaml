@@ -13,10 +13,16 @@
             <TextBlock Text="选择文字，按 Ctrl+Alt+R 朗读。" Margin="0,8,0,22" FontSize="15"/>
         </StackPanel>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"><StackPanel>
-            <TextBlock Text="屏幕框选 OCR · Ctrl+Alt+O（离线，不自动复制或朗读）" TextWrapping="Wrap" Margin="0,0,0,6"/>
+            <TextBlock Text="屏幕框选 OCR · Ctrl+Alt+O（本地识别，不自动复制）" TextWrapping="Wrap" Margin="0,0,0,6"/>
             <ComboBox x:Name="OcrLanguageChoice" Height="32" Margin="0,0,0,16">
                 <ComboBoxItem Content="简体中文 + 英文"/><ComboBoxItem Content="英文"/>
             </ComboBox>
+            <TextBlock Text="OCR 完成后的动作（保存后用于下一次框选）" Margin="0,0,0,6"/>
+            <ComboBox x:Name="OcrActionChoice" Height="32" Margin="0,0,0,8">
+                <ComboBoxItem Content="仅显示结果"/><ComboBoxItem Content="自动朗读"/><ComboBoxItem Content="自动问 AI"/>
+            </ComboBox>
+            <CheckBox x:Name="OcrLlmConsent" Content="允许 OCR 自动向当前 LLM 提交文字（独立授权）" Click="OcrLlmConsent_Click"/>
+            <TextBlock x:Name="OcrActionStatus" TextWrapping="Wrap" Margin="0,6,0,16"/>
             <TextBlock Text="TTS Provider" Margin="0,0,0,6"/>
             <ComboBox x:Name="Provider" Height="32" SelectionChanged="Provider_Changed">
                 <ComboBoxItem Content="Windows 本地 TTS（离线）"/><ComboBoxItem Content="Azure Speech TTS（发送选区到云端）"/>
@@ -172,7 +178,7 @@
                     <TextBlock Text="System Prompt（可完全编辑或清空；最多 8192 字符）" Margin="0,8,0,4"/>
                     <TextBox x:Name="LlmSystemPrompt" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="100" MaxLength="8192"/>
                     <CheckBox x:Name="LlmStreaming" Content="Streaming · 流式显示回答" Margin="0,8,0,0"/>
-                    <CheckBox x:Name="LlmAutoRead" Content="回答自动朗读（使用当前保存的 TTS）" Margin="0,8,0,0"/>
+                    <CheckBox x:Name="LlmAutoRead" Click="LlmAutoRead_Click" Content="回答自动朗读（使用当前保存的 TTS）" Margin="0,8,0,0"/>
                     <ComboBox x:Name="LlmReadingStrategy" Margin="0,8,0,0">
                         <ComboBoxItem Content="完整回答后朗读（默认）"/>
                         <ComboBoxItem Content="边生成边逐句朗读（需 Streaming）"/>
