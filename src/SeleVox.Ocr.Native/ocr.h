@@ -45,6 +45,7 @@ typedef struct ocr_image {
 
 OCR_API uint32_t __cdecl ocr_abi_version(void);
 OCR_API ocr_status __cdecl ocr_create(const ocr_options *options, ocr_handle *out);
+/* The caller must wait for return before reading out. On failure *out is NULL. */
 OCR_API ocr_status __cdecl ocr_recognize(ocr_handle handle, const ocr_image *image, char **out);
 /* Cross-thread. Idle cancellation is a no-op. */
 OCR_API ocr_status __cdecl ocr_cancel(ocr_handle handle);

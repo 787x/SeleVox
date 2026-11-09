@@ -17,7 +17,9 @@ $fixtures = @('mixed', 'code', 'small', 'blank') | ForEach-Object { "./artifacts
 & $exe --verify $model $mmproj @fixtures
 ```
 
-普通测试模式把 OCR UTF-8 文本写到 stdout，耗时和错误写到 stderr。测试程序使用 Windows Imaging Component 将第一帧解码为 RGB24。验证模式读取每张图片对应的 UTF-8 `.png.txt`，忽略 ASCII 空白后比较全部文本，可检测额外说明、重复及截断。第一个验证样本须包含文字，用于取消测试。可设置 `SELEVOX_OCR_GPU_DIAGNOSTICS=1` 输出 CUDA 放置与缓冲区摘要。
+普通测试模式把 OCR UTF-8 文本写到 stdout，耗时和错误写到 stderr。测试程序使用 Windows Imaging Component 将第一帧解码为 RGB24。验证模式读取每张图片对应的 UTF-8 `.png.txt`，忽略 ASCII 空白后比较全部文本，可检测额外说明、重复及截断。可设置 `SELEVOX_OCR_GPU_DIAGNOSTICS=1` 输出 CUDA 放置与缓冲区摘要。
+
+默认启用的 `BUILD_TESTING` 还会构建 `selevox_ocr_concurrency.exe`。用上述 `--verify` 参数运行该程序，第一个样本须包含文字。该程序编译同一份 ABI 实现，在输出提交前通过私有测试同步点暂停工作线程，检查重入、销毁、取消和重试。发布 DLL 不含测试同步点。
 
 ## 模型和预算
 
@@ -41,11 +43,13 @@ internal static extern void ocr_free_text(nint text);
 
 在后台调用 `ocr_create` 一次，再对每张截图调用 `ocr_recognize`。同步调用期间 pin 住自上而下的 RGB24 缓冲区。成功时用 `Marshal.PtrToStringUTF8` 复制结果，并在 `finally` 调用 `ocr_free_text`。失败时输出指针为零，可用 `ocr_error_message` 获取静态 UTF-8 说明。每个句柄同一时刻运行一个识别。调用方应串行使用并保证传入指针有效。
 
-可从其他线程调用 `ocr_cancel`。它仅影响当前已进入运行态的识别，空闲调用为无操作。PR 35 仍需在派发前检查托管取消令牌，并在发布结果前检查会话归属和取消状态。等待识别返回后调用 `ocr_destroy`，再清零托管句柄。运行中释放返回 `OCR_BUSY`，并保留正在使用的资源。卸载 DLL 前须等待所有 ABI 调用并销毁所有句柄。CUDA 工作在安全边界取消，驱动上下文由进程内 CUDA 运行时管理。
+可从其他线程调用 `ocr_cancel`。识别及输出准备期间接受取消，空闲调用为无操作。取消与最终提交竞争时，先完成的状态转换决定返回结果。取消获胜时输出指针为零，调用方须等识别返回后再读取。PR 35 仍需在派发前检查托管取消令牌，并在发布结果前检查会话归属和取消状态。等待识别返回后调用 `ocr_destroy`，再清零托管句柄。识别及输出准备期间再次识别或销毁会返回 `OCR_BUSY`。卸载 DLL 前须等待所有 ABI 调用并销毁所有句柄。CUDA 工作在安全边界取消，驱动上下文由进程内 CUDA 运行时管理。
 
 ## DLL 布局及许可证
 
-`artifacts/ocr-cuda/bin` 生成 `selevox_ocr.dll` 与测试程序。llama、mtmd、ggml、ggml-cuda 和 CUDA Runtime 静态链接进引擎。CUDA 13.4 实测动态依赖 `cublas64_13.dll`，部署时一并放置同版本 `cublasLt64_13.dll`。系统需要兼容的 NVIDIA 驱动与 x64 MSVC/UCRT 运行时。开发机可通过 Toolkit 的 `bin/x64` 提供 CUDA DLL。未来部署可从受控的绝对目录加载引擎，使用 `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS` 解析依赖，再由 P/Invoke resolver 返回模块。缺少 CUDA DLL 时 Windows 加载器会先报错，进入 ABI 后才能返回结构化 CUDA 状态。
+`artifacts/ocr-cuda/bin` 生成 `selevox_ocr.dll` 与测试程序。llama、mtmd、ggml 和 ggml-cuda 作为静态库链接。CMake 使用 `CUDA::cudart`，其在实测 Windows CUDA 13.4.59 工具链中指向 `lib/x64/cudart.lib`。该库含所用 CUDA Runtime 函数的对象定义，实测引擎及两级 cuBLAS DLL 的导入表无 `cudart64_13.dll`。此结果适用于该工具链产物，换用 Toolkit 或构建选项时应重新检查。
+
+后续发行应随引擎放置同版本的 `cublas64_13.dll`（直接依赖）及 `cublasLt64_13.dll`（传递依赖）。目标机还需 x64 MSVC Redistributable（`MSVCP140.dll`、`VCRUNTIME140.dll`、`VCRUNTIME140_1.dll`）、Windows 自带的 UCRT 和系统 DLL，以及由兼容 NVIDIA 驱动提供的 `nvcuda.dll`。开发机可通过 Toolkit 的 `bin/x64` 提供 cuBLAS DLL。未来部署可从受控的绝对目录加载引擎，使用 `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS` 解析依赖，再由 P/Invoke resolver 返回模块。缺少导入 DLL 时 Windows 加载器会先报错，进入 ABI 后才能返回结构化 CUDA 状态。
 
 llama.cpp 和 GGML 使用 [MIT 许可](https://github.com/ggml-org/llama.cpp/blob/873e5d8e39feb34a376e0efd01bf3f665dfffeb5/LICENSE)。未来打包时应保留上游许可证及 vendored 组件声明。CUDA Runtime 与 cuBLAS 的再分发受 [NVIDIA CUDA EULA 附件 A](https://docs.nvidia.com/cuda/eula/index.html) 约束，需按实际 Toolkit 版本核对再分发组件与声明。终端用户无需安装 Toolkit。
 

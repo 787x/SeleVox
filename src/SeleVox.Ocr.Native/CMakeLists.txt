@@ -27,12 +27,25 @@ FetchContent_Declare(llama_cpp
 FetchContent_MakeAvailable(llama_cpp)
 find_package(CUDAToolkit REQUIRED)
 
+function(configure_ocr_runtime target)
+    target_compile_definitions(${target} PRIVATE SELEVOX_OCR_BUILD NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(${target} PRIVATE mtmd ggml-cuda CUDA::cudart)
+endfunction()
+
 add_library(selevox_ocr SHARED ocr.cpp)
-target_compile_definitions(selevox_ocr PRIVATE SELEVOX_OCR_BUILD NOMINMAX WIN32_LEAN_AND_MEAN)
-target_link_libraries(selevox_ocr PRIVATE mtmd ggml-cuda CUDA::cudart)
+configure_ocr_runtime(selevox_ocr)
 
 add_executable(selevox_ocr_test runner.cpp)
 target_compile_definitions(selevox_ocr_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_link_libraries(selevox_ocr_test PRIVATE selevox_ocr windowscodecs ole32)
-enable_testing()
-add_test(NAME ocr_abi COMMAND selevox_ocr_test --self-test)
+include(CTest)
+if(BUILD_TESTING)
+    add_test(NAME ocr_abi COMMAND selevox_ocr_test --self-test)
+
+    # Compile the same ABI implementation with a private synchronization point.
+    # The shipping DLL has no test hook.
+    add_executable(selevox_ocr_concurrency runner.cpp ocr.cpp)
+    configure_ocr_runtime(selevox_ocr_concurrency)
+    target_compile_definitions(selevox_ocr_concurrency PRIVATE SELEVOX_OCR_CONCURRENCY_TEST)
+    target_link_libraries(selevox_ocr_concurrency PRIVATE windowscodecs ole32)
+endif()

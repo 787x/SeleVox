@@ -15,3 +15,13 @@
 `dotnet build SeleVox.slnx -c Release` 成功，0 警告、0 错误。`scripts/Test-CI.ps1` 通过 499 项、跳过 1 项实体 VB-CABLE 测试。
 
 本轮未验证真实显存耗尽、其他 GPU/驱动/精度、无 Toolkit 的终端部署及复杂或高密度截图。CUDA OOM 映射依赖上游可恢复的分配失败诊断。部分驱动错误、损坏的权重和上游断言仍可能触发原生进程终止。
+
+## PR34 并发修复复验
+
+- 使用同一 Windows/CUDA 工具链重新构建原生 Release，`ocr_abi` CTest 通过。重新检查正式 DLL，7 个 ABI 导出保持一致。
+- 在 RTX 5070 Laptop 上，用 BF16 和 Q4_K_M 分别运行正式 DLL 的 `--verify`，四个样本的内容检查、实例复用及卸载重载均通过。
+- 两种精度也分别运行了 `selevox_ocr_concurrency --verify`。该测试直接调用同一原生 ABI 实现，在 CUDA 同步后、输出提交前用条件变量暂停识别线程。重入和销毁返回 `OCR_BUSY`，取消后识别返回 `OCR_CANCELLED` 且输出为 NULL。同一句柄重试得到与基线相同的文本，随后销毁成功，旧句柄被拒绝。测试同步点只编入测试程序。
+- 核对 Ninja 链接输入与 `dumpbin /symbols`，此 CUDA 13.4.59 工具链的 `CUDA::cudart` 解析为含 Runtime 函数对象定义的 `cudart.lib`。用 `dumpbin /dependents` 核对正式 DLL 和两级 cuBLAS DLL，CUDA 动态依赖为直接的 `cublas64_13.dll` 及传递的 `cublasLt64_13.dll`，无 `cudart64_13.dll` 导入。MSVC/UCRT 运行时仍为动态依赖。
+- 再次运行 .NET Release 构建和 `scripts/Test-CI.ps1`。构建 0 警告、0 错误，离线测试 499 通过、1 项实体 VB-CABLE 跳过。
+
+本次并发回归专门覆盖输出提交边界，未测量 GPU kernel 执行中的取消延迟。未在其他 CUDA Toolkit 或未安装 Toolkit 的系统上复验依赖。

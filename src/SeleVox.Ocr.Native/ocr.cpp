@@ -16,6 +16,10 @@
 #include <unordered_map>
 #include <vector>
 
+#ifdef SELEVOX_OCR_CONCURRENCY_TEST
+void ocr_test_before_commit();
+#endif
+
 namespace {
 enum State { idle, running, cancelled, closed };
 
@@ -245,21 +249,34 @@ ocr_status ocr_recognize(ocr_handle handle, const ocr_image *image, char **out) 
             return expected == closed ? OCR_INVALID_HANDLE : OCR_BUSY;
         }
 
-        std::string text;
-        auto status = guarded([&] { return recognize(*engine, *image, text); });
-        // Drain pending decode work before publishing idle, including after errors.
-        const auto synchronized = guarded([&] {
-            llama_synchronize(engine->context.get());
+        const auto status = guarded([&]() -> ocr_status {
+            std::string text;
+            const auto recognized = guarded([&] { return recognize(*engine, *image, text); });
+            // Drain pending decode work before committing, including after errors.
+            const auto synchronized = guarded([&] {
+                llama_synchronize(engine->context.get());
+                return OCR_OK;
+            });
+            if (synchronized != OCR_OK) return synchronized;
+            if (recognized != OCR_OK) return recognized;
+            std::unique_ptr<char, decltype(&std::free)> buffer(
+                static_cast<char *>(std::malloc(text.size() + 1)), std::free);
+            if (!buffer) return OCR_HOST_MEMORY;
+            std::memcpy(buffer.get(), text.c_str(), text.size() + 1);
+#ifdef SELEVOX_OCR_CONCURRENCY_TEST
+            ocr_test_before_commit();
+#endif
+            *out = buffer.release();
             return OCR_OK;
         });
-        if (synchronized != OCR_OK) status = synchronized;
-        if (engine->state.exchange(idle) == cancelled) return OCR_CANCELLED;
-        if (status != OCR_OK) return status;
-        auto buffer = static_cast<char *>(std::malloc(text.size() + 1));
-        if (!buffer) return OCR_HOST_MEMORY;
-        std::memcpy(buffer, text.c_str(), text.size() + 1);
-        *out = buffer;
-        return OCR_OK;
+        // The caller may read out only after return. If cancellation won,
+        // discard the staged result before making the engine available again.
+        expected = running;
+        if (engine->state.compare_exchange_strong(expected, idle)) return status;
+        ocr_free_text(*out);
+        *out = nullptr;
+        engine->state.store(idle);
+        return OCR_CANCELLED;
     });
 }
 

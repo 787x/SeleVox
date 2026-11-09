@@ -4,15 +4,18 @@
 #include <wincodec.h>
 #include <wrl/client.h>
 #include <algorithm>
-#include <atomic>
 #include <chrono>
+#ifdef SELEVOX_OCR_CONCURRENCY_TEST
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+#endif
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
@@ -130,24 +133,62 @@ std::string without_ascii_whitespace(std::string text) {
     return text;
 }
 
-void test_cancel(ocr_handle handle, const ocr_image &image) {
-    std::atomic<bool> done{false};
-    ocr_status status = OCR_OK;
+#ifdef SELEVOX_OCR_CONCURRENCY_TEST
+struct CommitGate {
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool reached = false;
+    bool proceed = false;
+};
+
+thread_local CommitGate *commit_gate = nullptr;
+
+void test_concurrency(ocr_handle handle, const ocr_image &image, const char *expected) {
+    CommitGate gate;
+    ocr_status status = OCR_INFERENCE;
     Text text;
     std::thread worker([&] {
+        commit_gate = &gate;
         status = ocr_recognize(handle, &image, &text.value);
-        done = true;
     });
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    while (!done) {
-        ocr_cancel(handle);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    std::unique_lock lock(gate.mutex);
+    const bool reached = gate.changed.wait_for(lock, std::chrono::seconds(30), [&] { return gate.reached; });
+    bool active_checks_passed = false;
+    if (reached) {
+        Text other;
+        const auto overlapping = ocr_recognize(handle, &image, &other.value);
+        const auto destroy = ocr_destroy(handle);
+        const auto cancel = ocr_cancel(handle);
+        const auto destroy_cancelled = ocr_destroy(handle);
+        active_checks_passed = overlapping == OCR_BUSY && !other.value && destroy == OCR_BUSY &&
+            cancel == OCR_OK && destroy_cancelled == OCR_BUSY;
     }
+    gate.proceed = true;
+    lock.unlock();
+    gate.changed.notify_one();
     worker.join();
+
+    require(reached, "Recognition did not reach the output commit gate");
+    require(active_checks_passed, "Recognition or destruction was accepted during output preparation");
     require(status == OCR_CANCELLED && !text.value, "Expected cancellation with no partial result");
-    std::fputs("Cancellation passed\n", stderr);
+    check(ocr_recognize(handle, &image, &text.value));
+    require(text.value && std::strcmp(text.value, expected) == 0, "Retry after cancellation changed OCR output");
+    std::fputs("Concurrent recognize, destroy, cancellation and retry passed\n", stderr);
 }
+#endif
 } // namespace
+
+#ifdef SELEVOX_OCR_CONCURRENCY_TEST
+void ocr_test_before_commit() {
+    auto *gate = commit_gate;
+    if (!gate) return;
+    std::unique_lock lock(gate->mutex);
+    gate->reached = true;
+    gate->changed.notify_one();
+    gate->changed.wait(lock, [&] { return gate->proceed; });
+}
+#endif
 
 int wmain(int argc, wchar_t **argv) {
     try {
@@ -187,7 +228,9 @@ int wmain(int argc, wchar_t **argv) {
                 require(without_ascii_whitespace(contents) == without_ascii_whitespace(text.value),
                     "OCR result differs from expected text (ignoring ASCII whitespace)");
                 std::fputs("Text content check passed\n", stderr);
-                if (i == first + 2) test_cancel(engine.handle, view);
+#ifdef SELEVOX_OCR_CONCURRENCY_TEST
+                if (i == first + 2) test_concurrency(engine.handle, view, text.value);
+#endif
             } else {
                 std::puts(text.value);
             }
