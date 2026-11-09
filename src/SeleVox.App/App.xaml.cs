@@ -21,7 +21,10 @@ public partial class App : System.Windows.Application
     private readonly TextCaptureOperation ocrOperation = new();
     private OcrFollowUp? ocrFollowUp;
     private long ocrEpoch;
-    private readonly LocalOcr ocr = new();
+    private readonly XiaomiOcr xiaomiOcr = new();
+    private readonly ScreenOcr ocr;
+
+    public App() => ocr = new(new LocalOcr(), xiaomiOcr);
     private readonly SemaphoreSlim ocrGate = new(1, 1);
     private OcrResultWindow? ocrResult;
     private QuestionSession? questionSession;
@@ -58,7 +61,8 @@ public partial class App : System.Windows.Application
         var chat = new ChatCompletionClient();
         questionSession = new QuestionSession(chat.GenerateAsync,
             (text, options) => reading.ReadSentenceAsync(text, options, CancellationToken.None), reading.Stop, reading.ReadSentenceAsync);
-        settingsWindow = new MainWindow(settings, SaveSettings, () => reading.TogglePause(), StopReading, ExitApplication, AddForegroundApplicationAsync, CancelAutomaticReading);
+        settingsWindow = new MainWindow(settings, SaveSettings, () => reading.TogglePause(), StopReading, ExitApplication, AddForegroundApplicationAsync, CancelAutomaticReading)
+        { TestXiaomiOcr = xiaomiOcr.TestAsync };
         settingsWindow.LlmCredentialsChanged = () => { InvalidateSelectionAction(); questionSession.Cancel(); };
         settingsWindow.OpenAudioWorkbench = ShowAudioWorkbench;
         MainWindow = settingsWindow;
@@ -183,7 +187,15 @@ public partial class App : System.Windows.Application
                 settings.AllowsAutomaticProvider && !updated.AllowsAutomaticProvider || updated.Provider != settings.Provider;
             var virtualRouteChanged = settings.VirtualMicrophoneEnabled &&
                 (!updated.VirtualMicrophoneEnabled || updated.VirtualMicrophone != settings.VirtualMicrophone);
+            var ocrChanged = updated.OcrEngine != settings.OcrEngine || OcrModels.From(updated) != OcrModels.From(settings);
             StartupRegistration.ApplyAndSave(updated.StartWithWindows, () => store.Save(updated)); settings = updated;
+            if (ocrChanged)
+            {
+                InvalidateOcrFollowUp();
+                ocrOperation.Cancel();
+                questionSession?.CancelOcr();
+                _ = RetireXiaomiAsync(updated.OcrEngine == OcrEngine.XiaomiCuda ? OcrModels.From(updated) : null);
+            }
             // Do not leave a previously enabled route injecting old audio after saving Disable.
             if (virtualRouteChanged) StopReading();
             InvalidateSelectionAction(); if (invalidateAutomaticQuestion) questionSession?.CancelMouseAutomatic();
@@ -352,7 +364,6 @@ public partial class App : System.Windows.Application
         var followUp = new OcrFollowUp(snapshot); ocrFollowUp = followUp;
         var epoch = ocrEpoch; var followUpToken = followUp.Cancellation;
         CapturedText? completed = null;
-        var language = snapshot.OcrLanguage;
         settingsWindow?.SetNotice("正在准备屏幕框选；旧 OCR 计算尚未结束时需稍候。Ctrl+Alt+X 可取消。");
         try
         {
@@ -376,7 +387,7 @@ public partial class App : System.Windows.Application
                     {
                         token.ThrowIfCancellationRequested();
                         settingsWindow?.SetNotice("正在离线识别屏幕文字… Ctrl+Alt+X 可取消。");
-                        return await ocr.RecognizeAsync(image, language, token).ConfigureAwait(false);
+                        return await ocr.RecognizeAsync(image, snapshot, token).ConfigureAwait(false);
                     }
                 }
                 finally { ocrGate.Release(); }
@@ -489,13 +500,30 @@ public partial class App : System.Windows.Application
         return SaveSettings(settings with { Applications = rules });
     }
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e) { exiting = true; base.OnSessionEnding(e); }
-    private void ExitApplication() { if (exiting) return; exiting = true; Shutdown(); }
+    private async Task RetireXiaomiAsync(OcrModels? keep)
+    {
+        try { await xiaomiOcr.RetireAsync(keep); }
+        catch (UserFeedbackException ex) { if (!exiting) Notify(ex.Message); }
+    }
+
+    private async void ExitApplication()
+    {
+        if (exiting) return;
+        exiting = true;
+        InvalidateOcrFollowUp();
+        ocrOperation.Cancel();
+        try { await xiaomiOcr.ShutdownAsync(); }
+        catch (UserFeedbackException ex) { Notify(ex.Message); }
+        finally { Shutdown(); }
+    }
     protected override void OnExit(ExitEventArgs e)
     {
         exiting = true; InvalidateOcrFollowUp();
         agentPipe?.Dispose(); agentExecution?.Dispose();
         audioWorkbench?.Close();
         exiting = true; InvalidateSelectionAction(); questionSession?.Dispose(); aiAnswer?.Close(); ocrOperation.Dispose(); ocrResult?.Close(); mouse?.Dispose(); automaticSelection.Dispose(); hotkeys?.Dispose(); reading?.Dispose();
+        try { xiaomiOcr.ShutdownAsync().GetAwaiter().GetResult(); }
+        catch (UserFeedbackException) { /* The process owns any remaining native resources. */ }
         if (tray is not null) { tray.Visible = false; tray.ContextMenuStrip?.Dispose(); tray.Dispose(); }
         instance?.Dispose(); base.OnExit(e);
     }

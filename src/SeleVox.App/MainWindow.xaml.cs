@@ -40,6 +40,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { VoiceWarning = $"无法枚举本地语音（{ex.GetType().Name}）。"; }
         Rate.Value = settings.Rate; Volume.Value = settings.Volume; AutoStart.IsChecked = settings.StartWithWindows;
         StartupSilence.Value = settings.StartupSilenceMilliseconds;
+        InitializeOcrSettings(settings);
         OcrLanguageChoice.SelectedIndex = (int)settings.OcrLanguage;
         OcrActionChoice.SelectedIndex = (int)settings.OcrAction;
         Region.Text = settings.AzureRegion;
@@ -120,6 +121,7 @@ public partial class MainWindow : Window
     }
     protected override void OnClosing(CancelEventArgs e)
     {
+        ResetOcrTest();
         voiceQuery?.Cancel();
         virtualTest?.Cancel();
         diagnosticsWindow?.Close();
@@ -145,7 +147,13 @@ public partial class MainWindow : Window
         { SetNotice("请填写合法的服务 Base URL、Model 和 Voice。"); return; }
         if (provider == TtsProvider.OpenAiCompatible && OpenAiModel.Text.Trim() is "tts-1" or "tts-1-hd" && !string.IsNullOrWhiteSpace(OpenAiInstructions.Text))
         { SetNotice("tts-1 / tts-1-hd 不支持 Instructions，请清空或选择支持的模型。"); return; }
-        var error = save(savedSettings with { VoiceId = Voice.SelectedValue as string, Rate = Rate.Value, Volume = (float)Volume.Value,
+        var engine = (OcrEngine)OcrEngineChoice.SelectedIndex;
+        var models = engine == OcrEngine.XiaomiCuda ? CandidateModels() : OcrModels.From(savedSettings);
+        if (engine == OcrEngine.XiaomiCuda && models != verifiedOcrModels &&
+            (savedSettings.OcrEngine != engine || models != OcrModels.From(savedSettings)))
+        { SetNotice("请先测试当前 Xiaomi OCR 模型组合，成功后再保存。"); return; }
+        var error = save(savedSettings with { OcrEngine = engine, XiaomiModelPath = models.Model,
+            XiaomiProjectorPath = models.Projector, VoiceId = Voice.SelectedValue as string, Rate = Rate.Value, Volume = (float)Volume.Value,
             StartupSilenceMilliseconds = (int)Math.Round(StartupSilence.Value),
             Provider = provider, AzureRegion = provider == TtsProvider.Azure ? Region.Text.Trim() : savedSettings.AzureRegion,
             AzureVoice = provider == TtsProvider.Azure ? CloudVoice.SelectedValue as string : savedSettings.AzureVoice,
