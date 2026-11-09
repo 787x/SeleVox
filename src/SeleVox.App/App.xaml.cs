@@ -510,20 +510,33 @@ public partial class App : System.Windows.Application
     {
         if (exiting) return;
         exiting = true;
-        InvalidateOcrFollowUp();
-        ocrOperation.Cancel();
-        try { await xiaomiOcr.ShutdownAsync(); }
-        catch (UserFeedbackException ex) { Notify(ex.Message); }
+        try { await StopOcrForExitAsync(); }
         finally { Shutdown(); }
     }
+
+    private async Task StopOcrForExitAsync()
+    {
+        try
+        {
+            try { InvalidateOcrFollowUp(); }
+            finally { ocrOperation.Cancel(); }
+        }
+        catch (AggregateException) { /* Cancellation ran every registered callback. */ }
+        finally
+        {
+            try { await xiaomiOcr.ShutdownAsync().ConfigureAwait(false); }
+            catch (Exception ex) when (ex is UserFeedbackException or AggregateException or InvalidOperationException)
+            { /* Continue exit after recoverable OCR cleanup failures. */ }
+        }
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
-        exiting = true; InvalidateOcrFollowUp();
+        exiting = true;
+        StopOcrForExitAsync().GetAwaiter().GetResult();
         agentPipe?.Dispose(); agentExecution?.Dispose();
         audioWorkbench?.Close();
         exiting = true; InvalidateSelectionAction(); questionSession?.Dispose(); aiAnswer?.Close(); ocrOperation.Dispose(); ocrResult?.Close(); mouse?.Dispose(); automaticSelection.Dispose(); hotkeys?.Dispose(); reading?.Dispose();
-        try { xiaomiOcr.ShutdownAsync().GetAwaiter().GetResult(); }
-        catch (UserFeedbackException) { /* The process owns any remaining native resources. */ }
         if (tray is not null) { tray.Visible = false; tray.ContextMenuStrip?.Dispose(); tray.Dispose(); }
         instance?.Dispose(); base.OnExit(e);
     }

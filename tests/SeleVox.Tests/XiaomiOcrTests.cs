@@ -106,6 +106,32 @@ public sealed class XiaomiOcrTests
     }
 
     [Fact]
+    public async Task FailedCandidateLeavesSavedModelsUsable()
+    {
+        using var files = new ModelFiles();
+        var saved = new Settings { OcrEngine = OcrEngine.XiaomiCuda, XiaomiModelPath = files.Models.Model,
+            XiaomiProjectorPath = files.Models.Projector };
+        var candidate = files.Models with { Model = files.Models.Projector };
+        var api = new FakeNative { FailModel = candidate.Model };
+        var engine = new XiaomiOcr(() => api);
+        var route = new ScreenOcr(new LocalOcr(), engine);
+        using var image = new Bitmap(1, 2);
+        try
+        {
+            var before = await route.RecognizeAsync(image, saved, default);
+            await Assert.ThrowsAsync<UserFeedbackException>(() => engine.TestAsync(candidate, default));
+            Assert.Equal(1, api.Destroys);
+            Assert.Equal(files.Models, OcrModels.From(saved));
+            Assert.Equal(OcrEngine.XiaomiCuda, saved.OcrEngine);
+            Assert.Equal(before, await route.RecognizeAsync(image, saved, default));
+            Assert.Equal(3, api.Creates);
+            Assert.Equal(files.Models, api.Paths);
+        }
+        finally { await engine.ShutdownAsync(); }
+        Assert.Equal(2, api.Destroys);
+    }
+
+    [Fact]
     public async Task CancellationDuringCreateDestroysWithoutRecognizing()
     {
         using var files = new ModelFiles();
@@ -203,6 +229,7 @@ public sealed class XiaomiOcrTests
     {
         public int Creates, Destroys, Recognitions, Frees;
         public OcrModels? Paths;
+        public string? FailModel;
         public Action? Creating, Recognizing, Cancelling;
         public uint Version() => 1;
         public int Create(in OcrOptions options, out ulong handle)
@@ -211,6 +238,11 @@ public sealed class XiaomiOcrTests
             Paths = new(Marshal.PtrToStringUTF8(options.Model), Marshal.PtrToStringUTF8(options.Projector));
             Creates++;
             Creating?.Invoke();
+            if (Paths.Model == FailModel)
+            {
+                handle = 0;
+                return 4;
+            }
             handle = Handle;
             return 0;
         }

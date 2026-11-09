@@ -64,10 +64,10 @@ internal sealed class XiaomiOcr(Func<IOcrNative>? load = null)
         finally { gate.Release(); }
     }
 
-    internal Task ShutdownAsync()
+    internal async Task ShutdownAsync()
     {
-        shutdown.Cancel();
-        return RetireAsync(null);
+        try { shutdown.Cancel(); }
+        finally { await RetireAsync(null).ConfigureAwait(false); }
     }
 
     private async Task<T> RunAsync<T>(Func<CancellationToken, T> work, CancellationToken token)

@@ -87,7 +87,9 @@ internal static extern void ocr_free_text(nint text);
 
 `artifacts/ocr-cuda/bin` 生成 `selevox_ocr.dll` 与测试程序。llama、mtmd、ggml 和 ggml-cuda 作为静态库链接。CMake 使用 `CUDA::cudart`，其在实测 Windows CUDA 13.4.59 工具链中指向 `lib/x64/cudart.lib`。该库含所用 CUDA Runtime 函数的对象定义，实测引擎及两级 cuBLAS DLL 的导入表无 `cudart64_13.dll`。此结果适用于该工具链产物，换用 Toolkit 或构建选项时应重新检查。
 
-后续发行应随引擎放置同版本的 `cublas64_13.dll`（直接依赖）及 `cublasLt64_13.dll`（传递依赖）。目标机还需 x64 MSVC Redistributable（`MSVCP140.dll`、`VCRUNTIME140.dll`、`VCRUNTIME140_1.dll`）、Windows 自带的 UCRT 和系统 DLL，以及由兼容 NVIDIA 驱动提供的 `nvcuda.dll`。开发机可通过 Toolkit 的 `bin/x64` 提供 cuBLAS DLL。桌面程序使用 `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32` 从受控目录解析依赖，按 ABI 1 导出绑定 cdecl 委托。缺少导入 DLL 时 Windows 加载器会先报错，进入 ABI 后才能返回结构化 CUDA 状态。
+PR36 打包时，将同一 CUDA 版本的 `cublas64_13.dll`（引擎直接导入）和 `cublasLt64_13.dll`（cuBLAS 传递导入）与 `selevox_ocr.dll` 同放在应用的 `OcrCuda` 子目录。CUDA 13.4.59 实测产物未导入独立的 `cudart` DLL。若换用 Toolkit 或编译选项，重新用 `dumpbin /dependents` 检查引擎和每一级依赖。
+
+桌面程序以绝对路径调用 `LoadLibraryExW`，依赖搜索标志为 `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32`。因此应用根目录和 PATH 中的 DLL 不能作为部署依赖来源。Windows 的 KnownDLL、API set 及已加载模块解析仍适用。实测引擎导入 `MSVCP140.dll`、`VCRUNTIME140.dll`、`VCRUNTIME140_1.dll`，以及 Windows 自带的 UCRT API set、`KERNEL32.dll` 和 `ADVAPI32.dll`。本机从 x64 System32 提供 VC++ 运行库和 NVIDIA 驱动的 `nvcuda.dll`。PR36 需要在干净目标机上验证 VC++ x64 Redistributable 前置条件，或验证合规的应用本地运行库随引擎放置。CUDA 驱动由目标机安装。缺少导入 DLL 时 Windows 加载器先报错，ABI 尚未执行。
 
 llama.cpp 和 GGML 使用 [MIT 许可](https://github.com/ggml-org/llama.cpp/blob/873e5d8e39feb34a376e0efd01bf3f665dfffeb5/LICENSE)。未来打包时应保留上游许可证及 vendored 组件声明。CUDA Runtime 与 cuBLAS 的再分发受 [NVIDIA CUDA EULA 附件 A](https://docs.nvidia.com/cuda/eula/index.html) 约束，需按实际 Toolkit 版本核对再分发组件与声明。终端用户无需安装 Toolkit。
 
