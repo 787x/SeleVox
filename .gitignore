@@ -72,3 +72,9 @@ appsettings.Local.json
 appsettings.Development.json
 .env
 .env.*
+
+## Local CUDA OCR models and build files
+*.gguf
+*.cubin
+*.fatbin
+src/SeleVox.Ocr.Native/build/
