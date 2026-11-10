@@ -15,13 +15,53 @@ foreach ($tag in @('v01.2.3', '1.2.3', 'v1.2', 'v1.2.3-rc.0', 'v1.2.3-rc.01', 'v
 $stable = Get-ReleaseVersion 'v12.34.56'
 if ($stable.Prerelease -or $stable.ZipName -cne 'SeleVox-v12.34.56-win-x64-portable.zip' -or $stable.Numeric -ne '12.34.56.0') { throw 'Stable version mapping failed' }
 $ocr = Join-Path $PublishDirectory 'OcrCuda'
+$native = Join-Path (Resolve-Path -LiteralPath $ocr).Path 'selevox_ocr.dll'
+# Match OcrNative's restricted search flags when probing the shipped DLL.
+Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public static class SeleVoxReleaseOcrProbe
+{
+    [DllImport("kernel32.dll", ExactSpelling = true, CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr LoadLibraryExW(string path, IntPtr reserved, uint flags);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    delegate uint Version();
+
+    public static uint ReadAbi(string path)
+    {
+        IntPtr module = LoadLibraryExW(path, IntPtr.Zero, 0x100 | 0x800);
+        if (module == IntPtr.Zero)
+        {
+            int error = Marshal.GetLastWin32Error();
+            throw new Win32Exception(error, "OCR module load failed with Win32 error " + error);
+        }
+        try
+        {
+            IntPtr export = NativeLibrary.GetExport(module, "ocr_abi_version");
+            return Marshal.GetDelegateForFunctionPointer<Version>(export)();
+        }
+        finally { NativeLibrary.Free(module); }
+    }
+}
+'@
 $dependency = Join-Path $ocr 'cublasLt64_13.dll'
-$backup = Join-Path (Split-Path ([IO.Path]::GetFullPath($PublishDirectory))) ('ocr-' + [guid]::NewGuid() + '.dll')
-Move-Item -LiteralPath $dependency -Destination $backup
+$fallback = Join-Path (Split-Path ([IO.Path]::GetFullPath($PublishDirectory))) ('ocr-path-' + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $fallback | Out-Null
+$backup = Join-Path $fallback 'cublasLt64_13.dll'
+$originalPath = $env:Path
 try {
+    Move-Item -LiteralPath $dependency -Destination $backup
+    $env:Path = "$fallback;$originalPath"
+    Expect-Failure { [SeleVoxReleaseOcrProbe]::ReadAbi($native) } 'Win32 error 126'
     Expect-Failure { & (Join-Path $PSScriptRoot 'Test-Publish.ps1') -PublishDirectory $PublishDirectory } 'Missing or empty OCR runtime file'
-} finally { Move-Item -LiteralPath $backup -Destination $dependency }
-$native = Join-Path $ocr 'selevox_ocr.dll'
+} finally {
+    $env:Path = $originalPath
+    if (Test-Path -LiteralPath $backup) { Move-Item -LiteralPath $backup -Destination $dependency }
+    Remove-Item -LiteralPath $fallback
+}
+if ([SeleVoxReleaseOcrProbe]::ReadAbi($native) -ne 1) { throw 'Packaged OCR ABI mismatch' }
 $originalNative = [IO.File]::ReadAllBytes($native)
 $changed = [byte[]]$originalNative.Clone()
 try {
