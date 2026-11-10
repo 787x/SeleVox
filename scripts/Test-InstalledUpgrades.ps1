@@ -77,6 +77,15 @@ try {
         New-Item -ItemType Directory -Path (Split-Path $path) -Force | Out-Null
         [IO.File]::WriteAllText($path, 'test-owned-preserved-'+$relative)
     }
+    $external = Join-Path $root '外部模型'
+    New-Item -ItemType Directory -Path $external | Out-Null
+    $model = Join-Path $external 'language.gguf'
+    $projector = Join-Path $external 'mmproj.gguf'
+    [IO.File]::WriteAllText($model, 'Model path preservation marker')
+    [IO.File]::WriteAllText($projector, 'Projector path preservation marker')
+    @{ StartWithWindows = $true; XiaomiModelPath = $model; XiaomiProjectorPath = $projector } |
+        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $data 'settings.json')
+    $externalSnapshot = Tree-Hashes $external | ConvertTo-Json -Compress
     $script:dataSnapshot = Tree-Hashes $data | ConvertTo-Json -Compress
     Invoke-Setup 'v0.0.1'
     [IO.File]::WriteAllText((Join-Path $target 'user-owned.txt'), 'user-owned-keep')
@@ -163,6 +172,7 @@ public static class SeleVoxUpgradeAcl {
     Uninstall
     if (Test-Path -LiteralPath (Join-Path $ocr 'selevox_ocr.dll')) { throw 'Uninstall left the managed OCR DLL' }
     if ([IO.File]::ReadAllText($unknownOcrFile) -cne 'user-owned-keep') { throw 'Uninstall removed an unknown OCR directory file' }
+    if ((Tree-Hashes $external | ConvertTo-Json -Compress) -cne $externalSnapshot) { throw 'Upgrade or uninstall changed external model files' }
     if ([IO.File]::ReadAllText((Join-Path $target 'user-owned.txt')) -cne 'user-owned-keep') { throw 'Uninstall removed unknown file after upgrade' }
     # ssPostInstall exceptions are handled as warnings by stock Inno. The
     # product's committed flag must turn them into nonzero exit and no launch.

@@ -10,6 +10,7 @@ $pinned = @{
     'vcruntime140_1.dll' = 'A7146C08F89FE5B04541AB507CDB59FF7B44534D4BA3C668A426C6450A03434E'
 }
 $required = @($pinned.Keys) + @('selevox_ocr.dll', 'NOTICE.txt', 'llama.cpp-LICENSE.txt', 'libcublas-LICENSE.txt', 'cuda_cudart-LICENSE.txt')
+if ((Get-Item -LiteralPath $Directory).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'OcrCuda must be an ordinary directory' }
 $manifest = Get-Content -LiteralPath (Join-Path $Directory 'runtime.json') -Raw | ConvertFrom-Json -AsHashtable
 if ($manifest.commit -notmatch '^[a-f0-9]{40}$' -or ($ExpectedCommit -and $manifest.commit -cne $ExpectedCommit) -or
     $manifest.llama -cne '873e5d8e39feb34a376e0efd01bf3f665dfffeb5' -or $manifest.cuda -cne '13.4.1' -or
@@ -33,6 +34,8 @@ foreach ($name in $required) {
             if ($offset -lt 64 -or $offset -gt $reader.BaseStream.Length - 24) { throw "Invalid OCR PE: $name" }
             $reader.BaseStream.Position = $offset
             if ($reader.ReadUInt32() -ne 0x4550 -or $reader.ReadUInt16() -ne 0x8664) { throw "OCR DLL is not x64: $name" }
+            $reader.BaseStream.Position = $offset + 22
+            if (!($reader.ReadUInt16() -band 0x2000)) { throw "OCR PE is not a DLL: $name" }
         } finally { $reader.Dispose() }
     }
     $hash = (Get-FileHash -LiteralPath $path).Hash

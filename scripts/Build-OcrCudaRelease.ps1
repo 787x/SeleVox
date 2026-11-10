@@ -7,6 +7,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 $repo = Split-Path $PSScriptRoot
+$nativeSource = Join-Path $repo 'src/SeleVox.Ocr.Native'
+if (!(Select-String -LiteralPath (Join-Path $nativeSource 'ocr.h') -Pattern '^#define OCR_ABI_VERSION 1u$' -Quiet)) {
+    throw 'The release pipeline requires OCR ABI 1'
+}
 $work = [IO.Path]::GetFullPath($WorkDirectory)
 $downloads = Join-Path $work 'downloads'
 $toolkit = Join-Path $work 'toolkit'
@@ -65,9 +69,13 @@ git init --quiet $llamaSource
 git -C $llamaSource fetch --depth=1 https://github.com/ggml-org/llama.cpp.git $llama
 git -C $llamaSource checkout --quiet --detach FETCH_HEAD
 if ((git -C $llamaSource rev-parse HEAD) -ne $llama) { throw 'Unexpected llama.cpp commit' }
-cmake -S (Join-Path $repo 'src/SeleVox.Ocr.Native') -B $build -G Ninja -DCMAKE_BUILD_TYPE=Release `
+$configuration = cmake -S $nativeSource -B $build -G Ninja -DCMAKE_BUILD_TYPE=Release `
     "-DCMAKE_CUDA_ARCHITECTURES=$architectures" "-DCMAKE_CUDA_COMPILER=$nvcc" "-DCUDAToolkit_ROOT=$toolkit" `
-    "-DFETCHCONTENT_SOURCE_DIR_LLAMA_CPP=$llamaSource"
+    "-DFETCHCONTENT_SOURCE_DIR_LLAMA_CPP=$llamaSource" '-DCMAKE_CUDA_FLAGS=-Xcompiler=/utf-8'
+$configuration | ForEach-Object { Write-Host $_ }
+if (!($configuration -match 'Using CMAKE_CUDA_ARCHITECTURES=86;89;120a CMAKE_CUDA_ARCHITECTURES_NATIVE=')) {
+    throw 'Unexpected effective GGML CUDA architectures'
+}
 cmake --build $build --parallel $Jobs --target selevox_ocr_test
 Copy-Item -LiteralPath (Join-Path $llamaSource 'LICENSE') -Destination (Join-Path $stage 'llama.cpp-LICENSE.txt')
 Copy-Item -LiteralPath (Join-Path $repo 'docs/OcrCuda-NOTICE.txt') -Destination (Join-Path $stage 'NOTICE.txt')

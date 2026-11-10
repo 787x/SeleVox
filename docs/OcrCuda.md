@@ -87,7 +87,7 @@ internal static extern void ocr_free_text(nint text);
 
 `artifacts/ocr-cuda/bin` 生成 `selevox_ocr.dll` 与测试程序。llama、mtmd、ggml 和 ggml-cuda 作为静态库链接。CMake 使用 `CUDA::cudart`，其在实测 Windows CUDA 13.4.59 工具链中指向 `lib/x64/cudart.lib`。该库含所用 CUDA Runtime 函数的对象定义，实测引擎及两级 cuBLAS DLL 的导入表无 `cudart64_13.dll`。此结果适用于该工具链产物，换用 Toolkit 或构建选项时应重新检查。
 
-PR36 使用 NVIDIA CUDA 13.4 Update 1 官方归档，nvcc 13.4.59，cuBLAS 13.7.0.27，生成 Windows x64 Release。编译架构为 8.6、8.9 和 12.0（CMake 默认同时生成对应的真实架构代码和虚拟架构代码）。GPU 和驱动仍须实际兼容。精度支持取决于 GGUF 和固定 llama.cpp 版本。发布目录包含引擎、cuBLAS/cuBLASLt、应用本地 VC++ x64 运行库和许可证。
+PR36 使用 NVIDIA CUDA 13.4 Update 1 官方归档，nvcc 13.4.59，cuBLAS 13.7.0.27，生成 Windows x64 Release。输入架构为 86、89、120。固定的 GGML 将 120 改写为架构专用的 120a，实际生成 sm_86、sm_89、sm_120a 及对应的 PTX。120a 代码不提供跨架构向前兼容。验收以适配该 GPU 的 NVIDIA R615 或更新驱动为基线。较旧 13.x 兼容驱动未纳入验收范围。参见 [NVIDIA 13.4 驱动分支说明](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html)。精度支持取决于 GGUF 和固定 llama.cpp 版本。发布目录包含引擎、cuBLAS/cuBLASLt、应用本地 VC++ x64 运行库和许可证。
 
 桌面程序以绝对路径调用 `LoadLibraryExW`，依赖搜索标志为 `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32`。因此应用根目录和 PATH 中的 DLL 不能作为部署依赖来源。Windows 的 KnownDLL、API set 及已加载模块解析仍适用。实测引擎导入 `MSVCP140.dll`、`VCRUNTIME140.dll`、`VCRUNTIME140_1.dll`，以及 Windows 自带的 UCRT API set、`KERNEL32.dll` 和 `ADVAPI32.dll`。候选包在 OcrCuda 中附带与 Tesseract 同源的 VC++ x64 运行库。CUDA 驱动由目标机安装。缺少导入 DLL 时 Windows 加载器先报错，ABI 尚未执行。
 

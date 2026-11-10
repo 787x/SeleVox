@@ -101,12 +101,19 @@ try {
     Expect-Failure { & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') -Directory $OutputDirectory -VersionTag $VersionTag } 'Expected exactly'
 } finally { Move-Item -LiteralPath $hidden -Destination $setup }
 Expect-Failure { & (Join-Path $PSScriptRoot 'Test-Installer.ps1') -SetupPath $setup -VersionTag 'v9.9.9' } 'version mismatch'
-$bytes = [IO.File]::ReadAllBytes($setup)
+function Toggle-LastByte([string]$Path) {
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite)
+    try {
+        $stream.Position = $stream.Length - 1
+        $lastByte = $stream.ReadByte()
+        $stream.Position--
+        $stream.WriteByte([byte]($lastByte -bxor 1))
+    } finally { $stream.Dispose() }
+}
+Toggle-LastByte $setup
 try {
-    $damaged = [byte[]]$bytes.Clone(); $damaged[$damaged.Length - 1] = $damaged[$damaged.Length - 1] -bxor 1
-    [IO.File]::WriteAllBytes($setup, $damaged)
     Expect-Failure { & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') -Directory $OutputDirectory -VersionTag $VersionTag } 'SHA256SUMS'
-} finally { [IO.File]::WriteAllBytes($setup, $bytes) }
+} finally { Toggle-LastByte $setup }
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ('SeleVox-package-test-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $scratch | Out-Null
 try {
