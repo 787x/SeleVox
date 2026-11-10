@@ -1,5 +1,5 @@
 #requires -Version 7.2
-param([Parameter(Mandatory)][string]$VersionTag, [Parameter(Mandatory)][string]$PublishDirectory, [Parameter(Mandatory)][string]$OutputDirectory, [ValidateSet('None', 'Fail', 'Interrupt', 'Verify')][string]$TestFault = 'None')
+param([Parameter(Mandatory)][string]$VersionTag, [Parameter(Mandatory)][string]$PublishDirectory, [Parameter(Mandatory)][string]$OutputDirectory, [ValidateSet('None', 'Fail', 'Interrupt', 'Verify')][string]$TestFault = 'None', [switch]$LegacyUpgradeFixture)
 $ErrorActionPreference = 'Stop'
 if ($TestFault -ne 'None' -and ($env:GITHUB_ACTIONS -ne 'true' -or $env:SELEVOX_INSTALLER_DISPOSABLE -ne '1')) { throw 'Fault fixtures require a disposable Actions VM' }
 . (Join-Path $PSScriptRoot 'Release-Version.ps1')
@@ -7,7 +7,7 @@ $version = Get-ReleaseVersion $VersionTag
 $source = (Resolve-Path -LiteralPath $PublishDirectory).Path
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 if ($output.Equals($source, [StringComparison]::OrdinalIgnoreCase) -or $output.StartsWith($source.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Installer output must be outside publish directory' }
-& (Join-Path $PSScriptRoot 'Test-Publish.ps1') -PublishDirectory $source
+& (Join-Path $PSScriptRoot 'Test-Publish.ps1') -PublishDirectory $source -LegacyUpgradeFixture:$LegacyUpgradeFixture
 Assert-PublishVersion $source $version
 $compiler = & (Join-Path $PSScriptRoot 'Install-InnoSetup.ps1')
 if (Test-Path -LiteralPath (Join-Path $output $version.SetupName)) { throw 'Refusing to overwrite installer' }

@@ -10,7 +10,6 @@ concurrency:
 jobs:
   build:
     runs-on: windows-2025
-    timeout-minutes: 30
     outputs:
       commit: ${{ steps.identity.outputs.commit }}
     defaults:
@@ -64,6 +63,8 @@ jobs:
           path: TestResults/ci/**/*.trx
           if-no-files-found: warn
           retention-days: 7
+      - name: Build pinned CUDA OCR runtime and verify ABI (no GPU required)
+        run: ./scripts/Build-OcrCudaRelease.ps1
       - name: Publish self-contained and verify
         run: ./scripts/Publish-Windows.ps1 -VersionTag $env:RELEASE_TAG
       - name: Package, extract, verify and hash

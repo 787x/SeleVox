@@ -14,6 +14,77 @@ foreach ($tag in @('v01.2.3', '1.2.3', 'v1.2', 'v1.2.3-rc.0', 'v1.2.3-rc.01', 'v
 }
 $stable = Get-ReleaseVersion 'v12.34.56'
 if ($stable.Prerelease -or $stable.ZipName -cne 'SeleVox-v12.34.56-win-x64-portable.zip' -or $stable.Numeric -ne '12.34.56.0') { throw 'Stable version mapping failed' }
+$ocr = Join-Path $PublishDirectory 'OcrCuda'
+$native = Join-Path (Resolve-Path -LiteralPath $ocr).Path 'selevox_ocr.dll'
+# Match OcrNative's restricted search flags when probing the shipped DLL.
+Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public static class SeleVoxReleaseOcrProbe
+{
+    [DllImport("kernel32.dll", ExactSpelling = true, CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr LoadLibraryExW(string path, IntPtr reserved, uint flags);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    delegate uint Version();
+
+    public static uint ReadAbi(string path)
+    {
+        IntPtr module = LoadLibraryExW(path, IntPtr.Zero, 0x100 | 0x800);
+        if (module == IntPtr.Zero)
+        {
+            int error = Marshal.GetLastWin32Error();
+            throw new Win32Exception(error, "OCR module load failed with Win32 error " + error);
+        }
+        try
+        {
+            IntPtr export = NativeLibrary.GetExport(module, "ocr_abi_version");
+            return Marshal.GetDelegateForFunctionPointer<Version>(export)();
+        }
+        finally { NativeLibrary.Free(module); }
+    }
+}
+'@
+$dependency = Join-Path $ocr 'cublasLt64_13.dll'
+$fallback = Join-Path (Split-Path ([IO.Path]::GetFullPath($PublishDirectory))) ('ocr-path-' + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $fallback | Out-Null
+$backup = Join-Path $fallback 'cublasLt64_13.dll'
+$originalPath = $env:Path
+try {
+    Move-Item -LiteralPath $dependency -Destination $backup
+    $env:Path = "$fallback;$originalPath"
+    Expect-Failure { [SeleVoxReleaseOcrProbe]::ReadAbi($native) } 'Win32 error 126'
+    Expect-Failure { & (Join-Path $PSScriptRoot 'Test-Publish.ps1') -PublishDirectory $PublishDirectory } 'Missing or empty OCR runtime file'
+} finally {
+    $env:Path = $originalPath
+    if (Test-Path -LiteralPath $backup) { Move-Item -LiteralPath $backup -Destination $dependency }
+    Remove-Item -LiteralPath $fallback
+}
+if ([SeleVoxReleaseOcrProbe]::ReadAbi($native) -ne 1) { throw 'Packaged OCR ABI mismatch' }
+$originalNative = [IO.File]::ReadAllBytes($native)
+$changed = [byte[]]$originalNative.Clone()
+try {
+    $changed[$changed.Length - 1] = $changed[$changed.Length - 1] -bxor 1
+    [IO.File]::WriteAllBytes($native, $changed)
+    Expect-Failure { & (Join-Path $PSScriptRoot 'Test-OcrCudaRelease.ps1') -Directory $ocr } 'SHA-256 mismatch'
+    $machine = [BitConverter]::ToInt32($changed, 0x3C) + 4
+    $changed[$machine] = 0x4C
+    $changed[$machine + 1] = 0x01
+    [IO.File]::WriteAllBytes($native, $changed)
+    Expect-Failure { & (Join-Path $PSScriptRoot 'Test-OcrCudaRelease.ps1') -Directory $ocr } 'not x64'
+} finally { [IO.File]::WriteAllBytes($native, $originalNative) }
+$manifest = Join-Path $ocr 'runtime.json'
+$originalManifest = [IO.File]::ReadAllText($manifest)
+try {
+    [IO.File]::WriteAllText($manifest, $originalManifest.Replace('"13.4.1"', '"13.4.2"'))
+    Expect-Failure { & (Join-Path $PSScriptRoot 'Test-OcrCudaRelease.ps1') -Directory $ocr } 'version mismatch'
+} finally { [IO.File]::WriteAllText($manifest, $originalManifest) }
+$forbidden = Join-Path $PublishDirectory ('test-' + [guid]::NewGuid() + '.GGUF')
+try {
+    [IO.File]::WriteAllText($forbidden, 'Exclusion test marker')
+    Expect-Failure { & (Join-Path $PSScriptRoot 'Test-Publish.ps1') -PublishDirectory $PublishDirectory } 'forbidden'
+} finally { Remove-Item -LiteralPath $forbidden }
 & (Join-Path $PSScriptRoot 'Package-Windows.ps1') -VersionTag $VersionTag -PublishDirectory $PublishDirectory -OutputDirectory $OutputDirectory
 & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') -Directory $OutputDirectory -VersionTag $VersionTag
 $zip = Join-Path $OutputDirectory $version.ZipName
@@ -30,12 +101,19 @@ try {
     Expect-Failure { & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') -Directory $OutputDirectory -VersionTag $VersionTag } 'Expected exactly'
 } finally { Move-Item -LiteralPath $hidden -Destination $setup }
 Expect-Failure { & (Join-Path $PSScriptRoot 'Test-Installer.ps1') -SetupPath $setup -VersionTag 'v9.9.9' } 'version mismatch'
-$bytes = [IO.File]::ReadAllBytes($setup)
+function Toggle-LastByte([string]$Path) {
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite)
+    try {
+        $stream.Position = $stream.Length - 1
+        $lastByte = $stream.ReadByte()
+        $stream.Position--
+        $stream.WriteByte([byte]($lastByte -bxor 1))
+    } finally { $stream.Dispose() }
+}
+Toggle-LastByte $setup
 try {
-    $damaged = [byte[]]$bytes.Clone(); $damaged[$damaged.Length - 1] = $damaged[$damaged.Length - 1] -bxor 1
-    [IO.File]::WriteAllBytes($setup, $damaged)
     Expect-Failure { & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') -Directory $OutputDirectory -VersionTag $VersionTag } 'SHA256SUMS'
-} finally { [IO.File]::WriteAllBytes($setup, $bytes) }
+} finally { Toggle-LastByte $setup }
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ('SeleVox-package-test-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $scratch | Out-Null
 try {

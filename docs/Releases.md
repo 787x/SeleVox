@@ -148,8 +148,17 @@ Portable 需完整解压，可免装 .NET Runtime，但并非所有数据都存�
 普通 Windows CI 始终使用 `v0.0.0-rc.1` 等**测试输入**核对版本注入、发布 ZIP、解压 CLI、资源与 SHA-256；这不是实际发布的 Tag。开发机可在 PowerShell 7.2+ 用**空输出目录**运行：
 
 ```powershell
+./scripts/Build-OcrCudaRelease.ps1
 ./scripts/Publish-Windows.ps1 -VersionTag v0.0.0-rc.1 -OutputDirectory artifacts/local-rc
 ./scripts/Test-Packaging.ps1 -PublishDirectory artifacts/local-rc -OutputDirectory artifacts/local-package
 ```
 
 实现参考 [GitHub REST Release 创建、查询与更新](https://docs.github.com/en/rest/releases/releases) 和 [Release Asset 上传与 digest](https://docs.github.com/en/rest/releases/assets)。上述离线检查不能代替首次真实 Tag 发布和 Windows 11 桌面/真实音频验收。
+
+## Xiaomi CUDA OCR 候选包
+
+CI 和 Release 构建从同一提交及锁定的 NVIDIA 归档生成 OcrCuda，通过原生 ABI 自检、导出和依赖检查后才合并发布目录。Setup 和 ZIP 共用该目录，排除 GGUF 和 mmproj。CI 在同一 Windows Job 验证候选包。Release 在完成打包和标准用户安装检查后上传资产。最终公开资产仍为 Setup、Portable ZIP 和 SHA256SUMS.txt。见 [PR36 验证记录](../verification/PR36-OcrCudaRelease.md)。
+
+PR 自动运行和手动运行在全部检查通过后，都会在运行详情的 **Artifacts** 中提供 `SeleVox-candidate-<run ID>-<run attempt>`。其中包含 `v0.0.0-rc.1` 的 Setup、Portable ZIP 和 `SHA256SUMS.txt`，保留 7 天。普通 push CI 执行完整验证并跳过候选包上传。
+
+要手动验收某个分支，在 GitHub 仓库打开 **Actions → Windows CI → Run workflow**，选择待验收分支，再点击 **Run workflow**。候选包通过 CI Artifact 提供，正式 Release 仍由版本 Tag 触发。

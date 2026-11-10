@@ -1,0 +1,30 @@
+{
+  "cuda_nvcc": [
+    "13.4.59",
+    "06a4fe6ec543030c5e5a7b85493cda90612015d9fff2a54ed0227162c937ea46"
+  ],
+  "cuda_cudart": [
+    "13.4.49",
+    "e6663f3d3e8949eedc2d5ab92c7c5b9fa3f2a222086d91c42bfc5a38bf2b0225"
+  ],
+  "libcublas": [
+    "13.7.0.27",
+    "fff93984ee8a85dd8568e4b9000f9e3ef7153f0f73b176756bcbad3c6622d1f0"
+  ],
+  "cuda_crt": [
+    "13.4.59",
+    "f969a0e3b086a48f940563cd1b965cb5197fd9540c79cc952b1abfa479f9ede7"
+  ],
+  "libnvptxcompiler": [
+    "13.4.59",
+    "4de2e70b56ae5296b39317ebd55dbb814f2ac31506c4d3ef97bfbded1cdf8cc9"
+  ],
+  "libnvvm": [
+    "13.4.59",
+    "a7a07bcc21cc05bce83eedebcbcd9b9f5418c58316b0fa28a57cb2c548b29841"
+  ],
+  "cccl": [
+    "13.3.4.2.1",
+    "ea3ebdd98d4d98819cc26b66bc5a0931004ed35ff18eea8b93e0bd2c8bfa5d7c"
+  ]
+}
