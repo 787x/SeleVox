@@ -1,7 +1,18 @@
 #requires -Version 7.2
-param([string]$OutputDirectory = (Join-Path $PSScriptRoot '..\artifacts\win-x64'), [string]$VersionTag)
+param(
+    [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\artifacts\win-x64'),
+    [string]$VersionTag,
+    [string]$OcrRuntime = (Join-Path $PSScriptRoot '../artifacts/ocr-release/OcrCuda'),
+    [switch]$LegacyUpgradeFixture
+)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if (!$LegacyUpgradeFixture) {
+    $OcrRuntime = (Resolve-Path -LiteralPath $OcrRuntime).Path
+    $commit = git -C (Split-Path $PSScriptRoot) rev-parse HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve publish commit' }
+    & (Join-Path $PSScriptRoot 'Test-OcrCudaRelease.ps1') -Directory $OcrRuntime -ExpectedCommit $commit
+}
 . (Join-Path $PSScriptRoot 'Release-Version.ps1')
 $versionProperties = @()
 if ($VersionTag) { $version = Get-ReleaseVersion $VersionTag; $versionProperties = @(Get-VersionProperties $version) }
@@ -37,7 +48,10 @@ try {
     $license = Join-Path $PSScriptRoot '..\LICENSE'
     if (-not (Test-Path -LiteralPath $license -PathType Leaf)) { throw 'Missing project LICENSE.' }
     Copy-Item -LiteralPath $license -Destination (Join-Path $merged 'LICENSE')
-    & (Join-Path $PSScriptRoot 'Test-Publish.ps1') -PublishDirectory $merged
+    if (!$LegacyUpgradeFixture) {
+        Copy-Item -LiteralPath $OcrRuntime -Destination (Join-Path $merged 'OcrCuda') -Recurse
+    }
+    & (Join-Path $PSScriptRoot 'Test-Publish.ps1') -PublishDirectory $merged -LegacyUpgradeFixture:$LegacyUpgradeFixture
     if ($VersionTag) { Assert-PublishVersion $merged $version }
     New-Item -ItemType Directory -Path $output -Force | Out-Null
     Get-ChildItem -LiteralPath $merged -Force | Copy-Item -Destination $output -Recurse

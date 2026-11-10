@@ -11,6 +11,8 @@ PR29 为后续版本新增 Setup；**v0.1.0 已发布资产仍只有 Portable ZI
 
 两者都是 Windows 11 x64 的 .NET 10 self-contained 程序，包含桌面、CLI/MCP、OCR 模型及原生依赖，不要求另装运行时。Setup 允许选择空的可写程序目录或原安装目录；拒绝用户数据目录及其上下级、目录联接、短文件名别名指向的数据目录、非空的未知目录和过长启动路径。不要把用户数据放入程序目录。
 
+Tesseract 是默认 OCR，无需 NVIDIA GPU。PR36 的候选 Setup 和 Portable 都带有 `OcrCuda`。待分发许可及验收完成后，Xiaomi-OCR-0 用户只需兼容 NVIDIA GPU 和驱动，并在设置里选择、测试自行准备的语言 GGUF 和配套 mmproj。软件不包含、不下载也不复制这些模型，用户无需安装 CUDA Toolkit。请将模型放在程序目录之外，升级和卸载会保留外部文件及已保存的路径。见 [CUDA OCR 说明](OcrCuda.md)。
+
 下载同一版本的 Setup 或 ZIP 和 `SHA256SUMS.txt`，使用 `Get-FileHash -Algorithm SHA256` 核对对应条目。首期 EXE **没有 Authenticode 签名**；SHA-256 验证文件完整性，不能证明发布者身份，Windows 可能提示未知发布者。
 
 ## 开机自启与迁移

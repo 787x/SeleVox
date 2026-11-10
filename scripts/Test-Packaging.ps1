@@ -14,6 +14,37 @@ foreach ($tag in @('v01.2.3', '1.2.3', 'v1.2', 'v1.2.3-rc.0', 'v1.2.3-rc.01', 'v
 }
 $stable = Get-ReleaseVersion 'v12.34.56'
 if ($stable.Prerelease -or $stable.ZipName -cne 'SeleVox-v12.34.56-win-x64-portable.zip' -or $stable.Numeric -ne '12.34.56.0') { throw 'Stable version mapping failed' }
+$ocr = Join-Path $PublishDirectory 'OcrCuda'
+$dependency = Join-Path $ocr 'cublasLt64_13.dll'
+$backup = Join-Path (Split-Path ([IO.Path]::GetFullPath($PublishDirectory))) ('ocr-' + [guid]::NewGuid() + '.dll')
+Move-Item -LiteralPath $dependency -Destination $backup
+try {
+    Expect-Failure { & (Join-Path $PSScriptRoot 'Test-Publish.ps1') -PublishDirectory $PublishDirectory } 'Missing or empty OCR runtime file'
+} finally { Move-Item -LiteralPath $backup -Destination $dependency }
+$native = Join-Path $ocr 'selevox_ocr.dll'
+$originalNative = [IO.File]::ReadAllBytes($native)
+$changed = [byte[]]$originalNative.Clone()
+try {
+    $changed[$changed.Length - 1] = $changed[$changed.Length - 1] -bxor 1
+    [IO.File]::WriteAllBytes($native, $changed)
+    Expect-Failure { & (Join-Path $PSScriptRoot 'Test-OcrCudaRelease.ps1') -Directory $ocr } 'SHA-256 mismatch'
+    $machine = [BitConverter]::ToInt32($changed, 0x3C) + 4
+    $changed[$machine] = 0x4C
+    $changed[$machine + 1] = 0x01
+    [IO.File]::WriteAllBytes($native, $changed)
+    Expect-Failure { & (Join-Path $PSScriptRoot 'Test-OcrCudaRelease.ps1') -Directory $ocr } 'not x64'
+} finally { [IO.File]::WriteAllBytes($native, $originalNative) }
+$manifest = Join-Path $ocr 'runtime.json'
+$originalManifest = [IO.File]::ReadAllText($manifest)
+try {
+    [IO.File]::WriteAllText($manifest, $originalManifest.Replace('"13.4.1"', '"13.4.2"'))
+    Expect-Failure { & (Join-Path $PSScriptRoot 'Test-OcrCudaRelease.ps1') -Directory $ocr } 'version mismatch'
+} finally { [IO.File]::WriteAllText($manifest, $originalManifest) }
+$forbidden = Join-Path $PublishDirectory ('test-' + [guid]::NewGuid() + '.GGUF')
+try {
+    [IO.File]::WriteAllText($forbidden, 'Exclusion test marker')
+    Expect-Failure { & (Join-Path $PSScriptRoot 'Test-Publish.ps1') -PublishDirectory $PublishDirectory } 'forbidden'
+} finally { Remove-Item -LiteralPath $forbidden }
 & (Join-Path $PSScriptRoot 'Package-Windows.ps1') -VersionTag $VersionTag -PublishDirectory $PublishDirectory -OutputDirectory $OutputDirectory
 & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') -Directory $OutputDirectory -VersionTag $VersionTag
 $zip = Join-Path $OutputDirectory $version.ZipName

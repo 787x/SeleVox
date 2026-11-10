@@ -1,6 +1,7 @@
 #requires -Version 7.2
 param([Parameter(Mandatory)][string]$VersionTag, [string]$PublishDirectory = (Join-Path $PSScriptRoot '..\artifacts\win-x64'), [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\artifacts\release'))
 $ErrorActionPreference = 'Stop'
+$timer = [Diagnostics.Stopwatch]::StartNew()
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'Release-Version.ps1')
 $version = Get-ReleaseVersion $VersionTag
@@ -22,9 +23,12 @@ try {
 & (Join-Path $PSScriptRoot 'Test-Portable.ps1') -ZipPath $zip -PublishDirectory $source -VersionTag $VersionTag
 & (Join-Path $PSScriptRoot 'Build-Installer.ps1') -VersionTag $VersionTag -PublishDirectory $source -OutputDirectory $output
 $lines = foreach ($name in @($version.ZipName, $version.SetupName)) {
-    $hash = (Get-FileHash -LiteralPath (Join-Path $output $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+    $asset = Get-Item -LiteralPath (Join-Path $output $name)
+    Write-Host "$($asset.Length) bytes  $name"
+    if ($asset.Length -ge 2GB) { throw "Asset exceeds GitHub Release upload limit: $name" }
+    $hash = (Get-FileHash -LiteralPath $asset.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  $name`n"
 }
 [IO.File]::WriteAllText((Join-Path $output 'SHA256SUMS.txt'), ($lines -join ''), [Text.UTF8Encoding]::new($false))
 & (Join-Path $PSScriptRoot 'Test-ReleaseAssets.ps1') -Directory $output -VersionTag $VersionTag
-Write-Host "Validated portable and setup packages: $output"
+Write-Host "Validated portable and setup packages in $($timer.Elapsed): $output"

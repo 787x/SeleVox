@@ -10,7 +10,7 @@ $root = Join-Path ([Environment]::GetFolderPath('CommonDocuments')) ('SeleVox-in
 $created = $false
 try {
     New-Item -ItemType Directory -Path $root,(Join-Path $root 'scripts'),(Join-Path $root 'setup'),(Join-Path $root 'publish') | Out-Null
-    foreach ($name in @('Test-Installed.ps1', 'Test-InstalledUpgrades.ps1', 'Test-Publish.ps1', 'Release-Version.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $root 'scripts') }
+    foreach ($name in @('Test-Installed.ps1', 'Test-InstalledUpgrades.ps1', 'Test-Publish.ps1', 'Test-OcrCudaRelease.ps1', 'Release-Version.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $root 'scripts') }
     Copy-Item -LiteralPath (Join-Path $SetupDirectory $version.SetupName) -Destination (Join-Path $root 'setup')
     Get-ChildItem -LiteralPath $PublishDirectory -Force | Copy-Item -Destination (Join-Path $root 'publish') -Recurse
     if ($UpgradeFixtureDirectory) {

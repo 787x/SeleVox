@@ -1,8 +1,14 @@
 #requires -Version 7.2
-param([Parameter(Mandatory)][string]$PublishDirectory)
+param([Parameter(Mandatory)][string]$PublishDirectory, [switch]$LegacyUpgradeFixture)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $root = (Resolve-Path -LiteralPath $PublishDirectory).Path
+$ocr = Join-Path $root 'OcrCuda'
+if (!$LegacyUpgradeFixture) {
+    & (Join-Path $PSScriptRoot 'Test-OcrCudaRelease.ps1') -Directory $ocr
+} elseif (Test-Path -LiteralPath $ocr) {
+    throw 'Legacy upgrade fixtures must predate OcrCuda'
+}
 function Assert-File([string]$relative) {
     $path = Join-Path $root $relative
     if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -eq 0) {
@@ -49,7 +55,8 @@ foreach ($app in @('SeleVox.App', 'SeleVox.Cli')) {
 # User state, audio, test output, secrets and driver packages never belong in a release.
 foreach ($item in Get-ChildItem -LiteralPath $root -Recurse -Force) {
     if ($item.Name -match '^(settings|agent|samples|workbench|audio-workbench|secrets)\.json|^\.env($|\.)|^appsettings\.(Local|Development)\.json$|(^|[._-])(secrets?|credentials?|api[-_]?key)([._-]|$)|^(clones?|clone-library|clone-samples|driver-audit|TestResults)$|vbcable|vbaudio' -or
-        $item.Extension -in @('.wav', '.mp3', '.pcm', '.trx', '.binlog', '.tmp', '.dmp', '.mdmp', '.sys', '.inf', '.cat', '.zip')) {
+        $item.Extension -in @('.gguf', '.wav', '.mp3', '.pcm', '.trx', '.binlog', '.tmp', '.dmp', '.mdmp', '.sys', '.inf', '.cat', '.zip') -or
+        $item.Name -match '(^|[._-])mmproj([._-]|$)') {
         throw 'Publish contains a forbidden user-data, test-output, or driver file (name withheld).'
     }
 }
