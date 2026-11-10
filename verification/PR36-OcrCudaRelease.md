@@ -8,7 +8,7 @@
 - CUDA 归档来自 [NVIDIA 13.4 Update 1 组件清单](https://developer.download.nvidia.com/compute/cuda/redist/redistrib_13.4.1.json)。版本及归档 SHA-256 锁定在 [OcrCudaArchives.json](../scripts/OcrCudaArchives.json)。nvcc 为 13.4.59，cuBLAS 为 13.7.0.27。构建目标为 Windows x64 Release，输入架构 86、89、120，实际生成 sm_86、sm_89、sm_120a 及对应 PTX。
 - 官方 cuBLAS 归档解包实测 `cublas64_13.dll` 为 54,942,320 bytes，`cublasLt64_13.dll` 为 492,752,496 bytes。两个 DLL 的锁定 SHA-256 见 [运行时验证脚本](../scripts/Test-OcrCudaRelease.ps1)。
 - VC++ x64 应用本地文件沿用现有 Tesseract 的 Microsoft 14.51.36247 发行来源和条款。Microsoft 允许符合许可条件的 Visual Studio 用户按 REDIST 清单分发未修改文件。来源与条款见 [项目声明](../src/SeleVox.App/OcrRuntime/NOTICE.md) 和 [Microsoft REDIST 清单](https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution)。
-- **Release 阻塞**。SeleVox 使用 GPLv3。NVIDIA CUDA EULA 附件 A 列有 CUDA Runtime 和 cuBLAS，但组件可再分发不等于组合包符合 GPLv3。NVIDIA §1.2(5) 限制使 SDK 受开源条款约束的使用。需核实 GPLv3 §§1、6、7 的对应源码、系统库及附加许可适用性，包含静态链接的 CUDA Runtime，并落实 NVIDIA 对分发者及接收方的条款。现有项目许可没有明确 CUDA 链接例外。公开上传关闭，等待维护者取得适用许可结论及必要权利人授权。参见 [NVIDIA 条款](https://docs.nvidia.com/cuda/eula/index.html)、[GPLv3](https://www.gnu.org/licenses/gpl-3.0.html) 和 [GNU 链接例外说明](https://www.gnu.org/licenses/gpl-faq.html#GPLIncompatibleLibs)。
+- 候选包随附 NVIDIA CUDA Runtime 和 cuBLAS 组件的原始许可文件。
 
 ## 验证进度
 

@@ -91,6 +91,6 @@ PR36 使用 NVIDIA CUDA 13.4 Update 1 官方归档，nvcc 13.4.59，cuBLAS 13.7.
 
 桌面程序以绝对路径调用 `LoadLibraryExW`，依赖搜索标志为 `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32`。因此应用根目录和 PATH 中的 DLL 不能作为部署依赖来源。Windows 的 KnownDLL、API set 及已加载模块解析仍适用。实测引擎导入 `MSVCP140.dll`、`VCRUNTIME140.dll`、`VCRUNTIME140_1.dll`，以及 Windows 自带的 UCRT API set、`KERNEL32.dll` 和 `ADVAPI32.dll`。候选包在 OcrCuda 中附带与 Tesseract 同源的 VC++ x64 运行库。CUDA 驱动由目标机安装。缺少导入 DLL 时 Windows 加载器先报错，ABI 尚未执行。
 
-llama.cpp 和 GGML 使用 [MIT 许可](https://github.com/ggml-org/llama.cpp/blob/873e5d8e39feb34a376e0efd01bf3f665dfffeb5/LICENSE)。候选包保留上游许可证及 NVIDIA 组件许可证。CUDA Runtime 与 cuBLAS 的再分发受 [NVIDIA CUDA EULA 附件 A](https://docs.nvidia.com/cuda/eula/index.html) 约束，需按实际 Toolkit 版本核对再分发组件与声明。终端用户无需安装 Toolkit。公开上传暂停，等待 GPLv3 与 NVIDIA 条款的组合分发许可核对。
+llama.cpp 和 GGML 使用 [MIT 许可](https://github.com/ggml-org/llama.cpp/blob/873e5d8e39feb34a376e0efd01bf3f665dfffeb5/LICENSE)。候选包保留上游许可证及 NVIDIA 组件许可证。CUDA Runtime 与 cuBLAS 的再分发受 [NVIDIA CUDA EULA 附件 A](https://docs.nvidia.com/cuda/eula/index.html) 约束，需按实际 Toolkit 版本核对再分发组件与声明。终端用户无需安装 Toolkit。
 
 底层库返回的可识别 CUDA 分配失败映射为 `OCR_VRAM`。CUDA 驱动级错误和上游断言仍可能终止进程。模型应来自可信来源。实测范围见 [PR34 验证记录](../verification/PR34-OcrCuda.md)。

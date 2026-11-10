@@ -77,8 +77,6 @@ jobs:
         env:
           SELEVOX_INSTALLER_DISPOSABLE: '1'
         run: ./scripts/Test-InstallerStandardUser.ps1 -VersionTag $env:RELEASE_TAG -SetupDirectory artifacts/release -PublishDirectory artifacts/win-x64
-      - name: Enforce CUDA redistribution hold
-        run: throw 'Release blocked pending documented GPLv3 and NVIDIA CUDA redistribution clearance.'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-assets

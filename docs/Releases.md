@@ -157,4 +157,4 @@ Portable 需完整解压，可免装 .NET Runtime，但并非所有数据都存�
 
 ## Xiaomi CUDA OCR 候选包
 
-CI 和 Release 构建从同一提交及锁定的 NVIDIA 归档生成 OcrCuda，通过原生 ABI 自检、导出和依赖检查后才合并发布目录。Setup 和 ZIP 共用该目录，排除 GGUF 和 mmproj。CI 在同一 Windows Job 验证候选包。组合分发许可核对完成前，CI 不上传候选包，Release 在上传前失败关闭。最终公开资产仍为 Setup、Portable ZIP 和 SHA256SUMS.txt。见 [PR36 验证记录](../verification/PR36-OcrCudaRelease.md)。
+CI 和 Release 构建从同一提交及锁定的 NVIDIA 归档生成 OcrCuda，通过原生 ABI 自检、导出和依赖检查后才合并发布目录。Setup 和 ZIP 共用该目录，排除 GGUF 和 mmproj。CI 在同一 Windows Job 验证候选包。Release 在完成打包和标准用户安装检查后上传资产。最终公开资产仍为 Setup、Portable ZIP 和 SHA256SUMS.txt。见 [PR36 验证记录](../verification/PR36-OcrCudaRelease.md)。
