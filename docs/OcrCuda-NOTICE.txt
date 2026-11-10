@@ -1,18 +1,17 @@
-SeleVox Xiaomi OCR runtime
+SeleVox Xiaomi OCR 运行时第三方声明
 
-SeleVox is licensed under GPLv3. See LICENSE in the application root.
-The runtime incorporates llama.cpp, GGML and MTMD from commit
-873e5d8e39feb34a376e0efd01bf3f665dfffeb5. See llama.cpp-LICENSE.txt.
+SeleVox 采用 GPLv3。详见程序根目录的 LICENSE。
+原生运行时包含 llama.cpp、GGML 和 MTMD，源码固定在提交
+873e5d8e39feb34a376e0efd01bf3f665dfffeb5。上游许可见 llama.cpp-LICENSE.txt。
 
-NVIDIA CUDA 13.4 Update 1 components include the linked CUDA Runtime
-and the cuBLAS and cuBLASLt DLLs. See cuda_cudart-LICENSE.txt and
-libcublas-LICENSE.txt. NVIDIA components are subject to their own terms.
+NVIDIA CUDA 13.4 Update 1 组件包括链接到引擎中的 CUDA Runtime，
+以及 cuBLAS 和 cuBLASLt DLL。相关条款见 cuda_cudart-LICENSE.txt
+和 libcublas-LICENSE.txt。
 
-The application-local Microsoft Visual C++ x64 runtime is the same
-Microsoft redistributable used by Tesseract. See OcrRuntime in the
-application root for the Microsoft terms and source.
+随包附带的 Microsoft Visual C++ x64 运行库与 Tesseract 使用的文件相同。
+来源和 Microsoft 条款见程序根目录的 OcrRuntime。
 
-Vendored notices from the pinned llama.cpp checkout follow.
+以下为固定 llama.cpp 提交中的第三方声明原文。
 
 --- vendor/hash/xxhash/LICENSE ---
 
