@@ -55,7 +55,7 @@ jobs:
           name: test-results-${{ github.run_id }}-${{ github.run_attempt }}
           path: TestResults/ci/**/*.trx
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 90
       - name: Build pinned CUDA OCR runtime and verify ABI (no GPU required)
         run: ./scripts/Build-OcrCudaRelease.ps1
       - name: Publish self-contained and verify integrity
