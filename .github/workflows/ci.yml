@@ -79,5 +79,5 @@ jobs:
           name: SeleVox-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/release/
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 7
           compression-level: 0
