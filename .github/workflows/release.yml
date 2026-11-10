@@ -10,7 +10,6 @@ concurrency:
 jobs:
   build:
     runs-on: windows-2025
-    timeout-minutes: 75
     outputs:
       commit: ${{ steps.identity.outputs.commit }}
     defaults:

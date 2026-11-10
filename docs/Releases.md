@@ -158,3 +158,5 @@ Portable 需完整解压，可免装 .NET Runtime，但并非所有数据都存�
 ## Xiaomi CUDA OCR 候选包
 
 CI 和 Release 构建从同一提交及锁定的 NVIDIA 归档生成 OcrCuda，通过原生 ABI 自检、导出和依赖检查后才合并发布目录。Setup 和 ZIP 共用该目录，排除 GGUF 和 mmproj。CI 在同一 Windows Job 验证候选包。Release 在完成打包和标准用户安装检查后上传资产。最终公开资产仍为 Setup、Portable ZIP 和 SHA256SUMS.txt。见 [PR36 验证记录](../verification/PR36-OcrCudaRelease.md)。
+
+需要实机验收时，在 GitHub 仓库打开 **Actions → Windows CI → Run workflow**，在分支下拉菜单选择待验收分支，再点击 **Run workflow**。只有手动运行且全部检查通过后，运行详情的 **Artifacts** 才会出现 `SeleVox-candidate-<run ID>-<run attempt>`，内含 `v0.0.0-rc.1` 的 Setup、Portable ZIP 和 `SHA256SUMS.txt`，保留 3 天。PR 和 push CI 仍执行完整验证。手动运行不会创建正式 Release。
