@@ -72,11 +72,11 @@ jobs:
         env:
           SELEVOX_INSTALLER_DISPOSABLE: '1'
         run: ./scripts/Test-InstallerStandardUser.ps1 -VersionTag v0.0.0-rc.1 -SetupDirectory artifacts/release -PublishDirectory artifacts/win-x64 -UpgradeFixtureDirectory artifacts/upgrade-fixtures
-      - name: Upload validated candidate Setup and Portable
-        if: ${{ success() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
+      - name: Upload validated Setup and Portable
+        if: ${{ success() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: SeleVox-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          name: SeleVox-${{ github.event_name == 'pull_request' && 'pr' || github.event_name == 'push' && 'main' || 'manual' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/release/
           if-no-files-found: error
           retention-days: 7
