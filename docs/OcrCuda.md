@@ -1,6 +1,6 @@
 # Xiaomi-OCR-0 原生 CUDA 组件
 
-独立的 Windows x64 开发组件。SeleVox 桌面 OCR 仍使用 Tesseract。编译和 ABI 自检无需模型文件或物理 GPU。
+SeleVox 默认使用 Tesseract。开发构建可通过本地 Windows x64 CUDA 运行时启用 Xiaomi-OCR-0。原生组件编译和 ABI 自检无需模型文件或物理 GPU。
 
 ## 构建和运行
 
@@ -20,6 +20,44 @@ $fixtures = @('mixed', 'code', 'small', 'blank') | ForEach-Object { "./artifacts
 普通测试模式把 OCR UTF-8 文本写到 stdout，耗时和错误写到 stderr。测试程序使用 Windows Imaging Component 将第一帧解码为 RGB24。验证模式读取每张图片对应的 UTF-8 `.png.txt`，忽略 ASCII 空白后比较全部文本，可检测额外说明、重复及截断。可设置 `SELEVOX_OCR_GPU_DIAGNOSTICS=1` 输出 CUDA 放置与缓冲区摘要。
 
 默认启用的 `BUILD_TESTING` 还会构建 `selevox_ocr_concurrency.exe`。用上述 `--verify` 参数运行该程序，第一个样本须包含文字。该程序编译同一份 ABI 实现，在输出提交前通过私有测试同步点暂停工作线程，检查重入、销毁、取消和重试。发布 DLL 不含测试同步点。
+
+## 接入桌面开发构建
+
+完成原生构建后，在仓库根目录运行。将 `-CudaBin` 指向构建 DLL 时使用的 Toolkit 的 CUDA DLL 目录。
+
+```powershell
+dotnet build SeleVox.slnx -c Release
+$app = './src/SeleVox.App/bin/Release/net10.0-windows10.0.26100.0'
+$test = './tests/SeleVox.Tests/bin/Release/net10.0-windows10.0.26100.0'
+$cuda = Join-Path $env:CUDA_PATH 'bin/x64'
+foreach ($output in @($app, $test)) {
+    ./scripts/Prepare-OcrCudaDev.ps1 -NativeBin ./artifacts/ocr-cuda/bin -CudaBin $cuda -AppOutput $output
+}
+& "$app/SeleVox.App.exe"
+```
+
+脚本只复制原生 DLL。默认依赖适用于下文的 CUDA 13.4 构建。其他构建先用 `dumpbin /dependents` 确认引擎和传递依赖，再通过 `-CudaDependencies` 指定文件名。程序只在测试或使用 Xiaomi 时，从自身输出目录的 `OcrCuda` 子目录加载引擎，依赖搜索限于该目录和 Windows System32。通过 ABI 检查的 CUDA 模块在进程退出前保持加载，模型句柄独立管理。Setup、Portable ZIP 及 Release 工作流由 PR36 集成原生依赖和许可证。
+
+在设置页选择 Xiaomi-OCR-0，通过两个“浏览”按钮分别指定语言模型和 mmproj。模型由用户自行下载，文件名无需包含精度标识。测试会对固定的合成文字图片执行一次实际识别。测试通过后点击“保存设置”。程序启动时不加载模型。截图 OCR 首次使用时才加载，同一组合后续截图复用实例。测试另一组模型会释放已缓存的实例，为候选模型腾出显存。测试结束后候选实例会释放，下一次截图按已保存设置重新加载。
+
+### 桌面验收
+
+1. 启动开发构建，确认默认 Tesseract 可以框选识别。选择 BF16 语言 GGUF 和配套 mmproj，路径可包含中文及空格。点击测试，确认窗口可操作，测试成功后保存。
+2. 打开 `scripts/New-OcrCudaFixtures.ps1` 生成的混排样例图片，按 `Ctrl+Alt+O` 框选。确认中英文结果及编辑、复制、朗读、问 AI 按钮。重复框选以验证复用。
+3. 用 Q4_K_M 语言模型重复测试、保存和识别。推理中按 `Ctrl+Alt+X`，确认取消后没有新结果或自动动作。再框选，确认可正常识别。
+4. 更换为错误文件、缺失投影器，并在隐藏 GPU 的新进程中分别测试，确认错误提示及原生效设置。切回 Tesseract，验证仍能识别且已保存路径仍在。测试期间退出，确认退出在原生调用收尾后完成。
+5. 可通过真实 GPU 自动化测试重复设置页、模型测试、保存、混排识别和回切检查。将四个路径替换为本地文件，使用与应用一致的依赖。
+
+```powershell
+$env:SELEVOX_XIAOMI_GPU_TESTS = '1'
+$env:SELEVOX_XIAOMI_BF16 = 'D:/Models/BF16 语言.gguf'
+$env:SELEVOX_XIAOMI_Q4 = 'D:/Models/Q4_K_M 语言.gguf'
+$env:SELEVOX_XIAOMI_MMPROJ = 'D:/Projectors/视觉.gguf'
+$env:SELEVOX_XIAOMI_FIXTURE = (Resolve-Path './artifacts/ocr-fixtures/mixed.png').Path
+dotnet test tests/SeleVox.Tests -c Release --no-build --filter 'FullyQualifiedName~RealSettingsTestAndMixedTextRecognition'
+# 新进程中模拟 CUDA 设备不可用，重复同一测试命令。
+$env:CUDA_VISIBLE_DEVICES = '-1'
+```
 
 ## 模型和预算
 
@@ -49,7 +87,9 @@ internal static extern void ocr_free_text(nint text);
 
 `artifacts/ocr-cuda/bin` 生成 `selevox_ocr.dll` 与测试程序。llama、mtmd、ggml 和 ggml-cuda 作为静态库链接。CMake 使用 `CUDA::cudart`，其在实测 Windows CUDA 13.4.59 工具链中指向 `lib/x64/cudart.lib`。该库含所用 CUDA Runtime 函数的对象定义，实测引擎及两级 cuBLAS DLL 的导入表无 `cudart64_13.dll`。此结果适用于该工具链产物，换用 Toolkit 或构建选项时应重新检查。
 
-后续发行应随引擎放置同版本的 `cublas64_13.dll`（直接依赖）及 `cublasLt64_13.dll`（传递依赖）。目标机还需 x64 MSVC Redistributable（`MSVCP140.dll`、`VCRUNTIME140.dll`、`VCRUNTIME140_1.dll`）、Windows 自带的 UCRT 和系统 DLL，以及由兼容 NVIDIA 驱动提供的 `nvcuda.dll`。开发机可通过 Toolkit 的 `bin/x64` 提供 cuBLAS DLL。未来部署可从受控的绝对目录加载引擎，使用 `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS` 解析依赖，再由 P/Invoke resolver 返回模块。缺少导入 DLL 时 Windows 加载器会先报错，进入 ABI 后才能返回结构化 CUDA 状态。
+PR36 打包时，将同一 CUDA 版本的 `cublas64_13.dll`（引擎直接导入）和 `cublasLt64_13.dll`（cuBLAS 传递导入）与 `selevox_ocr.dll` 同放在应用的 `OcrCuda` 子目录。CUDA 13.4.59 实测产物未导入独立的 `cudart` DLL。若换用 Toolkit 或编译选项，重新用 `dumpbin /dependents` 检查引擎和每一级依赖。
+
+桌面程序以绝对路径调用 `LoadLibraryExW`，依赖搜索标志为 `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32`。因此应用根目录和 PATH 中的 DLL 不能作为部署依赖来源。Windows 的 KnownDLL、API set 及已加载模块解析仍适用。实测引擎导入 `MSVCP140.dll`、`VCRUNTIME140.dll`、`VCRUNTIME140_1.dll`，以及 Windows 自带的 UCRT API set、`KERNEL32.dll` 和 `ADVAPI32.dll`。本机从 x64 System32 提供 VC++ 运行库和 NVIDIA 驱动的 `nvcuda.dll`。PR36 需要在干净目标机上验证 VC++ x64 Redistributable 前置条件，或验证合规的应用本地运行库随引擎放置。CUDA 驱动由目标机安装。缺少导入 DLL 时 Windows 加载器先报错，ABI 尚未执行。
 
 llama.cpp 和 GGML 使用 [MIT 许可](https://github.com/ggml-org/llama.cpp/blob/873e5d8e39feb34a376e0efd01bf3f665dfffeb5/LICENSE)。未来打包时应保留上游许可证及 vendored 组件声明。CUDA Runtime 与 cuBLAS 的再分发受 [NVIDIA CUDA EULA 附件 A](https://docs.nvidia.com/cuda/eula/index.html) 约束，需按实际 Toolkit 版本核对再分发组件与声明。终端用户无需安装 Toolkit。
 

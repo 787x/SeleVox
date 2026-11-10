@@ -4,6 +4,7 @@ namespace SeleVox.Core;
 
 public sealed record ApplicationRule(string ExecutablePath, bool AutoSpeak = true, bool AutoAsk = false);
 public sealed record VirtualMicrophoneRoute(string RenderId, string CaptureId, string DriverInstanceId, bool RecordingVerified = false);
+public enum OcrEngine { Tesseract = 0, XiaomiCuda = 1 }
 public enum OcrCompletionAction { ShowResult = 0, Read = 1, AskAi = 2 }
 public enum TtsProvider { Windows = 0, Azure = 1, Edge = 2, MiMo = 3, OpenAiCompatible = 4 }
 
@@ -24,6 +25,9 @@ public sealed record Settings(string? VoiceId = null, double Rate = 1, float Vol
     PromptPreset[]? CustomPrompts = null, string? SelectedPromptId = null,
     int StartupSilenceMilliseconds = 100)
 {
+    public OcrEngine OcrEngine { get; init; }
+    public string? XiaomiModelPath { get; init; }
+    public string? XiaomiProjectorPath { get; init; }
     public OcrCompletionAction OcrAction { get; init; }
     public bool AllowOcrLlm { get; init; }
     public string? OcrLlmAuthorizedBaseUrl { get; init; }
@@ -56,7 +60,7 @@ public sealed record Settings(string? VoiceId = null, double Rate = 1, float Vol
     public bool IsValid => double.IsFinite(Rate) && Rate is >= 0.5 and <= 2 &&
                            float.IsFinite(Volume) && Volume is >= 0 and <= 1 && StartupSilenceMilliseconds is >= 0 and <= 250 &&
                            Enum.IsDefined(LlmReadingStrategy) && ThinkingSettings.IsValid(LlmThinkingProtocol, LlmThinking) &&
-                           PromptPresets.IsValid(CustomPrompts) && Enum.IsDefined(Provider) && Enum.IsDefined(OcrLanguage) && Enum.IsDefined(OcrAction) && EdgePitchHz is >= -100 and <= 100 && EdgeLocaleFilter is not null && AzureRegion is not null &&
+                           PromptPresets.IsValid(CustomPrompts) && Enum.IsDefined(Provider) && Enum.IsDefined(OcrEngine) && Enum.IsDefined(OcrLanguage) && Enum.IsDefined(OcrAction) && EdgePitchHz is >= -100 and <= 100 && EdgeLocaleFilter is not null && AzureRegion is not null &&
                            NormalizeServiceUrl(LlmBaseUrl) is not null && LlmModel is { Length: <= 200 } && LlmSystemPrompt is { Length: <= 8192 } &&
                            MiMoVoices.Contains(MiMoVoice) && MiMoStyle is { Length: <= 1000 } && MiMoStyleTags.IsValid(MiMoOverallStyles) && !string.IsNullOrWhiteSpace(MiMoModel) && MiMoModel.Length <= 200 &&
                            NormalizeServiceUrl(OpenAiBaseUrl) is not null && !string.IsNullOrWhiteSpace(OpenAiModel) && OpenAiModel.Length <= 200 &&

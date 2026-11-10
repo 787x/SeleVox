@@ -14,6 +14,25 @@
         </StackPanel>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"><StackPanel>
             <TextBlock Text="屏幕框选 OCR · Ctrl+Alt+O（本地识别，不自动复制）" TextWrapping="Wrap" Margin="0,0,0,6"/>
+            <TextBlock Text="OCR 引擎" Margin="0,0,0,6"/>
+            <ComboBox x:Name="OcrEngineChoice" Height="32" Margin="0,0,0,8" SelectionChanged="OcrEngine_Changed">
+                <ComboBoxItem Content="Tesseract（默认）"/><ComboBoxItem Content="Xiaomi-OCR-0（NVIDIA CUDA）"/>
+            </ComboBox>
+            <StackPanel x:Name="XiaomiModelsPanel" Visibility="Collapsed" Margin="0,0,0,12">
+                <TextBlock Text="请自行下载配套 GGUF。Xiaomi 自动识别图中文字，下方语言设置仅对 Tesseract 生效。" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                <TextBlock Text="语言模型 GGUF"/>
+                <DockPanel Margin="0,4,0,8">
+                    <Button DockPanel.Dock="Right" Content="浏览…" Click="BrowseOcrModel_Click" Padding="12,3" Margin="8,0,0,0" AutomationProperties.Name="浏览语言模型"/>
+                    <TextBox x:Name="XiaomiModelPath" TextChanged="OcrPath_Changed"/>
+                </DockPanel>
+                <TextBlock Text="视觉投影器 mmproj GGUF"/>
+                <DockPanel Margin="0,4,0,8">
+                    <Button DockPanel.Dock="Right" Content="浏览…" Click="BrowseOcrProjector_Click" Padding="12,3" Margin="8,0,0,0" AutomationProperties.Name="浏览视觉投影器"/>
+                    <TextBox x:Name="XiaomiProjectorPath" TextChanged="OcrPath_Changed"/>
+                </DockPanel>
+                <Button x:Name="TestOcrModel" Content="测试模型" Click="TestOcrModel_Click" HorizontalAlignment="Left" Padding="12,4"/>
+                <TextBlock x:Name="OcrModelStatus" TextWrapping="Wrap" Margin="0,6,0,0"/>
+            </StackPanel>
             <ComboBox x:Name="OcrLanguageChoice" Height="32" Margin="0,0,0,16">
                 <ComboBoxItem Content="简体中文 + 英文"/><ComboBoxItem Content="英文"/>
             </ComboBox>

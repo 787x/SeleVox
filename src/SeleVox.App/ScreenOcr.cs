@@ -87,6 +87,14 @@ internal sealed class ScreenSnapshot(Rectangle bounds, Bitmap image) : IDisposab
     [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(nint hwnd, int attribute, ref int value, int size);
 }
 
+internal sealed class ScreenOcr(LocalOcr local, XiaomiOcr xiaomi)
+{
+    internal Task<CapturedText> RecognizeAsync(Bitmap image, Settings snapshot, CancellationToken token) =>
+        snapshot.OcrEngine == OcrEngine.XiaomiCuda
+            ? xiaomi.RecognizeAsync(image, OcrModels.From(snapshot), token)
+            : local.RecognizeAsync(image, snapshot.OcrLanguage, token);
+}
+
 internal sealed class LocalOcr(string? dataDirectory = null)
 {
     private readonly SemaphoreSlim gate = new(1, 1);
