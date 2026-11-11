@@ -19,7 +19,7 @@ SeleVox 是一款面向 **Windows 11 x64** 的桌面文字朗读、AI 语音问�
 | --- | --- |
 | **选中即读** | 全局热键朗读选区，或在指定应用内开启 Auto Speak，鼠标选中文字后自动朗读。 |
 | **选中即问 AI** | 手动问答或按应用启用 Auto Ask；流式展示回答，支持逐句低延迟朗读、编辑问题与重新生成。 |
-| **离线 OCR** | 框选屏幕区域识别中英文，可编辑、复制、朗读或交给 AI。 |
+| **本地 OCR 双引擎** | 默认 Tesseract，兼容 NVIDIA GPU 时也可选 Xiaomi-OCR-0；框选中英文后可编辑、复制、朗读或交给 AI。 |
 | **五种 TTS** | Windows 本地、Azure Speech、Edge Neural、Xiaomi MiMo、OpenAI-Compatible TTS。 |
 | **MiMo 创作工作台** | 自然语言风格、整体与句内标签、唱歌、导演模式、VoiceDesign、VoiceClone、AI 辅助创作。 |
 | **音频生成** | 使用独立窗口生成、试听并导出 WAV；已生成结果重复试听/保存不重新请求 TTS。 |
@@ -28,15 +28,15 @@ SeleVox 是一款面向 **Windows 11 x64** 的桌面文字朗读、AI 语音问�
 
 ## 📦 下载与安装
 
-**最新正式版：** [v0.1.2](https://github.com/787x/SeleVox/releases/tag/v0.1.2)（提供 Setup 安装版和 Portable 便携版）
+**最新正式版：** [v0.1.3](https://github.com/787x/SeleVox/releases/tag/v0.1.3)（提供 Setup 安装版和 Portable 便携版）
 
 自 **v0.1.1** 起同时提供当前用户 Setup 安装版和 Portable ZIP（v0.1.0 仅有 Portable ZIP）。Setup 默认安装到 `%LOCALAPPDATA%\Programs\SeleVox`，提供开始菜单、可选桌面快捷方式和卸载入口。Setup 与 Portable 的数据、自启、迁移及卸载说明见 [Windows 安装指南](docs/Installation.md)。Setup 尚未配置 Authenticode 签名，SHA-256 不能代替发布者身份签名。
 
-**安装版：** 下载 Release 中的 `SeleVox-v0.1.2-win-x64-setup.exe`，运行安装向导并从开始菜单启动 SeleVox；开机自启可在主设置中启用。
+**安装版：** 下载 Release 中的 `SeleVox-v0.1.3-win-x64-setup.exe`，运行安装向导并从开始菜单启动 SeleVox；开机自启可在主设置中启用。
 
 Portable 使用步骤：
 
-1. 下载 ZIP，**完整解压**到固定目录，例如 `D:\Apps\SeleVox`；不要只提取 EXE，OCR 模型、原生依赖和 CLI 需要保留在原目录结构中。
+1. 下载 ZIP，**完整解压**到固定目录，例如 `D:\Apps\SeleVox`；不要只提取 EXE，内置的 Tesseract 数据、`OcrCuda` 原生依赖和 CLI 需要保留在原目录结构中；Xiaomi GGUF 模型须自行准备。
 2. 启动 `SeleVox\SeleVox.App.exe`。关闭设置窗口后程序会留在系统托盘，托盘菜单可重新打开设置、音频生成、暂停/停止或退出。
 3. 首次使用默认的 **Windows 本地 TTS**，不需要 API Key，也不要求安装 .NET 运行时。需要在线语音或 AI 时，再到设置窗口配置相应服务并保存。
 4. 可选：在托盘右键菜单勾选“登录 Windows 时自动启动”，立即保存当前用户的自启设置；也可在设置中修改并保存。两处状态同步，托盘切换保留主窗口其他未保存的编辑，且不会打断当前任务。失败时保留原状态并提示；若启动项恢复也失败，会明确提示检查 Windows 启动设置。该勾选表示 SeleVox 已保存的自启配置，Windows 启动管理器仍可单独阻止启动。Auto Speak、Auto Ask 和音频输出设备可在设置中配置。
@@ -63,7 +63,7 @@ Portable 使用步骤：
 
 按 **`Ctrl+Alt+O`**，拖动选择屏幕区域。框选使用深浅双轮廓的高对比度十字光标，便于在浅色和深色背景上定位。SeleVox 在本机识别简体中文和英文，并打开可编辑结果窗口，供你**复制、朗读或问 AI**；按 `Esc` 可取消框选。
 
-默认引擎是 Tesseract，支持简体中文和英文。PR36 候选安装包集成 Xiaomi-OCR-0（兼容 NVIDIA GPU 和驱动）。使用候选包无需 CUDA Toolkit。软件不包含、不下载也不复制模型。首次截图识别加载模型并占用显存，后续识别复用实例。精度支持取决于实际 GGUF 和内置 llama.cpp 版本。在设置中分别选择自行下载的语言 GGUF 和配套视觉投影器 mmproj GGUF，点击“测试模型”，成功后点击底部“保存设置”。两份文件可放在不同目录。Xiaomi 自动识别图片中的文字，语言下拉框仅对 Tesseract 生效。切回 Tesseract 时会保留已保存的 Xiaomi 文件路径。架构范围和准备方式见 [CUDA OCR 说明](docs/OcrCuda.md)。
+默认引擎是 Tesseract，支持简体中文和英文。v0.1.3 的 Setup 和 Portable 均已集成 Xiaomi-OCR-0 的 CUDA 运行时（需要兼容的 NVIDIA GPU 和驱动），无需另行安装 CUDA Toolkit。软件不包含、不下载也不复制模型。首次截图识别加载模型并占用显存，后续识别复用实例。精度支持取决于实际 GGUF 和内置 llama.cpp 版本。在设置中分别选择自行下载的语言 GGUF 和配套视觉投影器 mmproj GGUF，点击“测试模型”，成功后点击底部“保存设置”。两份文件可放在不同目录。Xiaomi 自动识别图片中的文字，语言下拉框仅对 Tesseract 生效。切回 Tesseract 时会保留已保存的 Xiaomi 文件路径。架构范围和准备方式见 [CUDA OCR 说明](docs/OcrCuda.md)。
 
 OCR 区域可选择并保存识别后的互斥动作：**仅显示结果**（默认，旧配置保持此行为）、**自动朗读**或**自动问 AI**。每次仍须主动框选；先显示结果窗口，再执行一次所选动作，始终不自动复制。自动动作使用本次识别原文和已保存配置，随后编辑只影响手动按钮。多显示器下可在任一显示器内框选，单次不跨越多块屏幕。
 
@@ -182,7 +182,7 @@ MCP 客户端配置示例（根据客户端要求填入自己的绝对路径）�
 
 ## 🔐 隐私、凭据与配置
 
-- **默认本地**：首次使用 Windows 本地 TTS；OCR 使用本地 Tesseract。两者不要求将正文发送到网络。
+- **默认本地**：首次使用 Windows 本地 TTS；OCR 默认使用 Tesseract，也可选择本地 Xiaomi CUDA OCR。这些功能不要求将正文或截图发送到网络。
 - **自动操作由用户控制**：Auto Speak、Auto Ask 默认关闭；按应用的完整可执行文件路径配置规则，自动上传需单独授权。手动朗读或手动问 AI 属于用户主动请求。
 - **云端请求有明确边界**：在线 TTS 会接收待合成文本；LLM 会接收问题与相应 Prompt；在线朗读 AI 答案可能再次将回答发送给另一个 TTS 服务。具体数据处理和费用取决于你选择的服务。
 - **凭据隔离**：API Key 存入 Windows Credential Manager，LLM 和 TTS 分开管理；支持自定义地址的凭据按服务地址隔离，不写入普通 JSON 配置。
@@ -205,6 +205,7 @@ MCP 客户端配置示例（根据客户端要求填入自己的绝对路径）�
 
 - **UI Automation**：并非所有程序都提供可读取的真实文本选区；密码控件不会读取。无法选择的内容可尝试 OCR，但复杂排版、公式和小字体可能识别不准确。
 - **自动捕获**：Auto Speak / Auto Ask 面向满足规则的鼠标选区，不是后台监视全部窗口、持续屏幕 OCR 或全局剪贴板朗读。
+- **Xiaomi CUDA OCR**：仅适用于兼容 NVIDIA GPU 与驱动；当前运行时包含 `sm_86`、`sm_89`、`sm_120a` 及对应 PTX，不保证适配全部显卡。需自行准备相互兼容的 GGUF 和 mmproj，模型加载会占用显存，识别质量及换行效果取决于模型。没有兼容 GPU 时仍可使用 Tesseract。
 - **云端服务**：需要自行配置账号或 API Key；部分服务可能收费，模型、音色或请求参数的兼容性由实际服务决定。Edge 在线 TTS 为实验性接入，可能因上游协议变化而失效。
 - **流式与延迟**：MiMo 日常朗读支持增量 PCM；工作台/Agent 的 WAV 合成与不同模型可能使用非流式路径。逐句 AI 朗读会等待句子切分与 TTS，不能保证总是比完整回答模式更快。
 - **虚拟麦克风**：当前依赖用户另装的普通 VB-CABLE；目标应用须自行选定虚拟 Capture。它不是 SeleVox 自研驱动，也不包含自动安装器。
