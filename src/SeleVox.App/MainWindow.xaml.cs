@@ -28,7 +28,10 @@ public partial class MainWindow : Window
         Func<CancellationToken, Task<IReadOnlyList<EdgeVoiceChoice>>>? queryEdge = null)
     {
         InitializeComponent(); this.save = save; this.pause = pause; this.stop = stop; this.exit = exit;
-        this.addForeground = addForeground; this.cancelAutomatic = cancelAutomatic; savedSettings = settings; SetAutomaticSettings(settings);
+        this.addForeground = addForeground; this.cancelAutomatic = cancelAutomatic;
+        AutomaticReadDelay.ItemsSource = Enumerable.Range(0, 21).Select(step => step / 2.0).ToArray();
+        savedSettings = settings; SetAutomaticSettings(settings);
+        AutomaticReadDelay.SelectionChanged += AutomaticReadDelay_Changed;
         this.queryEdge = queryEdge ?? new EdgeSpeech().GetVoicesAsync;
         try
         {
@@ -103,9 +106,15 @@ public partial class MainWindow : Window
         savedSettings = savedSettings with { StartWithWindows = enabled };
         AutoStart.IsChecked = enabled;
     }
+    internal void SetAutomaticReadDelay(double seconds)
+    {
+        savedSettings = savedSettings with { AutomaticReadDelaySeconds = seconds };
+        AutomaticReadDelay.SelectedItem = seconds;
+    }
     public void SetAutomaticSettings(Settings settings)
     {
         savedSettings = settings; AutoSpeak.IsChecked = settings.AutoSpeak; AutoAsk.IsChecked = settings.AutoAsk;
+        AutomaticReadDelay.SelectedItem = settings.AutomaticReadDelaySeconds;
         SetStartupSettings(settings.StartWithWindows);
         if (virtualTimer is not null) UpdateVirtualStatus();
         diagnosticsWindow?.Refresh();
@@ -534,6 +543,13 @@ public partial class MainWindow : Window
             Outputs.ItemsSource = devices; foreach (var choice in devices) Outputs.SelectedItems.Add(choice);
         }
         finally { refreshingOutputs = false; }
+    }
+    private void AutomaticReadDelay_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (AutomaticReadDelay.SelectedItem is not double seconds || seconds == savedSettings.AutomaticReadDelaySeconds) return;
+        var error = save(savedSettings with { AutomaticReadDelaySeconds = seconds });
+        if (error is not null) SetAutomaticReadDelay(savedSettings.AutomaticReadDelaySeconds);
+        SetNotice(error ?? "自动朗读延迟已保存。");
     }
     private void SaveAutomatic(Settings updated)
     {

@@ -114,10 +114,9 @@ public sealed class MiMoLargeEventTests
         var count = 0;
         await foreach (var decoded in MiMoSpeech.ReadSseAudioAsync(input, default)) { Assert.Equal(pcm, decoded); ++count; }
         Assert.Equal(1, count);
-        using var stop = new CancellationTokenSource(); var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var stop = new CancellationTokenSource();
         var encoded = new string('A', 16 * 1024 * 1024);
-        var decoding = Task.Run(() => { entered.TrySetResult(); return MiMoSpeech.DecodeBase64(encoded, stop.Token); });
-        await entered.Task; stop.Cancel(); await Assert.ThrowsAnyAsync<OperationCanceledException>(() => decoding);
+        Assert.ThrowsAny<OperationCanceledException>(() => MiMoSpeech.DecodeBase64(encoded, stop.Token, stop.Cancel));
     }
     [Fact] public async Task WireByteLimitCountsCrLfAndUnknownLengthResponseRemainsBounded()
     {

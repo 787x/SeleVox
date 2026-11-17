@@ -72,7 +72,7 @@ internal sealed partial class MiMoSpeech(HttpClient? client = null, Func<string?
         { throw new UserFeedbackException("MiMo 响应 JSON 无效或缺少音频。"); }
     }
 
-    internal static byte[] DecodeBase64(string data, CancellationToken cancellation)
+    internal static byte[] DecodeBase64(string data, CancellationToken cancellation, Action? firstBlockDecoded = null)
     {
         // Count first, then decode cancellable blocks directly into one exact-size PCM allocation.
         // Avoid MemoryStream growth plus ToArray duplicating a large SSE audio payload.
@@ -93,6 +93,7 @@ internal sealed partial class MiMoSpeech(HttpClient? client = null, Func<string?
         {
             cancellation.ThrowIfCancellationRequested();
             if (!Convert.TryFromBase64Chars(chars.AsSpan(0, count), output.AsSpan(offset), out var written)) throw new FormatException();
+            if (offset == 0) firstBlockDecoded?.Invoke();
             offset += written; count = 0;
         }
         for (var i = 0; i < data.Length; ++i)

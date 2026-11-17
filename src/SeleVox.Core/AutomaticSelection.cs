@@ -4,7 +4,7 @@ using System.Text;
 namespace SeleVox.Core;
 
 // Capture is separate from submission: failed, stale and duplicate captures never touch audio.
-public sealed class AutomaticSelection : IDisposable
+public sealed class AutomaticSelection(TimeProvider? timeProvider = null) : IDisposable
 {
     private readonly object sync = new();
     private CancellationTokenSource? pending;
@@ -12,8 +12,12 @@ public sealed class AutomaticSelection : IDisposable
     private string? lastFingerprint;
     private bool disposed;
 
+    public Task RequestAsync(string identity, Func<CancellationToken, Task<string>> capture,
+        Func<bool> stillAllowed, Action<string> submit, Action<string>? feedback = null, TimeSpan delay = default) =>
+        RequestAsync(identity, capture, stillAllowed, submit, feedback, delay, accepted: null);
+
     public async Task RequestAsync(string identity, Func<CancellationToken, Task<string>> capture,
-        Func<bool> stillAllowed, Action<string> submit, Action<string>? feedback = null)
+        Func<bool> stillAllowed, Action<string> submit, Action<string>? feedback, TimeSpan delay, Action? accepted)
     {
         CancellationTokenSource request;
         long id;
@@ -29,10 +33,21 @@ public sealed class AutomaticSelection : IDisposable
             var text = await capture(request.Token);
             if (string.IsNullOrWhiteSpace(text)) return;
             var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity + "\0" + text)));
+            bool CanSubmit() => !disposed && id == generation && !request.IsCancellationRequested &&
+                fingerprint != lastFingerprint && stillAllowed();
+            if (delay > TimeSpan.Zero)
+            {
+                lock (sync)
+                {
+                    if (!CanSubmit()) return;
+                    accepted?.Invoke();
+                }
+                await Task.Delay(delay, timeProvider ?? TimeProvider.System, request.Token);
+            }
             lock (sync)
             {
-                if (disposed || id != generation || request.IsCancellationRequested || !stillAllowed() ||
-                    fingerprint == lastFingerprint) return;
+                if (!CanSubmit()) return;
+                if (delay <= TimeSpan.Zero) accepted?.Invoke();
                 submit(text);
                 lastFingerprint = fingerprint;
             }

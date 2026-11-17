@@ -37,7 +37,7 @@ internal sealed class AutomaticMouseMonitor : IDisposable
         // No UIA, process lookup, synthesis or dispatcher execution inside this callback.
         try
         {
-            if (code >= 0 && (message == 0x0201 || message == 0x0202 || message == 0x0204 || message == 0x020A))
+            if (code >= 0 && message is 0x0201 or 0x0202 or 0x0204 or 0x0207 or 0x020A or 0x020B or 0x020E)
             {
                 var input = Marshal.PtrToStructure<MouseInput>(data);
                 var foreground = Native.GetForegroundWindow();

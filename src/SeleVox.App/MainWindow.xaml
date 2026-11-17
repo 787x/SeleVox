@@ -242,6 +242,11 @@
             </GroupBox>
             <CheckBox x:Name="AutoStart" Content="登录 Windows 时启动（驻留托盘）" Margin="0,20,0,16"/>
             <CheckBox x:Name="AutoSpeak" Content="Auto Speak · 鼠标选中即朗读（立即保存）" Click="AutoSpeak_Click" Margin="0,0,0,10"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                <Label Content="自动朗读延迟（秒）" Target="{Binding ElementName=AutomaticReadDelay}" Padding="0,4,8,4"/>
+                <ComboBox x:Name="AutomaticReadDelay" Width="72" ItemStringFormat="{}{0:F1}"/>
+                <TextBlock Text="适用于 Auto Speak 和 OCR 自动朗读 · 立即保存" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
             <CheckBox x:Name="AutoAsk" Content="Auto Ask · 鼠标选中即问 AI（立即保存）" Click="AutoAsk_Click" Margin="0,0,0,10"/>
             <TextBlock Text="应用白名单：Ask 与 Speak 独立；同时启用时 Auto Ask 优先。仅使用 UIA 选区。" TextWrapping="Wrap"/>
             <TextBlock Text="自动操作应用白名单 · 仅使用 UIA 选区" FontWeight="SemiBold"/>
