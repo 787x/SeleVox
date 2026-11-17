@@ -35,7 +35,11 @@ public sealed class Pr32DesktopTests(ITestOutputHelper output)
         var voice = SpeechAudio.GetVoices().FirstOrDefault(v => v.Label.Contains("(en-")) ?? SpeechAudio.GetVoices().First();
         var saved = new Settings(VoiceId: voice.Id, Volume: .08f, OcrLanguage: OcrLanguage.English,
             LlmBaseUrl: server.Address, LlmModel: "controlled-fixture", AutoAsk: false, LlmAutoRead: true,
-            LlmReadingStrategy: AnswerReadingStrategy.Incremental) { OcrAction = OcrCompletionAction.Read, AllowOcrLlm = true, OcrLlmAuthorizedBaseUrl = server.Address };
+            LlmReadingStrategy: AnswerReadingStrategy.Incremental)
+        {
+            OcrAction = OcrCompletionAction.Read, AllowOcrLlm = true, OcrLlmAuthorizedBaseUrl = server.Address,
+            AutomaticReadDelaySeconds = 1
+        };
         using var questions = new QuestionSession(new ChatCompletionClient().GenerateAsync,
             (t, s) => reading.ReadSentenceAsync(t, s, default), reading.Stop, reading.ReadSentenceAsync);
         try
@@ -57,9 +61,19 @@ public sealed class Pr32DesktopTests(ITestOutputHelper output)
             resultWindow = new(recognized!, () => saved, t => reading.ReadCapturedTextAsync(t, saved));
             resultWindow.ShowResult(recognized!);
             using var readRun = new OcrFollowUp(saved); Task? started = null;
-            await readRun.RunAsync(recognized!, () => true,
-                (t, s, token) => Task.Run(() => SpeechAudio.PrecheckAutomatic(t, s), token),
+            var prechecked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var pending = readRun.RunAsync(recognized!, () => true,
+                async (t, s, token) =>
+                {
+                    await Task.Run(() => SpeechAudio.PrecheckAutomatic(t, s), token);
+                    prechecked.SetResult();
+                },
                 (t, s, token) => started = reading.ReadAsync(_ => Task.FromResult(t), s, true, cancellation: token), _ => Assert.Fail());
+            await prechecked.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(resultWindow.IsVisible);
+            Assert.Null(started);
+            Assert.Equal(ReadingState.Idle, reading.Status.State);
+            await pending.WaitAsync(TimeSpan.FromSeconds(5));
             await started!.WaitAsync(TimeSpan.FromSeconds(15)); Assert.Equal(ReadingState.Playing, reading.Status.State);
             answerWindow = new(questions, () => saved, () => reading.Status.Message, questions.Cancel, () => { },
                 saveAutoRead: enabled => { saved = saved with { LlmAutoRead = enabled }; return null; });
@@ -70,7 +84,7 @@ public sealed class Pr32DesktopTests(ITestOutputHelper output)
             Assert.False(saved.LlmAutoRead); Assert.Equal(ReadingState.Playing, reading.Status.State);
             toggle.IsChecked = true; toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             Assert.True(saved.LlmAutoRead); Assert.Equal(ReadingState.Playing, reading.Status.State);
-            output.WriteLine("Real desktop screenshot -> local OCR -> Windows TTS/WASAPI playing; answer shortcut left current playback running.");
+            output.WriteLine("Real desktop screenshot -> local OCR -> result visible before delayed submission -> Windows TTS/WASAPI playing; answer shortcut left playback running.");
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); var count = 0;
             var serving = Task.Run(async () =>
             {

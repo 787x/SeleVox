@@ -24,11 +24,13 @@ public sealed class Pr32WindowTests
             try
             {
                 var shortcut = SeleVox.App.App.OnlyLlmAutoReadChanged(saved, updated);
+                var delayOnly = SeleVox.App.App.OnlyAutomaticReadDelayChanged(saved, updated);
                 store.Save(updated); saved = updated;
                 if (main is not null)
                 {
                     main.SetLlmAutoRead(saved.LlmAutoRead);
-                    if (!shortcut) main.SetAutomaticSettings(saved);
+                    if (delayOnly) main.SetAutomaticReadDelay(saved.AutomaticReadDelaySeconds);
+                    else if (!shortcut) main.SetAutomaticSettings(saved);
                 }
                 answer?.Refresh(); return null;
             }
@@ -50,6 +52,15 @@ public sealed class Pr32WindowTests
             Assert.False(saved.LlmAutoRead); Assert.False(store.Load().Settings.LlmAutoRead); Assert.False(((CheckBox)main.FindName("LlmAutoRead")).IsChecked);
             Assert.Equal("saved-model", saved.LlmModel); Assert.Equal("unsaved-model", model.Text); Assert.Equal("unsaved prompt", prompt.Text);
             Assert.False(streaming.IsChecked); Assert.Equal(2, ocr.SelectedIndex); Assert.Equal(before, stop); Assert.Equal(1, requests);
+            var delay = (ComboBox)main.FindName("AutomaticReadDelay");
+            Assert.Equal(21, delay.Items.Count);
+            Assert.Equal(0.0, delay.SelectedItem);
+            delay.SelectedItem = 2.5;
+            Assert.Equal(2.5, store.Load().Settings.AutomaticReadDelaySeconds);
+            var reopened = new MainWindow(new SettingsStore(path).Load().Settings, _ => throw new InvalidOperationException("Loading must not save"),
+                () => { }, () => { }, () => { }, () => Task.FromResult<string?>(null), () => { });
+            try { Assert.Equal(2.5, ((ComboBox)reopened.FindName("AutomaticReadDelay")).SelectedItem); }
+            finally { reopened.Close(); }
             // The active request retains its launch snapshot despite the shortcut change.
             completion.SetResult("answer"); await running; Assert.Equal(1, speech);
             using (File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))

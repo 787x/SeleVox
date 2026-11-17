@@ -100,7 +100,11 @@ public sealed class Pr9WindowsTests(ITestOutputHelper log)
         }
     }
     [WindowsOcrFact, Trait("Category", "WindowsQaDesktop")]
-    public Task ExternalMouseSelectionAutomaticallyAsksOnceWithoutFocusChange() => OcrDesktopTests.RunSta(async () =>
+    public Task ExternalMouseSelectionAutomaticallyAsksOnceWithoutFocusChange() => ExternalMouseSelection(ask: true);
+    [Pr32DesktopFact, Trait("Category", "WindowsAudio")]
+    public Task ExternalMouseSelectionDelaysWindowsSpeechAndRejectsStaleGestures() => ExternalMouseSelection(ask: false);
+
+    private Task ExternalMouseSelection(bool ask) => OcrDesktopTests.RunSta(async () =>
     {
         const string script = "Add-Type -AssemblyName PresentationFramework; $w=New-Object Windows.Window; $w.Title='PR9 isolated UIA fixture'; $w.Width=650; $w.Height=300; $w.Topmost=$true; $t=New-Object Windows.Controls.TextBox; $t.Text='What is two plus two?'; $t.FontSize=24; $w.Content=$t; $w.ShowDialog() | Out-Null";
         var info = new ProcessStartInfo("powershell.exe") { UseShellExecute = false, CreateNoWindow = true };
@@ -126,6 +130,75 @@ public sealed class Pr9WindowsTests(ITestOutputHelper log)
                 LlmAuthorizedBaseUrl = server.Address, Applications = [new(path!, true, true)], LlmAutoRead = false };
             using var monitor = new AutomaticMouseMonitor();
             monitor.Invalidated += () => selection.Invalidate();
+            async Task Drag(int width = 270, bool fromRight = false)
+            {
+                var left = (int)(bounds.Left + 5 * scale); var top = (int)(bounds.Top + 15 * scale);
+                var right = left + (int)(width * scale);
+                var start = fromRight ? right : left;
+                Assert.Equal(hwnd, Native.GetForegroundWindow());
+                Assert.True(SetCursorPos(start, top));
+                Assert.Equal(hwnd, GetAncestor(WindowFromPoint(new CursorPoint { X = start, Y = top }), 2));
+                mouse_event(2, 0, 0, 0, 0);
+                try
+                {
+                    for (var offset = 10; offset <= right - left; offset += 10)
+                    {
+                        Assert.True(SetCursorPos(fromRight ? right - offset : left + offset, top));
+                        await Task.Delay(8);
+                    }
+                }
+                finally { mouse_event(4, 0, 0, 0, 0); }
+            }
+            if (!ask)
+            {
+                var speech = new MeasuredAudio();
+                using var reading = new ReadingSession(speech, speech);
+                var voices = SpeechAudio.GetVoices();
+                var voice = voices.FirstOrDefault(v => v.Label.Contains("(en-")) ?? voices.First();
+                var speakOptions = new Settings(VoiceId: voice.Id, AutoSpeak: true, Applications: [new(path!)], Volume: .08f)
+                { AutomaticReadDelaySeconds = 1.5 };
+                var played = new TaskCompletionSource<Status>(TaskCreationOptions.RunContinuationsAsynchronously);
+                reading.Changed += status =>
+                {
+                    if (status.State is ReadingState.Playing or ReadingState.Error) played.TrySetResult(status);
+                };
+                var captures = new List<string>();
+                monitor.Selected += async (window, start, end) =>
+                {
+                    if (window != hwnd || !speakOptions.AllowsAutomatic(path)) return;
+                    await selection.RequestAsync(path! + "|" + hwnd, async token =>
+                    {
+                        var stable = await StableSelection.CaptureAsync((focus, sample) =>
+                            capture.CaptureSnapshotAsync(hwnd, sample, start, end, focus), token);
+                        if (!string.IsNullOrWhiteSpace(stable.Text)) captures.Add(stable.Text);
+                        return stable.Text;
+                    }, () => Native.GetForegroundWindow() == hwnd, text => _ = reading.ReadTextAsync(text, speakOptions),
+                    delay: TimeSpan.FromSeconds(speakOptions.AutomaticReadDelaySeconds));
+                };
+                SetCursorPos((int)(bounds.Left + 330 * scale), (int)(bounds.Top + 15 * scale));
+                mouse_event(2, 0, 0, 0, 0); mouse_event(4, 0, 0, 0, 0);
+                await Task.Delay(600);
+                Assert.Empty(captures);
+                await Drag(85); await Pr9Tests.Until(() => captures.Count == 1);
+                Assert.Empty(speech.Text);
+                await Drag(fromRight: true); await Pr9Tests.Until(() => captures.Count == 2);
+                Assert.NotEqual(captures[0], captures[1]);
+                Assert.Empty(speech.Text);
+                var status = await played.Task.WaitAsync(TimeSpan.FromSeconds(12));
+                Assert.True(status.State == ReadingState.Playing, status.Message);
+                Assert.Equal(captures[1], Assert.Single(speech.Text));
+                reading.Stop();
+                SetCursorPos((int)(bounds.Left + 330 * scale), (int)(bounds.Top + 15 * scale));
+                mouse_event(2, 0, 0, 0, 0); mouse_event(4, 0, 0, 0, 0);
+                await Task.Delay(600);
+                await Drag(85); await Pr9Tests.Until(() => captures.Count == 3);
+                Assert.Equal(captures[0], captures[2]);
+                selection.Invalidate(); reading.Stop();
+                await Task.Delay(1750);
+                Assert.Single(speech.Text);
+                log.WriteLine("External UIA drag and plain click on Windows; latest of two valid selections reached real Windows TTS and WASAPI, Stop prevented delayed submission.");
+                return;
+            }
             monitor.Selected += async (window, start, end) =>
             {
                 try
@@ -148,19 +221,6 @@ public sealed class Pr9WindowsTests(ITestOutputHelper log)
                 var context = await server.Next(); context.Response.ContentType = "text/event-stream";
                 await ChatNetworkTests.Server.Write(context.Response, ChatCompletionTests.Event("Four.") + ChatCompletionTests.Finish); context.Response.Close();
             });
-            async Task Drag()
-            {
-                var left = (int)(bounds.Left + 5 * scale); var top = (int)(bounds.Top + 15 * scale);
-                Assert.Equal(hwnd, Native.GetForegroundWindow());
-                Assert.True(SetCursorPos(left, top));
-                Assert.Equal(hwnd, GetAncestor(WindowFromPoint(new CursorPoint { X = left, Y = top }), 2));
-                mouse_event(2, 0, 0, 0, 0);
-                try
-                {
-                    for (var x = left + 10; x <= left + 270 * scale; x += 10) { Assert.True(SetCursorPos(x, top)); await Task.Delay(8); }
-                }
-                finally { mouse_event(4, 0, 0, 0, 0); }
-            }
             await Drag(); await done.Task.WaitAsync(TimeSpan.FromSeconds(10)); await serving;
             Assert.Equal(QuestionState.Completed, qa.Snapshot.State); Assert.Equal(hwnd, Native.GetForegroundWindow()); Assert.Equal(1, calls);
             await Drag(); await Task.Delay(600); Assert.Equal(1, calls);

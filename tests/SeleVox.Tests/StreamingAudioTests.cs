@@ -9,6 +9,37 @@ namespace SeleVox.Tests;
 public sealed class StreamingAudioTests(ITestOutputHelper log)
 {
     [WindowsAudioFact, Trait("Category", "WindowsAudio")]
+    public async Task AutomaticSelectionWaitsBeforeStreamingToRealWasapi()
+    {
+        var requests = 0;
+        var pcm = Tone(700);
+        using var http = new HttpClient(new MiMoStreamingTests.Handler((_, _) =>
+        {
+            Interlocked.Increment(ref requests);
+            return Task.FromResult(MiMoStreamingTests.Response(new MemoryStream(
+                System.Text.Encoding.UTF8.GetBytes(MiMoStreamingTests.Event(pcm) + "data: [DONE]\n\n"))));
+        }));
+        var backend = new RealBackend(http);
+        using var reading = new ReadingSession(backend, backend);
+        using var selection = new AutomaticSelection();
+        var settings = new Settings(Provider: TtsProvider.MiMo, AllowAutomaticMiMo: true, Volume: .08f)
+        { AutomaticReadDelaySeconds = 1 };
+        Task? started = null;
+        var clock = Stopwatch.StartNew();
+        var pending = selection.RequestAsync("fixture window", _ => Task.FromResult("fixture"), () => true,
+            text => started = reading.ReadTextAsync(text, settings), delay: TimeSpan.FromSeconds(settings.AutomaticReadDelaySeconds));
+        Assert.Equal(0, Volatile.Read(ref requests));
+        Assert.Empty(backend.Players);
+        await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(clock.Elapsed >= TimeSpan.FromMilliseconds(950));
+        await started!.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(1, requests);
+        Assert.Equal(ReadingState.Idle, reading.Status.State);
+        Assert.Equal(pcm.Length, Assert.Single(backend.Players).SourcePosition);
+        log.WriteLine("Controlled MiMo SSE sent one request after the delay; real WASAPI consumed the complete tone.");
+    }
+
+    [WindowsAudioFact, Trait("Category", "WindowsAudio")]
     public async Task LargeSseEventDrainsBothWasapiOutputsAndStopCancelsBackpressure()
     {
         var ids = AudioOutputs.GetDevices().Where(d => d.Id != Settings.DefaultOutput).Take(2).Select(d => d.Id).ToArray(); Assert.Equal(2, ids.Length);

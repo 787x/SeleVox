@@ -158,20 +158,33 @@ public partial class App : System.Windows.Application
     private string? SaveSettings(Settings updated)
     {
         var autoReadOnly = OnlyLlmAutoReadChanged(settings, updated);
+        var delayOnly = settings.AutomaticReadDelaySeconds != updated.AutomaticReadDelaySeconds &&
+            OnlyAutomaticReadDelayChanged(settings, updated);
         try
         {
             if (autoReadOnly)
             {
                 store.Save(updated);
+                if (settings.LlmAutoRead != updated.LlmAutoRead) CancelDelayedReadsForQuickSave();
                 settings = updated;
                 settingsWindow?.SetLlmAutoRead(settings.LlmAutoRead);
                 aiAnswer?.Refresh();
+                return null;
+            }
+            if (delayOnly)
+            {
+                store.Save(updated);
+                InvalidateMouseSelection();
+                ocrFollowUp?.CancelPendingDelayedRead();
+                settings = updated;
+                settingsWindow?.SetAutomaticReadDelay(settings.AutomaticReadDelaySeconds);
                 return null;
             }
             // Startup-only saves must not cancel work or refresh unrelated unsaved controls.
             if (OnlyStartupChanged(settings, updated))
             {
                 StartupRegistration.ApplyAndSave(updated.StartWithWindows, () => store.Save(updated));
+                if (settings.StartWithWindows != updated.StartWithWindows) CancelDelayedReadsForQuickSave();
                 settings = updated;
                 settingsWindow?.SetStartupSettings(settings.StartWithWindows);
                 if (startupMenu is not null) startupMenu.Checked = settings.StartWithWindows;
@@ -189,6 +202,7 @@ public partial class App : System.Windows.Application
                 (!updated.VirtualMicrophoneEnabled || updated.VirtualMicrophone != settings.VirtualMicrophone);
             var ocrChanged = updated.OcrEngine != settings.OcrEngine || OcrModels.From(updated) != OcrModels.From(settings);
             StartupRegistration.ApplyAndSave(updated.StartWithWindows, () => store.Save(updated)); settings = updated;
+            ocrFollowUp?.CancelPendingDelayedRead();
             if (ocrChanged)
             {
                 InvalidateOcrFollowUp();
@@ -214,13 +228,19 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
-            if (!autoReadOnly) settingsWindow?.SetStartupSettings(settings.StartWithWindows);
-            settingsWindow?.SetLlmAutoRead(settings.LlmAutoRead);
+            if (!delayOnly)
+            {
+                if (!autoReadOnly) settingsWindow?.SetStartupSettings(settings.StartWithWindows);
+                settingsWindow?.SetLlmAutoRead(settings.LlmAutoRead);
+            }
             return ex is StartupRegistrationException ? ex.Message : $"设置保存失败（{ex.GetType().Name}），请检查用户目录及开机启动权限。";
         }
     }
     internal static bool OnlyLlmAutoReadChanged(Settings saved, Settings updated) =>
         saved.StartWithWindows == updated.StartWithWindows && OnlyStartupChanged(saved, updated with { LlmAutoRead = saved.LlmAutoRead });
+    internal static bool OnlyAutomaticReadDelayChanged(Settings saved, Settings updated) =>
+        saved.StartWithWindows == updated.StartWithWindows &&
+        OnlyStartupChanged(saved, updated with { AutomaticReadDelaySeconds = saved.AutomaticReadDelaySeconds });
     internal static bool OnlyStartupChanged(Settings saved, Settings updated) =>
         (saved.Applications ?? []).SequenceEqual(updated.Applications ?? []) &&
         (saved.OutputDeviceIds ?? []).SequenceEqual(updated.OutputDeviceIds ?? []) &&
@@ -260,19 +280,25 @@ public partial class App : System.Windows.Application
         var path = await Task.Run(() => ApplicationIdentity.FromWindow(window));
         if (epoch != mouseEpoch || exiting || ocrOperation.IsActive || !(settings.AllowsAutomatic(path) || settings.AllowsAutomaticAsk(path)) || Native.GetForegroundWindow() != window) return;
         var identity = path! + "|" + window;
+        var ask = settings.AllowsAutomaticAsk(path);
+        bool StillAllowed() => epoch == mouseEpoch && !exiting && !ocrOperation.IsActive &&
+            Native.GetForegroundWindow() == window && (ask
+                ? settings.AllowsAutomaticAsk(path)
+                : !settings.AllowsAutomaticAsk(path) && settings.AllowsAutomatic(path) && settings.AllowsAutomaticProvider);
         await automaticSelection.RequestAsync(identity, async token =>
         {
             var stable = await StableSelection.CaptureAsync((focus, sampleToken) =>
                 capture.CaptureSnapshotAsync(window, sampleToken, start, end, focus), token);
             return stable.Text;
-        }, () => epoch == mouseEpoch && !exiting && (settings.AllowsAutomatic(path) || settings.AllowsAutomaticAsk(path)) && Native.GetForegroundWindow() == window,
+        }, StillAllowed,
             text =>
             {
                 settingsWindow?.SetAutomaticStatus("已获取有效选区");
-                if (settings.AllowsAutomaticAsk(path)) { AskAi(text, true); }
-                else if (settings.AllowsAutomatic(path) && settings.AllowsAutomaticProvider) { InvalidateSelectionAction(); questionSession?.Cancel(); _ = reading!.ReadTextAsync(text, settings); }
+                if (ask) { AskAi(text, true); }
+                else { InvalidateSelectionAction(); questionSession?.Cancel(); _ = reading!.ReadTextAsync(text, settings); }
             },
-            message => settingsWindow?.SetAutomaticStatus(message));
+            message => settingsWindow?.SetAutomaticStatus(message),
+            delay: ask ? TimeSpan.Zero : TimeSpan.FromSeconds(settings.AutomaticReadDelaySeconds));
     }
     private void StopReading()
     {
@@ -314,6 +340,7 @@ public partial class App : System.Windows.Application
     private void AskAi(string text, QuestionSource source)
     {
         if (exiting) return;
+        if (source == QuestionSource.Manual) InvalidateMouseSelection();
         var started = false;
         try
         {
@@ -323,7 +350,8 @@ public partial class App : System.Windows.Application
             var key = AzureCredentials.Llm(settings.LlmBaseUrl).Read();
             ChatCompletionClient.Validate(text, settings, key);
             if (source != QuestionSource.OcrAutomatic) InvalidateOcrFollowUp();
-            InvalidateSelectionAction(); mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
+            InvalidateSelectionAction();
+            if (source != QuestionSource.Manual) InvalidateMouseSelection();
             var task = questionSession!.AskAsync(text, settings, key!, source);
             started = true;
             if (aiAnswer is null)
@@ -427,12 +455,9 @@ public partial class App : System.Windows.Application
                 // Restore before reinstalling Auto Speak so focus changes cannot form gestures.
                 aiAnswer?.RestoreAfterCapture();
                 ocrResult?.RestoreAfterCapture();
+                var error = ApplyAutomatic();
+                if (error is not null) Notify(error);
                 if (completed is not null && epoch == ocrEpoch) await RunOcrFollowUpAsync(completed, followUp, epoch, followUpToken);
-                if (!exiting && !ocrOperation.IsActive && (epoch == ocrEpoch || ocrFollowUp is null))
-                {
-                    ++mouseEpoch; var error = ApplyAutomatic();
-                    if (error is not null) Notify(error);
-                }
             }
         }
     }
@@ -479,6 +504,15 @@ public partial class App : System.Windows.Application
         mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate(true);
         reading?.CancelPendingAutomatic();
     }
+    private void InvalidateMouseSelection()
+    {
+        mouse?.CancelGesture(); ++mouseEpoch; automaticSelection.Invalidate();
+    }
+    private void CancelDelayedReadsForQuickSave()
+    {
+        if (settings.AutomaticReadDelaySeconds > 0) InvalidateMouseSelection();
+        ocrFollowUp?.CancelPendingDelayedRead();
+    }
     private async Task<string?> AddForegroundApplicationAsync()
     {
         // Wait for the user to bring their target to the foreground; never activate it ourselves.
@@ -510,6 +544,7 @@ public partial class App : System.Windows.Application
     {
         if (exiting) return;
         exiting = true;
+        InvalidateMouseSelection();
         try { await StopOcrForExitAsync(); }
         finally { Shutdown(); }
     }

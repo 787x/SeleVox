@@ -18,6 +18,9 @@ public sealed class SettingsTests : IDisposable
     [InlineData("{\"Volume\":-1}")]
     [InlineData("{\"StartupSilenceMilliseconds\":-1}")]
     [InlineData("{\"StartupSilenceMilliseconds\":251}")]
+    [InlineData("{\"AutomaticReadDelaySeconds\":-0.5}")]
+    [InlineData("{\"AutomaticReadDelaySeconds\":10.5}")]
+    [InlineData("{\"AutomaticReadDelaySeconds\":0.25}")]
     [InlineData("{\"Provider\":9}")]
     [InlineData("{\"EdgePitchHz\":101}")]
     [InlineData("{\"EdgeLocaleFilter\":null}")]
@@ -35,7 +38,7 @@ public sealed class SettingsTests : IDisposable
     {
         var store = new SettingsStore(PathName);
         store.Save(new("voice-a", 1.5, 0.4f, true));
-        var updated = new Settings("voice-b", 0.75, 0.6f, false);
+        var updated = new Settings("voice-b", 0.75, 0.6f, false) { AutomaticReadDelaySeconds = 9.5 };
         store.Save(updated);
         Assert.Equal(updated, store.Load().Settings); Assert.Null(store.Load().Warning);
         Assert.False(File.Exists(PathName + ".tmp"));
@@ -51,6 +54,7 @@ public sealed class SettingsTests : IDisposable
         var loaded = new SettingsStore(PathName).Load();
         Assert.Null(loaded.Warning); Assert.False(loaded.Settings.AutoSpeak);
         Assert.Equal(100, loaded.Settings.StartupSilenceMilliseconds);
+        Assert.Equal(0, loaded.Settings.AutomaticReadDelaySeconds);
         Assert.Null(loaded.Settings.Applications); Assert.Equal(1.5, loaded.Settings.Rate);
         Assert.Equal(TtsProvider.Windows, loaded.Settings.Provider); Assert.Null(loaded.Settings.OutputDeviceIds);
         Assert.False(loaded.Settings.AllowAutomaticCloud);
