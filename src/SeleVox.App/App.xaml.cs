@@ -295,10 +295,20 @@ public partial class App : System.Windows.Application
             {
                 settingsWindow?.SetAutomaticStatus("已获取有效选区");
                 if (ask) { AskAi(text, true); }
-                else { InvalidateSelectionAction(); questionSession?.Cancel(); _ = reading!.ReadTextAsync(text, settings); }
+                else
+                {
+                    InvalidateSelectionAction(); questionSession?.Cancel();
+                    _ = SubmitAutomaticSelectionRead(reading!, text, settings, ocrFollowUp);
+                }
             },
             message => settingsWindow?.SetAutomaticStatus(message),
             delay: ask ? TimeSpan.Zero : TimeSpan.FromSeconds(settings.AutomaticReadDelaySeconds));
+    }
+    internal static Task SubmitAutomaticSelectionRead(ReadingSession reading, string text, Settings settings, OcrFollowUp? followUp)
+    {
+        // ReadingSession owns replacement once OCR has submitted.
+        followUp?.CancelPendingDelayedRead();
+        return reading.ReadTextAsync(text, settings);
     }
     private void StopReading()
     {

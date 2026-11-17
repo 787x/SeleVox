@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using SeleVox.App;
 using SeleVox.Core;
 
@@ -10,6 +11,7 @@ public sealed class AutomaticReadDelayTests
     [InlineData(false, false, 0)]
     [InlineData(false, false, 1.5)]
     [InlineData(false, true, 1.5)]
+    [InlineData(true, false, 0)]
     [InlineData(true, false, 1.5)]
     [InlineData(true, true, 1.5)]
     public async Task OnlySubmitsOnceAfterDelay(bool ocr, bool streaming, double seconds)
@@ -41,6 +43,67 @@ public sealed class AutomaticReadDelayTests
         else Assert.Null(clock.DueTime);
         await pending.WaitAsync(TimeSpan.FromSeconds(5));
         await playing.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(streaming ? 0 : 1, backend.RegularCalls);
+        Assert.Equal(streaming ? 1 : 0, backend.StreamingCalls);
+        reading.Stop();
+        await submitted!.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task OnlyCommittedAutoSpeakSupersedesDelayedOcr(bool streaming, bool commitSelection)
+    {
+        var ocrClock = new DelayClock();
+        var selectionClock = new DelayClock();
+        var backend = new Audio();
+        using var reading = new ReadingSession(backend, backend);
+        using var selection = new AutomaticSelection(selectionClock);
+        var settings = new Settings(Provider: TtsProvider.MiMo, MiMoStreaming: streaming, AllowAutomaticMiMo: true)
+        { OcrAction = OcrCompletionAction.Read, AutomaticReadDelaySeconds = 1.5 };
+        using var followUp = new OcrFollowUp(settings, ocrClock);
+        var ocrToken = followUp.Cancellation;
+        Task? submitted = null;
+        var playing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        reading.Changed += status => { if (status.State == ReadingState.Playing) playing.TrySetResult(); };
+        var ocr = followUp.RunAsync(new("OCR A", TextSource.ScreenOcr), () => true, (_, _, _) => Task.CompletedTask,
+            (text, options, token) => submitted = reading.ReadAsync(_ => Task.FromResult(text), options, true, cancellation: token),
+            _ => Assert.Fail());
+        Assert.NotNull(ocrClock.DueTime);
+
+        Task Select(string text, Func<bool> allowed) => selection.RequestAsync("fixture window", _ => Task.FromResult(text), allowed,
+            value => submitted = SeleVox.App.App.SubmitAutomaticSelectionRead(reading, value, settings, followUp),
+            delay: TimeSpan.FromSeconds(settings.AutomaticReadDelaySeconds));
+        selection.Invalidate(); // An ordinary click invalidates mouse work.
+        await Select("", () => true);
+        await Select("unapproved", () => false);
+        var allowed = true;
+        var speak = Select("Auto Speak B", () => allowed);
+        Assert.NotNull(selectionClock.DueTime);
+        Assert.False(ocrToken.IsCancellationRequested);
+        Assert.Empty(backend.Requests);
+
+        allowed = commitSelection;
+        selectionClock.Expire();
+        await speak.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(commitSelection, ocrToken.IsCancellationRequested);
+        if (commitSelection)
+        {
+            // The superseded OCR cannot submit even if its timer callback was already queued.
+            ocrClock.Expire();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ocr.WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+        else
+        {
+            Assert.Empty(backend.Requests);
+            ocrClock.Expire();
+            await ocr.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        await playing.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal([commitSelection ? "Auto Speak B" : "OCR A"], backend.Requests.ToArray());
         Assert.Equal(streaming ? 0 : 1, backend.RegularCalls);
         Assert.Equal(streaming ? 1 : 0, backend.StreamingCalls);
         reading.Stop();
@@ -129,16 +192,19 @@ public sealed class AutomaticReadDelayTests
 
     private sealed class Audio : ISpeechSynthesis, IStreamingSpeechSynthesis, IAudioPlaybackFactory, IStreamingPlaybackFactory
     {
+        public ConcurrentQueue<string> Requests { get; } = new();
         public int RegularCalls, StreamingCalls;
         public bool UsesStreaming(Settings settings) => settings.UsesMiMoStreaming;
         public Task<Stream> SynthesizeAsync(string text, Settings settings, CancellationToken cancellation)
         {
             ++RegularCalls;
+            Requests.Enqueue(text);
             return Task.FromResult<Stream>(new MemoryStream());
         }
         public async Task SynthesizeStreamingAsync(string text, Settings settings, StreamingPcmBuffer buffer, CancellationToken cancellation)
         {
             ++StreamingCalls;
+            Requests.Enqueue(text);
             await buffer.WriteAsync(new byte[48000], cancellation);
         }
         public IAudioPlayback CreatePlayback(Stream audio, Settings settings) => new Player(audio);
