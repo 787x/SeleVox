@@ -12,8 +12,12 @@ public sealed class AutomaticSelection(TimeProvider? timeProvider = null) : IDis
     private string? lastFingerprint;
     private bool disposed;
 
+    public Task RequestAsync(string identity, Func<CancellationToken, Task<string>> capture,
+        Func<bool> stillAllowed, Action<string> submit, Action<string>? feedback = null, TimeSpan delay = default) =>
+        RequestAsync(identity, capture, stillAllowed, submit, feedback, delay, accepted: null);
+
     public async Task RequestAsync(string identity, Func<CancellationToken, Task<string>> capture,
-        Func<bool> stillAllowed, Action<string> submit, Action<string>? feedback = null, TimeSpan delay = default)
+        Func<bool> stillAllowed, Action<string> submit, Action<string>? feedback, TimeSpan delay, Action? accepted)
     {
         CancellationTokenSource request;
         long id;
@@ -33,12 +37,17 @@ public sealed class AutomaticSelection(TimeProvider? timeProvider = null) : IDis
                 fingerprint != lastFingerprint && stillAllowed();
             if (delay > TimeSpan.Zero)
             {
-                lock (sync) { if (!CanSubmit()) return; }
+                lock (sync)
+                {
+                    if (!CanSubmit()) return;
+                    accepted?.Invoke();
+                }
                 await Task.Delay(delay, timeProvider ?? TimeProvider.System, request.Token);
             }
             lock (sync)
             {
                 if (!CanSubmit()) return;
+                if (delay <= TimeSpan.Zero) accepted?.Invoke();
                 submit(text);
                 lastFingerprint = fingerprint;
             }

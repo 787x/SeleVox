@@ -298,17 +298,12 @@ public partial class App : System.Windows.Application
                 else
                 {
                     InvalidateSelectionAction(); questionSession?.Cancel();
-                    _ = SubmitAutomaticSelectionRead(reading!, text, settings, ocrFollowUp);
+                    _ = reading!.ReadTextAsync(text, settings);
                 }
             },
             message => settingsWindow?.SetAutomaticStatus(message),
-            delay: ask ? TimeSpan.Zero : TimeSpan.FromSeconds(settings.AutomaticReadDelaySeconds));
-    }
-    internal static Task SubmitAutomaticSelectionRead(ReadingSession reading, string text, Settings settings, OcrFollowUp? followUp)
-    {
-        // ReadingSession owns replacement once OCR has submitted.
-        followUp?.CancelPendingDelayedRead();
-        return reading.ReadTextAsync(text, settings);
+            delay: ask ? TimeSpan.Zero : TimeSpan.FromSeconds(settings.AutomaticReadDelaySeconds),
+            accepted: ask ? null : () => ocrFollowUp?.CancelPendingDelayedRead());
     }
     private void StopReading()
     {

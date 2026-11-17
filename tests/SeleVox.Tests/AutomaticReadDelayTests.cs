@@ -50,64 +50,66 @@ public sealed class AutomaticReadDelayTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task IneligibleSelectionsLeaveDelayedOcrIntact(bool streaming)
+    {
+        using var fixture = new InterleavedReads(streaming);
+        var prior = new List<string>();
+        await fixture.Selection.RequestAsync("fixture window", _ => Task.FromResult("duplicate"), () => true, prior.Add);
+        Assert.Equal(["duplicate"], prior);
+        var ocr = fixture.StartOcr();
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+        fixture.Selection.Invalidate(); // Ordinary clicks only invalidate mouse work.
+        await fixture.Select(_ => Task.FromResult(""));
+        await fixture.Select(_ => Task.FromResult("duplicate"));
+        string? feedback = null;
+        await fixture.Select(_ => throw new UserFeedbackException("UIA failed"), feedback: message => feedback = message);
+        Assert.Equal("UIA failed", feedback);
+        await fixture.Select(_ => Task.FromResult("disallowed rule"), options => options.AllowsAutomatic(@"C:\Other\app.exe"));
+        await fixture.Select(_ => Task.FromResult("disallowed provider"), options =>
+            (options with { AllowAutomaticMiMo = false }).AllowsAutomaticProvider);
+        var staleCapture = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stale = fixture.Select(_ => staleCapture.Task);
+        fixture.Selection.Invalidate();
+        staleCapture.SetResult("stale");
+        await stale.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(ocr.IsCompleted);
+        Assert.Empty(fixture.Backend.Requests);
+
+        fixture.Clock.Advance(TimeSpan.FromSeconds(2));
+        await ocr.WaitAsync(TimeSpan.FromSeconds(5));
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+        await fixture.AssertOnlyPlayed("OCR A");
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
-    public async Task OnlyCommittedAutoSpeakSupersedesDelayedOcr(bool streaming, bool commitSelection)
+    public async Task ConfirmedAutoSpeakSupersedesOcrBeforeItsEarlierDeadline(bool streaming, bool cancelSelection)
     {
-        var ocrClock = new DelayClock();
-        var selectionClock = new DelayClock();
-        var backend = new Audio();
-        using var reading = new ReadingSession(backend, backend);
-        using var selection = new AutomaticSelection(selectionClock);
-        var settings = new Settings(Provider: TtsProvider.MiMo, MiMoStreaming: streaming, AllowAutomaticMiMo: true)
-        { OcrAction = OcrCompletionAction.Read, AutomaticReadDelaySeconds = 1.5 };
-        using var followUp = new OcrFollowUp(settings, ocrClock);
-        var ocrToken = followUp.Cancellation;
-        Task? submitted = null;
-        var playing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        reading.Changed += status => { if (status.State == ReadingState.Playing) playing.TrySetResult(); };
-        var ocr = followUp.RunAsync(new("OCR A", TextSource.ScreenOcr), () => true, (_, _, _) => Task.CompletedTask,
-            (text, options, token) => submitted = reading.ReadAsync(_ => Task.FromResult(text), options, true, cancellation: token),
-            _ => Assert.Fail());
-        Assert.NotNull(ocrClock.DueTime);
+        using var fixture = new InterleavedReads(streaming);
+        var ocr = fixture.StartOcr();
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+        var speak = fixture.Select(_ => Task.FromResult("Auto Speak B"));
+        Assert.False(speak.IsCompleted);
 
-        Task Select(string text, Func<bool> allowed) => selection.RequestAsync("fixture window", _ => Task.FromResult(text), allowed,
-            value => submitted = SeleVox.App.App.SubmitAutomaticSelectionRead(reading, value, settings, followUp),
-            delay: TimeSpan.FromSeconds(settings.AutomaticReadDelaySeconds));
-        selection.Invalidate(); // An ordinary click invalidates mouse work.
-        await Select("", () => true);
-        await Select("unapproved", () => false);
-        var allowed = true;
-        var speak = Select("Auto Speak B", () => allowed);
-        Assert.NotNull(selectionClock.DueTime);
-        Assert.False(ocrToken.IsCancellationRequested);
-        Assert.Empty(backend.Requests);
+        if (cancelSelection) fixture.Selection.Invalidate();
+        fixture.Clock.Advance(TimeSpan.FromSeconds(2)); // A's original deadline, one second before B.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ocr.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Empty(fixture.Backend.Requests);
+        Assert.Equal(ReadingState.Idle, fixture.Reading.Status.State);
 
-        allowed = commitSelection;
-        selectionClock.Expire();
+        fixture.Clock.Advance(TimeSpan.FromSeconds(1));
         await speak.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(commitSelection, ocrToken.IsCancellationRequested);
-        if (commitSelection)
+        if (cancelSelection)
         {
-            // The superseded OCR cannot submit even if its timer callback was already queued.
-            ocrClock.Expire();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ocr.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Empty(fixture.Backend.Requests);
+            Assert.Equal(ReadingState.Idle, fixture.Reading.Status.State);
         }
-        else
-        {
-            Assert.Empty(backend.Requests);
-            ocrClock.Expire();
-            await ocr.WaitAsync(TimeSpan.FromSeconds(5));
-        }
-
-        await playing.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal([commitSelection ? "Auto Speak B" : "OCR A"], backend.Requests.ToArray());
-        Assert.Equal(streaming ? 0 : 1, backend.RegularCalls);
-        Assert.Equal(streaming ? 1 : 0, backend.StreamingCalls);
-        reading.Stop();
-        await submitted!.WaitAsync(TimeSpan.FromSeconds(5));
+        else await fixture.AssertOnlyPlayed("Auto Speak B");
     }
 
     [Fact]
@@ -171,22 +173,86 @@ public sealed class AutomaticReadDelayTests
         }
     }
 
+    private sealed class InterleavedReads : IDisposable
+    {
+        private readonly Settings settings;
+        private readonly OcrFollowUp followUp;
+        private readonly TaskCompletionSource playing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private Task? submitted;
+        public DelayClock Clock { get; } = new();
+        public AutomaticSelection Selection { get; }
+        public Audio Backend { get; } = new();
+        public ReadingSession Reading { get; }
+
+        public InterleavedReads(bool streaming)
+        {
+            settings = new(Provider: TtsProvider.MiMo, MiMoStreaming: streaming, AllowAutomaticMiMo: true, AutoSpeak: true,
+                Applications: [new(@"C:\Fixture\app.exe")])
+            { OcrAction = OcrCompletionAction.Read, AutomaticReadDelaySeconds = 3 };
+            Selection = new(Clock);
+            followUp = new(settings, Clock);
+            Reading = new(Backend, Backend);
+            Reading.Changed += status => { if (status.State == ReadingState.Playing) playing.TrySetResult(); };
+        }
+
+        public Task StartOcr() => followUp.RunAsync(new("OCR A", TextSource.ScreenOcr), () => true, (_, _, _) => Task.CompletedTask,
+            (text, options, token) => submitted = Reading.ReadAsync(_ => Task.FromResult(text), options, true, cancellation: token),
+            _ => Assert.Fail());
+
+        public Task Select(Func<CancellationToken, Task<string>> capture, Func<Settings, bool>? allowed = null, Action<string>? feedback = null) =>
+            Selection.RequestAsync("fixture window", capture,
+                () => allowed?.Invoke(settings) ?? (settings.AllowsAutomatic(@"C:\Fixture\app.exe") && settings.AllowsAutomaticProvider),
+                text => submitted = Reading.ReadTextAsync(text, settings),
+                feedback, TimeSpan.FromSeconds(settings.AutomaticReadDelaySeconds), followUp.CancelPendingDelayedRead);
+
+        public async Task AssertOnlyPlayed(string text)
+        {
+            await playing.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal([text], Backend.Requests.ToArray());
+            Assert.Equal(settings.UsesMiMoStreaming ? 0 : 1, Backend.RegularCalls);
+            Assert.Equal(settings.UsesMiMoStreaming ? 1 : 0, Backend.StreamingCalls);
+            Reading.Stop();
+            await submitted!.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        public void Dispose()
+        {
+            Selection.Dispose();
+            followUp.Dispose();
+            Reading.Dispose();
+        }
+    }
+
     private sealed class DelayClock : TimeProvider
     {
-        private Action? expire;
+        private readonly List<Timer> timers = [];
+        private TimeSpan elapsed;
         public TimeSpan? DueTime { get; private set; }
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
             DueTime = dueTime;
-            expire = () => callback(state);
-            return new Timer();
+            var timer = new Timer(elapsed + dueTime, () => callback(state));
+            timers.Add(timer);
+            return timer;
         }
-        public void Expire() => expire!();
-        private sealed class Timer : ITimer
+        public void Expire() => Advance(DueTime!.Value);
+        public void Advance(TimeSpan amount)
         {
+            elapsed += amount;
+            foreach (var timer in timers.Where(timer => timer.Deadline <= elapsed).OrderBy(timer => timer.Deadline).ToArray())
+            {
+                timers.Remove(timer);
+                timer.Fire();
+            }
+        }
+        private sealed class Timer(TimeSpan deadline, Action callback) : ITimer
+        {
+            private Action? pending = callback;
+            public TimeSpan Deadline => deadline;
+            public void Fire() => Interlocked.Exchange(ref pending, null)?.Invoke();
             public bool Change(TimeSpan dueTime, TimeSpan period) => throw new NotSupportedException();
-            public void Dispose() { }
-            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+            public void Dispose() => Interlocked.Exchange(ref pending, null);
+            public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
         }
     }
 

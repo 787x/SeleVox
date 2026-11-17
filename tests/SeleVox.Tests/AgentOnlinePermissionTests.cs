@@ -44,6 +44,7 @@ public sealed class AgentOnlinePermissionTests
         var name = "SeleVox-Test-" + Guid.NewGuid().ToString("N"); using var pipe = new AgentPipe(execution, name); using var client = new AgentClient(name);
         try
         {
+            await pipe.Listening.WaitAsync(TimeSpan.FromSeconds(10));
             var cli = await CliArguments.ParseAsync(["synthesize", "--text", "fixture", "--output", Path.Combine(directory, "cli.wav"), "--wait"], default);
             var first = await client.CallAsync(cli.Command, cli.Arguments); Assert.True(first.Success); Assert.Equal("completed", first.Data.GetProperty("State").GetString());
             var tool = await new AgentTools(client).SynthesizeAudio("fixture", "mcp.wav"); Assert.False(tool.IsError);

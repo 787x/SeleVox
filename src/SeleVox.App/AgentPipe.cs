@@ -5,6 +5,8 @@ internal sealed class AgentPipe : IDisposable
 {
     private readonly CancellationTokenSource lifetime = new();
     private readonly Task[] workers;
+    private readonly TaskCompletionSource listening = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task Listening => listening.Task;
     internal AgentPipe(AgentExecution execution, string? pipeName = null)
     {
         workers = Enumerable.Range(0, 4).Select(_ => Task.Run(async () =>
@@ -15,7 +17,9 @@ internal sealed class AgentPipe : IDisposable
                 {
                     using var pipe = new NamedPipeServerStream(pipeName ?? AgentWire.PipeName, PipeDirection.InOut, 4,
                         PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-                    await pipe.WaitForConnectionAsync(lifetime.Token);
+                    var connection = pipe.WaitForConnectionAsync(lifetime.Token);
+                    listening.TrySetResult();
+                    await connection;
                     AgentPipePeer.ValidateLocal(pipe);
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
                     timeout.CancelAfter(TimeSpan.FromSeconds(5));
